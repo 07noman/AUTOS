@@ -1,0 +1,2 @@
+-- GENX local SQLite schema (reference; desktop uses Dexie in browser dev)
+-- See docs/database.md for full specification

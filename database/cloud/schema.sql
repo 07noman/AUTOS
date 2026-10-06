@@ -1,0 +1,1 @@
+-- GENX schema placeholder

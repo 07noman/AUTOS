@@ -1,0 +1,37 @@
+:root {
+  --bg: 210 40% 98%;
+  --bg-subtle: 210 40% 96%;
+  --bg-elevated: 0 0% 100%;
+  --text: 222 47% 11%;
+  --text-secondary: 215 16% 47%;
+  --text-muted: 215 14% 64%;
+  --border: 214 32% 91%;
+  --primary: 221 83% 53%;
+  --primary-hover: 221 83% 50%;
+  --primary-active: 221 83% 47%;
+  --success: 160 84% 39%;
+  --success-bg: 163 90% 88%;
+  --success-text: 175 89% 21%;
+  --warning: 38 92% 50%;
+  --warning-bg: 36 93% 89%;
+  --warning-text: 27 87% 33%;
+  --error: 0 84% 60%;
+  --error-bg: 0 93% 94%;
+  --error-text: 0 78% 36%;
+  --info: 196 94% 48%;
+  --info-bg: 194 92% 89%;
+  --info-text: 193 89% 27%;
+  --online: 160 84% 39%;
+  --offline: 38 92% 50%;
+  --syncing: 196 94% 48%;
+}
+
+.dark {
+  --bg: 222 47% 11%;
+  --bg-subtle: 217 33% 17%;
+  --bg-elevated: 217 33% 17%;
+  --text: 210 40% 98%;
+  --text-secondary: 215 20% 65%;
+  --text-muted: 215 14% 64%;
+  --border: 215 28% 26%;
+}

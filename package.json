@@ -1,0 +1,40 @@
+{
+  "name": "genx",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "turbo run dev",
+    "dev:desktop": "turbo run dev --filter=desktop",
+    "dev:api": "turbo run dev --filter=api",
+    "build": "turbo run build",
+    "build:desktop": "turbo run build --filter=desktop",
+    "test": "turbo run test",
+    "test:unit": "vitest run",
+    "test:e2e": "playwright test",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
+    "db:seed": "tsx scripts/seed-dev.ts"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.40.0",
+    "@testing-library/react": "^14.1.0",
+    "@types/node": "^20.10.0",
+    "@types/react": "^18.2.0",
+    "@vitejs/plugin-react": "^4.2.0",
+    "jsdom": "^23.0.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "prettier": "^3.1.0",
+    "tsx": "^4.6.0",
+    "turbo": "^1.11.0",
+    "typescript": "^5.3.0",
+    "vitest": "^1.0.0"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=8.0.0"
+  },
+  "packageManager": "pnpm@8.12.0"
+}

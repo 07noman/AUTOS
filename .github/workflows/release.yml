@@ -1,0 +1,71 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  # Build Desktop Installer
+  build-desktop:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
+        with:
+          node-version: '20'
+      - uses: pnpm/action-setup@v2
+        with:
+          version: '8.12.0'
+      
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+      
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      
+      - name: Build Tauri app
+        run: pnpm tauri build
+        working-directory: apps/desktop
+      
+      - name: Upload installer
+        uses: actions/upload-artifact@v3
+        with:
+          name: genx-pos-installer
+          path: apps/desktop/src-tauri/target/release/bundle/
+
+  # Publish to Docker Hub
+  publish-docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      
+      - name: Login to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+      
+      - name: Build and push API with version tag
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: ./Dockerfile.api
+          push: true
+          tags: |
+            ${{ secrets.DOCKER_USERNAME }}/genx-api:${{ github.ref_name }}
+            ${{ secrets.DOCKER_USERNAME }}/genx-api:latest
+      
+      - name: Build and push Desktop with version tag
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: ./Dockerfile.desktop
+          push: true
+          tags: |
+            ${{ secrets.DOCKER_USERNAME }}/genx-desktop:${{ github.ref_name }}
+            ${{ secrets.DOCKER_USERNAME }}/genx-desktop:latest

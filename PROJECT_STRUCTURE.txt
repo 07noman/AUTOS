@@ -1,0 +1,211 @@
+genx/
+├── # GENX Design System & Core Interfa.txt
+├── .editorconfig
+├── .env.example
+├── .gitattributes
+├── .gitignore
+├── .npmrc
+├── Dockerfile.api
+├── Dockerfile.desktop
+├── README.md
+├── _extract_report.txt
+├── _materialize_from_spec.py
+├── _spec_extract.txt
+├── docker-compose.backup.yml
+├── docker-compose.yml
+├── nginx.conf
+├── package.json
+├── playwright.config.ts
+├── pnpm-lock.yaml
+├── pnpm-workspace.yaml
+├── tsconfig.base.json
+├── turbo.json
+├── vitest.config.ts
+├── .github/
+│   └── workflows/
+│       ├── ci.yml
+│       └── release.yml
+├── apps/
+│   ├── api/
+│   │   ├── drizzle.config.ts
+│   │   ├── package.json
+│   │   ├── tsconfig.json
+│   │   ├── drizzle/
+│   │   │   └── schema.ts
+│   │   └── src/
+│   │       ├── index.ts
+│   │       ├── lib/
+│   │       │   ├── db.ts
+│   │       │   └── logger.ts
+│   │       ├── middleware/
+│   │       │   ├── errorHandler.ts
+│   │       │   ├── logging.ts
+│   │       │   └── rateLimit.ts
+│   │       ├── routes/
+│   │       │   ├── auth.ts
+│   │       │   ├── products.ts
+│   │       │   └── sync.ts
+│   │       └── services/
+│   │           └── productService.ts
+│   └── desktop/
+│       ├── index.html
+│       ├── package.json
+│       ├── postcss.config.js
+│       ├── tailwind.config.ts
+│       ├── tauri.conf.json
+│       ├── tsconfig.json
+│       ├── vite.config.ts
+│       ├── public/
+│       └── src/
+│           ├── App.tsx
+│           ├── index.css
+│           ├── main.tsx
+│           ├── vite-env.d.ts
+│           ├── features/
+│           │   ├── auth/
+│           │   │   └── LoginPage.tsx
+│           │   ├── dashboard/
+│           │   │   └── Dashboard.tsx
+│           │   ├── pos/
+│           │   │   ├── AdvancedPOS.tsx
+│           │   │   └── POS.tsx
+│           │   ├── products/
+│           │   │   ├── ProductForm.tsx
+│           │   │   └── Products.tsx
+│           │   ├── reports/
+│           │   │   └── SalesReport.tsx
+│           │   └── shell/
+│           │       └── AppShell.tsx
+│           ├── hooks/
+│           │   ├── useAuth.ts
+│           │   ├── useConnectivity.ts
+│           │   ├── useCustomers.ts
+│           │   └── useProducts.ts
+│           └── lib/
+│               ├── db.ts
+│               └── sync.ts
+├── database/
+│   ├── cloud/
+│   │   └── schema.sql
+│   └── local/
+│       └── schema.sql
+├── docs/
+│   ├── DEPLOYMENT.md
+│   ├── architecture.md
+│   ├── database.md
+│   ├── development.md
+│   ├── hardware.md
+│   ├── offline-first.md
+│   ├── security.md
+│   ├── sync.md
+│   └── decisions/
+│       ├── 001-database-strategy.md
+│       ├── 002-sync-architecture.md
+│       └── 003-uuid-strategy.md
+├── hardware/
+│   ├── package.json
+│   └── src/
+│       ├── BarcodeScannerService.ts
+│       ├── CashDrawerService.ts
+│       ├── PrinterService.ts
+│       ├── index.ts
+│       └── types.ts
+├── monitoring/
+│   ├── grafana-dashboard.json
+│   └── prometheus.yml
+├── packages/
+│   ├── business-core/
+│   │   ├── package.json
+│   │   └── src/
+│   │       ├── index.ts
+│   │       ├── audit/
+│   │       │   └── index.ts
+│   │       ├── auth/
+│   │       │   └── index.ts
+│   │       ├── permissions/
+│   │       │   └── index.ts
+│   │       └── tenant/
+│   │           └── index.ts
+│   ├── types/
+│   │   ├── package.json
+│   │   └── src/
+│   │       ├── index.ts
+│   │       ├── api/
+│   │       │   └── index.ts
+│   │       ├── domain/
+│   │       │   ├── customer.ts
+│   │       │   ├── order.ts
+│   │       │   ├── product.ts
+│   │       │   └── user.ts
+│   │       └── sync/
+│   │           └── index.ts
+│   ├── ui/
+│   │   ├── package.json
+│   │   ├── tsconfig.json
+│   │   └── src/
+│   │       ├── index.ts
+│   │       ├── Alert/
+│   │       │   └── Alert.tsx
+│   │       ├── Avatar/
+│   │       │   └── Avatar.tsx
+│   │       ├── Badge/
+│   │       │   └── Badge.tsx
+│   │       ├── Button/
+│   │       │   └── Button.tsx
+│   │       ├── Card/
+│   │       │   └── Card.tsx
+│   │       ├── Dialog/
+│   │       │   └── Dialog.tsx
+│   │       ├── Input/
+│   │       │   └── Input.tsx
+│   │       ├── Select/
+│   │       │   └── Select.tsx
+│   │       ├── Skeleton/
+│   │       │   └── Skeleton.tsx
+│   │       ├── Table/
+│   │       │   └── Table.tsx
+│   │       ├── Tabs/
+│   │       │   └── Tabs.tsx
+│   │       ├── Toast/
+│   │       │   └── Toast.tsx
+│   │       ├── Tooltip/
+│   │       │   └── Tooltip.tsx
+│   │       └── tokens/
+│   │           └── css-variables.css
+│   └── validation/
+│       ├── package.json
+│       └── src/
+│           ├── customer.ts
+│           ├── index.ts
+│           ├── order.ts
+│           └── product.ts
+├── scripts/
+│   ├── backup.sh
+│   ├── migrate-local.ts
+│   ├── restore.sh
+│   ├── seed-dev.ts
+│   ├── setup-production.sh
+│   ├── setup.ps1
+│   └── setup.sh
+├── sync/
+│   ├── package.json
+│   ├── tsconfig.json
+│   └── src/
+│       ├── ConflictResolver.ts
+│       ├── OutboxService.ts
+│       ├── SyncEngine.ts
+│       ├── index.ts
+│       └── types.ts
+└── tests/
+    ├── setup.ts
+    ├── e2e/
+    │   ├── fixtures/
+    │   │   └── base.fixture.ts
+    │   └── specs/
+    │       ├── pos.spec.ts
+    │       └── products.spec.ts
+    ├── integration/
+    │   └── sync.spec.ts
+    └── unit/
+        ├── button.test.tsx
+        └── productService.spec.ts

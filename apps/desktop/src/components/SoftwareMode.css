@@ -1,0 +1,35 @@
+.software-mode {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 600;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.software-mode.online {
+  background: rgba(34, 197, 94, 0.12);
+  color: #15803d;
+}
+
+.software-mode.offline {
+  background: rgba(245, 158, 11, 0.15);
+  color: #b45309;
+}
+
+.mode-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 0 2px currentColor;
+  animation: mode-pulse 2s infinite;
+}
+
+@keyframes mode-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}

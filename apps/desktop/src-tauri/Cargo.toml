@@ -1,0 +1,17 @@
+[package]
+name = "genx-desktop"
+version = "0.1.0"
+description = "GENX POS desktop shell"
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "1", features = [] }
+
+[dependencies]
+tauri = { version = "1", features = ["shell-open"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]

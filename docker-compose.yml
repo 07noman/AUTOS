@@ -1,0 +1,18 @@
+version: '3.8'
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    ports:
+      - '4000:4000'
+    environment:
+      JWT_SECRET: dev-secret-change-in-production-min-32-chars
+  desktop:
+    build:
+      context: .
+      dockerfile: Dockerfile.desktop
+    ports:
+      - '8080:80'
+    depends_on:
+      - api

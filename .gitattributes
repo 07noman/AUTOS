@@ -1,0 +1,14 @@
+# Normalize line endings
+* text=auto eol=lf
+
+# Database files
+*.sql text
+*.db binary
+
+# Lock files
+pnpm-lock.yaml text
+package-lock.json text
+
+# Scripts
+*.sh text eol=lf
+*.ps1 text eol=crlf

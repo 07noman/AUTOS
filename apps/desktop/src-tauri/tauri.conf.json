@@ -1,0 +1,35 @@
+{
+  "$schema": "https://schema.tauri.app/config/1",
+  "build": {
+    "beforeDevCommand": "pnpm --filter desktop dev",
+    "beforeBuildCommand": "pnpm --filter desktop build",
+    "devPath": "http://localhost:3000",
+    "distDir": "../dist"
+  },
+  "package": {
+    "productName": "GENX POS",
+    "version": "0.1.0"
+  },
+  "tauri": {
+    "allowlist": {
+      "all": false,
+      "shell": { "open": true }
+    },
+    "windows": [
+      {
+        "title": "GENX POS",
+        "width": 1280,
+        "height": 800,
+        "resizable": true
+      }
+    ],
+    "security": {
+      "csp": null
+    },
+    "bundle": {
+      "active": false,
+      "identifier": "com.genx.pos",
+      "icon": []
+    }
+  }
+}

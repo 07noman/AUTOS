@@ -1,0 +1,459 @@
+* {
+  box-sizing: border-box;
+}
+
+.auth-page {
+  min-height: 100vh;
+  width: 100vw;
+  display: grid;
+  grid-template-columns: 52% 48%;
+  background: #ffffff;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  overflow-x: hidden;
+}
+
+/* =========================
+   LEFT VISUAL
+========================= */
+
+.auth-visual {
+  min-height: 100vh;
+  background: #effbf3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 50px;
+  border-right: 1px solid #e2f0e7;
+}
+
+.visual-content {
+  width: min(560px, 100%);
+  text-align: center;
+}
+
+.brand-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 22px;
+  letter-spacing: -0.5px;
+  color: #1f2b2a;
+  margin-bottom: 24px;
+}
+
+.brand-mark strong {
+  color: #004d3b;
+  font-weight: 700;
+}
+
+.brand-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: #004d3b;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 16px;
+  box-shadow: 0 4px 12px rgba(0, 77, 59, 0.2);
+}
+
+.pos-image-wrapper {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  margin-bottom: 22px;
+}
+
+.pos-illustration {
+  width: min(480px, 95%);
+  max-height: 320px;
+  object-fit: contain;
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 77, 59, 0.08);
+}
+
+.visual-content h1 {
+  margin: 0;
+  color: #233331;
+  font-size: 30px;
+  line-height: 1.25;
+  font-weight: 700;
+  letter-spacing: -0.8px;
+}
+
+.visual-content p {
+  max-width: 500px;
+  margin: 12px auto 0;
+  color: #587069;
+  font-size: 14.5px;
+  line-height: 1.65;
+}
+
+.slider-dots {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 24px;
+}
+
+.slider-dots span {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #c8e5d5;
+  transition: all 0.2s ease;
+}
+
+.slider-dots span.active {
+  width: 24px;
+  border-radius: 20px;
+  background: #004d3b;
+}
+
+/* =========================
+   RIGHT FORM
+========================= */
+
+.auth-form-section {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 50px;
+  background: #ffffff;
+}
+
+.auth-form-container {
+  width: 100%;
+  max-width: 430px;
+}
+
+.mobile-brand {
+  display: none;
+}
+
+.form-heading {
+  margin-bottom: 24px;
+}
+
+.form-heading h2 {
+  margin: 0;
+  color: #263535;
+  font-size: 28px;
+  line-height: 1.25;
+  font-weight: 700;
+  letter-spacing: -0.7px;
+}
+
+.form-heading p {
+  margin: 8px 0 0;
+  color: #7b8986;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.configuring-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  background: rgba(0, 77, 59, 0.08);
+  color: #004d3b;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 20px;
+  margin-top: 10px;
+}
+
+/* =========================
+   FORM FIELDS
+========================= */
+
+.field {
+  margin-bottom: 16px;
+}
+
+.field label {
+  display: block;
+  margin-bottom: 6px;
+  color: #445451;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.label-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.label-row label {
+  margin-bottom: 0;
+}
+
+.input-wrapper {
+  height: 50px;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 14px;
+  border: 1px solid #d9e2de;
+  border-radius: 8px;
+  background: #ffffff;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.input-wrapper:focus-within {
+  border-color: #004d3b;
+  box-shadow: 0 0 0 3px rgba(0, 77, 59, 0.1);
+}
+
+.input-wrapper.error-border {
+  border-color: #dc2626;
+}
+
+.input-wrapper svg {
+  color: #71847e;
+  flex-shrink: 0;
+}
+
+.input-wrapper input {
+  width: 100%;
+  height: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: #263535;
+  font-size: 14px;
+}
+
+.input-wrapper input::placeholder {
+  color: #a5afac;
+}
+
+.field-error {
+  color: #dc2626;
+  font-size: 12px;
+  margin-top: 4px;
+  display: block;
+}
+
+.password-toggle {
+  border: none;
+  background: transparent;
+  color: #71847e;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.password-toggle:hover {
+  color: #004d3b;
+  background: rgba(0, 77, 59, 0.05);
+}
+
+.forgot-link {
+  border: none;
+  background: transparent;
+  padding: 0;
+  color: #004d3b;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.forgot-link:hover {
+  text-decoration: underline;
+}
+
+/* =========================
+   BUTTONS
+========================= */
+
+.primary-button {
+  width: 100%;
+  height: 50px;
+  margin-top: 6px;
+  border: none;
+  border-radius: 8px;
+  background: #004d3b;
+  color: white;
+  font-size: 14.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.15s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.primary-button:hover {
+  background: #00382b;
+}
+
+.primary-button:active {
+  transform: translateY(1px);
+}
+
+.primary-button:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+/* =========================
+   ACCOUNT SWITCH & BACK
+========================= */
+
+.account-switch {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+  margin-top: 26px;
+  font-size: 13.5px;
+  color: #7d8986;
+}
+
+.account-switch button {
+  border: none;
+  background: transparent;
+  color: #004d3b;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+}
+
+.account-switch button:hover {
+  text-decoration: underline;
+}
+
+.back-button {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  border: none;
+  background: transparent;
+  color: #5c716b;
+  padding: 0;
+  margin-bottom: 20px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.back-button:hover {
+  color: #004d3b;
+}
+
+/* =========================
+   ERROR BOX
+========================= */
+
+.auth-error {
+  margin-bottom: 18px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #991b1b;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+/* =========================
+   RESPONSIVE
+========================= */
+
+@media (max-width: 1024px) {
+  .auth-page {
+    grid-template-columns: 48% 52%;
+  }
+
+  .auth-visual {
+    padding: 30px;
+  }
+
+  .visual-content h1 {
+    font-size: 26px;
+  }
+
+  .auth-form-section {
+    padding: 35px;
+  }
+}
+
+@media (max-width: 768px) {
+  .auth-page {
+    display: block;
+  }
+
+  .auth-visual {
+    min-height: auto;
+    padding: 30px 20px 25px;
+  }
+
+  .brand-mark {
+    margin-bottom: 12px;
+    font-size: 18px;
+  }
+
+  .brand-icon {
+    width: 32px;
+    height: 32px;
+    font-size: 14px;
+  }
+
+  .pos-image-wrapper {
+    margin: 5px 0 12px;
+  }
+
+  .pos-illustration {
+    max-height: 180px;
+  }
+
+  .visual-content h1 {
+    font-size: 22px;
+  }
+
+  .visual-content p {
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  .slider-dots {
+    margin-top: 14px;
+  }
+
+  .auth-form-section {
+    min-height: auto;
+    padding: 30px 22px 50px;
+  }
+
+  .auth-form-container {
+    max-width: 480px;
+  }
+
+  .mobile-brand {
+    display: block;
+    margin-bottom: 20px;
+    color: #263535;
+    font-size: 18px;
+    font-weight: 700;
+  }
+
+  .mobile-brand strong {
+    color: #004d3b;
+  }
+
+  .form-heading h2 {
+    font-size: 24px;
+  }
+}
