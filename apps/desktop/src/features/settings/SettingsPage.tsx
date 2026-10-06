@@ -249,7 +249,7 @@ export function SettingsPage() {
               </span>
               <span className="text-xs text-text-muted">Tenant:</span>
               <span className="text-xs font-mono bg-bg-subtle px-2 py-0.5 rounded text-text">
-                {user?.tenantId || 'tenant-1'}
+                {user?.tenantId || 'N/A'}
               </span>
             </div>
           </div>

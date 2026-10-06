@@ -5,7 +5,8 @@ import { createPortal } from "react-dom";
 import { Package, X, ScanBarcode, Camera, Plus } from "lucide-react";
 import "./AddProductModal.css";
 import { useCreateProduct } from "@/hooks/useProducts";
-import { productRepo } from "@/lib/db";
+import { productRepo, getCurrentTenantId } from "@/lib/db";
+
 
 // ─── Color palette ─────────────────────────────────────────────────────────
 const COLOR_SWATCHES = [
@@ -148,7 +149,8 @@ export function AddProductModal({ open, onClose, onSaved }: AddProductModalProps
     // Check duplicate barcode
     if (form.barcode.trim()) {
       try {
-        const existing = await productRepo.findAll("tenant-1");
+        const activeTenantId = getCurrentTenantId();
+        const existing = await productRepo.findAll(activeTenantId);
         const dup = existing.find(
           (p) => p.barcode && p.barcode.toLowerCase() === form.barcode.trim().toLowerCase()
         );
@@ -168,8 +170,9 @@ export function AddProductModal({ open, onClose, onSaved }: AddProductModalProps
     setSaving(true);
     try {
       const sku = generateSKU(form.name);
+      const activeTenantId = getCurrentTenantId();
       await createProduct.mutateAsync({
-        tenantId: "tenant-1",
+        tenantId: activeTenantId,
         sku,
         name: form.name.trim(),
         barcode: form.barcode.trim() || undefined,

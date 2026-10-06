@@ -167,8 +167,24 @@ export const useAuth = create<AuthState>()(
       },
 
       logout: () => {
+        // Clear authentication tokens and tenant credentials
         localStorage.removeItem('genx:authToken');
+        localStorage.removeItem('genx:selectedModule');
+        localStorage.removeItem('genx:lastSyncTimestamp');
+
+        // Clear transient UI state
         set({ user: null, token: null, isAuthenticated: false, error: null });
+
+        // Purge client-side cached product and customer stores from previous tenant
+        try {
+          import('@/services/offlineDB').then(({ clearStore, OFFLINE_STORES }) => {
+            void clearStore(OFFLINE_STORES.products);
+            void clearStore(OFFLINE_STORES.categories);
+            void clearStore(OFFLINE_STORES.inventory);
+          }).catch(() => {});
+        } catch {
+          // ignore
+        }
       },
 
       clearError: () => set({ error: null }),

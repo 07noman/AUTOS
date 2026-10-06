@@ -44,6 +44,14 @@ export class SyncEngine {
     void this.sync();
   }
 
+  setTenantId(tenantId: string): void {
+    this.tenantId = tenantId;
+  }
+
+  getTenantId(): string {
+    return this.tenantId;
+  }
+
   stop(): void {
     if (this.syncInterval) {
       clearInterval(this.syncInterval);

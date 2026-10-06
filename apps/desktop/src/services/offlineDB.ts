@@ -146,3 +146,18 @@ export async function deleteItem(storeName: string, key: IDBValidKey): Promise<v
     tx.onerror = () => reject(tx.error);
   });
 }
+
+export async function clearStore(storeName: string): Promise<void> {
+  try {
+    const db = await openOfflineDB();
+    return new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(storeName, "readwrite");
+      tx.objectStore(storeName).clear();
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  } catch {
+    // ignore in environments without indexedDB
+  }
+}
+

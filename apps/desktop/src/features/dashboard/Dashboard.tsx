@@ -2,10 +2,11 @@ import { TrendingUp, AlertTriangle, Package, DollarSign } from 'lucide-react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Card, CardHeader, CardTitle, CardContent } from '@genx/ui/Card';
 import { Badge } from '@genx/ui/Badge';
-import { db } from '@/lib/db';
+import { db, getCurrentTenantId } from '@/lib/db';
 
 export function Dashboard() {
-  const products = useLiveQuery(() => db.products.where('tenantId').equals('tenant-1').toArray(), []);
+  const currentTenant = getCurrentTenantId();
+  const products = useLiveQuery(() => db.products.where('tenantId').equals(currentTenant).toArray(), [currentTenant]);
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
   const todayOrders = useLiveQuery(

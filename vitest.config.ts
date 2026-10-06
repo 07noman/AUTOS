@@ -7,7 +7,8 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'jsdom',
-    include: ['tests/unit/**/*.test.tsx', 'packages/**/*.test.ts'],
+    pool: 'forks',
+    include: ['tests/unit/**/*.test.tsx', 'tests/unit/**/*.test.ts', 'packages/**/*.test.ts'],
     exclude: ['tests/e2e/**', '**/node_modules/**'],
   },
   resolve: {

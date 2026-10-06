@@ -7,11 +7,35 @@ import { syncRoutes } from './routes/sync.js';
 import { productsRoutes } from './routes/products.js';
 
 
-const server = Fastify({ logger: true });
+// ─── Environment & Secrets Validation ─────────────────────────────────────────
+const isProd = process.env.NODE_ENV === 'production';
 
-await server.register(cors, { origin: true, credentials: true });
+if (isProd && !process.env.JWT_SECRET) {
+  console.error('[FATAL] JWT_SECRET environment variable is missing in production.');
+  process.exit(1);
+}
+
+const jwtSecret = process.env.JWT_SECRET || (isProd ? '' : 'dev-secret-change-in-production-min-32-chars');
+
+console.log(`[STARTUP] Config status: JWT_SECRET=${process.env.JWT_SECRET ? 'configured' : 'using dev default'}`);
+console.log(`[STARTUP] Config status: DATABASE_URL=${process.env.DATABASE_URL ? 'configured' : 'missing'}`);
+
+const server = Fastify({
+  logger: isProd ? { level: 'warn' } : true,
+});
+
+// ─── Strict CORS Configuration ────────────────────────────────────────────────
+const allowedOrigins = process.env.CORS_ALLOWED_ORIGINS
+  ? process.env.CORS_ALLOWED_ORIGINS.split(',').map((o) => o.trim())
+  : ['http://localhost:3000', 'http://localhost:5173', 'tauri://localhost'];
+
+await server.register(cors, {
+  origin: isProd ? allowedOrigins : true,
+  credentials: true,
+});
+
 await server.register(jwt, {
-  secret: process.env.JWT_SECRET || 'dev-secret-change-in-production-min-32-chars',
+  secret: jwtSecret,
 });
 
 // Rate limiting — 100 req/min per IP

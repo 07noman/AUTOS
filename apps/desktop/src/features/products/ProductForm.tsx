@@ -5,6 +5,7 @@ import { Button } from '@genx/ui/Button';
 import { Input } from '@genx/ui/Input';
 import { Dialog, DialogHeader, DialogTitle, DialogContent, DialogFooter } from '@genx/ui/Dialog';
 import { useCreateProduct } from '@/hooks/useProducts';
+import { getCurrentTenantId } from '@/lib/db';
 
 const schema = z.object({
   sku: z.string().min(1),
@@ -33,7 +34,7 @@ export function ProductForm({ open, onOpenChange }: ProductFormProps) {
 
   const onSubmit = async (data: FormData) => {
     await createProduct.mutateAsync({
-      tenantId: 'tenant-1',
+      tenantId: getCurrentTenantId(),
       sku: data.sku,
       name: data.name,
       costPrice: data.costPrice,

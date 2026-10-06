@@ -1,23 +1,33 @@
 import SyncEngine from '@genx/sync/SyncEngine';
-import { outboxRepo, productRepo, orderRepo } from './db';
+import { outboxRepo, productRepo, orderRepo, getCurrentTenantId } from './db';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
 export const syncEngine = new SyncEngine(
   API_URL,
-  'tenant-1',
+  getCurrentTenantId(),
   {
-    getPendingOutbox: (tenantId, limit) => outboxRepo.getPending(tenantId, limit),
+    getPendingOutbox: (tenantId, limit) => {
+      const activeTenant = getCurrentTenantId();
+      return outboxRepo.getPending(activeTenant, limit);
+    },
     markOutboxSynced: (id) => outboxRepo.markSynced(id),
     markOutboxFailed: (id, error) => outboxRepo.markFailed(id, error),
     applyRemoteChange: async (change) => {
-      // TODO: Implement based on entity type
+      // Phase 0: Validate change belongs to active tenant
+      const activeTenant = getCurrentTenantId();
+      if (change.tenant_id && change.tenant_id !== activeTenant) {
+        console.warn('Sync rejected remote change belonging to another tenant:', change.tenant_id);
+        return;
+      }
+      // TODO: Full bidirectional sync implementation deferred to Phase 2
       console.log('Applying remote change:', change);
     },
   }
 );
 
 export function initializeSync(): void {
+  syncEngine.setTenantId(getCurrentTenantId());
   syncEngine.start(30000); // Sync every 30 seconds
 }
 

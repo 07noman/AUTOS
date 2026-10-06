@@ -9,6 +9,7 @@ import { Dialog, DialogHeader, DialogTitle, DialogContent } from '@genx/ui/Dialo
 import { useProducts } from '@/hooks/useProducts';
 import { useCustomers } from '@/hooks/useCustomers';
 import { createOrder } from './OrderService';
+import { getCurrentTenantId } from '@/lib/db';
 import type { Product } from '@genx/types/domain/product';
 
 interface CartItem extends Product {
@@ -117,7 +118,7 @@ export function AdvancedPOS() {
       }));
 
       const order = await createOrder(
-        'tenant-1',
+        getCurrentTenantId(),
         orderItems,
         paymentMethod,
         selectedCustomer || undefined,

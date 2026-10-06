@@ -6,7 +6,8 @@ import {
 } from "./offlineDB";
 import { getPendingOrders } from "./offlineOrders";
 import { isOnline } from "./connectionManager";
-import { outboxRepo } from "../lib/db";
+import { outboxRepo, getCurrentTenantId } from "../lib/db";
+
 
 let isSyncing = false;
 
@@ -56,7 +57,7 @@ export async function syncOfflineOrders(): Promise<{ syncedCount: number; errors
           try {
             await outboxRepo.insert({
               id: crypto.randomUUID(),
-              tenantId: order.tenantId || "tenant-1",
+              tenantId: order.tenantId || getCurrentTenantId(),
               entityType: "order",
               entityId: order.clientOrderId,
               operation: "create",

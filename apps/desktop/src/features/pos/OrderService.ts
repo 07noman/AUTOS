@@ -1,4 +1,4 @@
-import { orderRepo, productRepo, outboxRepo } from '@/lib/db';
+import { orderRepo, productRepo, outboxRepo, getCurrentTenantId } from '@/lib/db';
 import { Order } from '@genx/types/domain/order';
 import { recordOrderChange } from '@/lib/sync';
 import { reduceStock } from '@/services/offlineInventory';
@@ -107,7 +107,7 @@ export async function completeSale(input: {
   notes?: string;
 }): Promise<Order> {
   return createOrder(
-    'tenant-1',
+    getCurrentTenantId(),
     input.items.map((i) => ({ ...i, discount: 0 })),
     input.paymentMethod,
     input.customerId || undefined,
