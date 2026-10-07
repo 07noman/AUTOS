@@ -30,7 +30,7 @@ import PaymentSuccessScreen from "./PaymentSuccessScreen";
 import { completePOSSale, posOrderRepo } from "../../lib/auto-care-db";
 import { useAuth } from "../../hooks/useAuth";
 import { useProducts } from "../../hooks/useProducts";
-import { productRepo, TENANT_ID } from "../../lib/db";
+import { productRepo, getCurrentTenantId, TENANT_ID } from "../../lib/db";
 import { isOnline } from "../../services/connectionManager";
 import { saveOfflineOrder } from "../../services/offlineOrders";
 import { reduceStock } from "../../services/offlineInventory";
@@ -505,28 +505,10 @@ export function AutoCarePOS() {
 
   // ── handlePOSPayment ──────────────────────────────────────────────────────
   const handlePOSPayment = async (data: PaymentData) => {
-    // 1. Deduct inventory for all tracked products locally & in DB
-    for (const item of data.items) {
-      if ((item as any).trackInventory !== false && item.type !== "service") {
-        try {
-          await productRepo.updateStock(TENANT_ID, String(item.id), -Number(item.quantity));
-        } catch (e) {
-          console.warn("Could not update SQLite stock:", e);
-        }
-        try {
-          await reduceStock(String(item.id), Number(item.quantity));
-        } catch (e) {
-          console.warn("Could not update IndexedDB stock:", e);
-        }
-      }
-    }
-
-    // Refresh products in cache so inventory counters decrement immediately
-    void queryClient.invalidateQueries({ queryKey: ["products"] });
-
     let invoiceNumber = "";
+    const activeTenant = getCurrentTenantId();
 
-    // 2. Persistent DB Order creation/update
+    // 1. Atomic SQLite Order creation + Stock deduction + Outbox event
     try {
       const paidOrder = await posOrderRepo.createPaid({
         items: data.items.map((item) => ({
@@ -545,13 +527,17 @@ export function AutoCarePOS() {
         customerName: data.customer?.name || (customer !== "Walk-in Customer" ? customer : undefined),
         customerId: data.customer?.id,
         existingOrderId: currentOrderId || undefined,
-        tenantId: TENANT_ID,
+        tenantId: activeTenant,
       });
 
       invoiceNumber = String(paidOrder.orderNumber).padStart(4, "0");
     } catch (e) {
-      console.warn("Could not create persistent POS order:", e);
+      console.error("Atomic POS sale failed in SQLite:", e);
+      throw e;
     }
+
+    // Refresh products in cache so inventory counters decrement immediately
+    void queryClient.invalidateQueries({ queryKey: ["products"] });
 
     if (!isOnline()) {
       // 3. Offline sale - Save locally to IndexedDB

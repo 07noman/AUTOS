@@ -52,45 +52,24 @@ export async function createOrder(
     updatedAt: Date.now(),
   };
 
-  // Create order in database
-  await orderRepo.create(order, dbItems);
+  // Execute atomic sale in authoritative SQLite database:
+  // Order + Items + Stock Deduction + Outbox event commit together in one transaction.
+  await orderRepo.createAtomicSale(order, dbItems);
 
-  // Update product stock in both SQLite and IndexedDB
-  for (const item of items) {
+  // Optional: In non-Tauri browser development mode only, mirror to offline IndexedDB for testing
+  if (typeof window !== 'undefined' && !(window as any).__TAURI_INTERNALS__ && !(window as any).__TAURI__) {
     try {
-      await productRepo.updateStock(tenantId, item.productId, -item.quantity);
-    } catch (e) {
-      console.warn('SQLite stock update error:', e);
-    }
-    try {
-      await reduceStock(item.productId, item.quantity);
-    } catch (e) {
-      console.warn('IndexedDB stock update error:', e);
+      await saveOfflineOrder({
+        ...order,
+        clientOrderId: order.orderNumber,
+        syncStatus: 'synced',
+      });
+    } catch {
+      // browser mock ignore
     }
   }
 
-  // Mirror to offline DB
-  try {
-    await saveOfflineOrder({
-      ...order,
-      clientOrderId: order.orderNumber,
-      syncStatus: 'synced',
-    });
-  } catch (e) {
-    console.warn('Could not mirror order to offline DB:', e);
-  }
-
-  // Record in outbox for sync
-  await outboxRepo.insert({
-    id: crypto.randomUUID(),
-    tenantId,
-    entityType: 'order',
-    entityId: order.id,
-    operation: 'create',
-    payload: order,
-  });
-
-  // Trigger sync
+  // Trigger sync notification
   recordOrderChange('create', order);
 
   return order;

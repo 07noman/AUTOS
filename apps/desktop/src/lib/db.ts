@@ -33,6 +33,15 @@ export async function getDatabase(): Promise<Database> {
 
 export async function initializeDatabase(): Promise<void> {
   const db = await getDatabase();
+
+  // Configure SQLite WAL mode, durability, and foreign keys
+  try {
+    await db.execute('PRAGMA journal_mode = WAL;');
+    await db.execute('PRAGMA synchronous = NORMAL;');
+    await db.execute('PRAGMA foreign_keys = ON;');
+  } catch (err) {
+    console.warn('Could not set SQLite PRAGMAs (e.g. browser mock):', err);
+  }
   
   // Initialize all tables
   await db.execute(`
@@ -250,6 +259,19 @@ export const productRepo = {
 
   async updateStock(tenantId: string, productId: string, delta: number): Promise<void> {
     const db = await getDatabase();
+    if (delta < 0) {
+      // Safe stock deduction: verify sufficient inventory
+      const required = Math.abs(delta);
+      const existing = await this.findById(tenantId, productId);
+      if (!existing) {
+        throw new Error(`Product not found: ${productId}`);
+      }
+      if (existing.stock < required) {
+        throw new Error(
+          `Insufficient stock for "${existing.name}". Available: ${existing.stock}, Requested: ${required}`
+        );
+      }
+    }
     await db.execute(
       'UPDATE products SET stock = stock + ?, updated_at = ? WHERE id = ? AND tenant_id = ?',
       [delta, Date.now(), productId, tenantId]
@@ -347,6 +369,108 @@ export const orderRepo = {
           ]
         );
       }
+    });
+  },
+
+  /**
+   * Atomic POS Checkout: Executes order creation, stock deduction, and outbox event
+   * in a single ACID SQLite transaction. If any step fails (e.g. insufficient stock),
+   * the entire transaction rolls back cleanly with zero orphaned records.
+   */
+  async createAtomicSale(
+    order: Order,
+    items: Array<{
+      productId: string;
+      name: string;
+      sku: string;
+      quantity: number;
+      price: number;
+      discount: number;
+      tax: number;
+      total: number;
+    }>
+  ): Promise<void> {
+    const db = await getDatabase();
+
+    await db.transaction(async (tx) => {
+      // 1. Verify and deduct stock for each item atomically
+      for (const item of items) {
+        const rows = await tx.select<any[]>(
+          'SELECT stock, name FROM products WHERE id = ? AND tenant_id = ? AND deleted_at IS NULL',
+          [item.productId, order.tenantId]
+        );
+        const existing = rows[0];
+        if (!existing) {
+          throw new Error(`Product not found: ${item.name} (${item.productId})`);
+        }
+        if (existing.stock < item.quantity) {
+          throw new Error(
+            `Insufficient stock for "${existing.name}". Available: ${existing.stock}, Requested: ${item.quantity}`
+          );
+        }
+
+        await tx.execute(
+          'UPDATE products SET stock = stock - ?, updated_at = ? WHERE id = ? AND tenant_id = ?',
+          [item.quantity, Date.now(), item.productId, order.tenantId]
+        );
+      }
+
+      // 2. Insert order
+      await tx.execute(
+        `INSERT INTO orders (id, tenant_id, order_number, customer_id, subtotal, discount, tax, total, payment_method, status, notes, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          order.id,
+          order.tenantId,
+          order.orderNumber,
+          order.customerId || null,
+          order.subtotal,
+          order.discount,
+          order.tax,
+          order.total,
+          order.paymentMethod,
+          order.status,
+          order.notes || null,
+          order.createdAt,
+          order.updatedAt,
+        ]
+      );
+
+      // 3. Insert order items
+      for (const item of items) {
+        await tx.execute(
+          `INSERT INTO order_items (id, order_id, product_id, name, sku, quantity, price, discount, tax, total, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            crypto.randomUUID(),
+            order.id,
+            item.productId,
+            item.name,
+            item.sku,
+            item.quantity,
+            item.price,
+            item.discount,
+            item.tax,
+            item.total,
+            Date.now(),
+          ]
+        );
+      }
+
+      // 4. Atomically insert outbox mutation for future cloud sync
+      await tx.execute(
+        `INSERT INTO outbox (id, tenant_id, entity_type, entity_id, operation, payload, status, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)`,
+        [
+          crypto.randomUUID(),
+          order.tenantId,
+          'order',
+          order.id,
+          'create',
+          JSON.stringify(order),
+          Date.now(),
+        ]
+      );
     });
   },
 

@@ -85,6 +85,18 @@ export function setupTauriBrowserMock(): void {
           return [1, 1];
         }
 
+        if (query.startsWith('UPDATE products SET stock = stock - ?')) {
+          const [delta, updated_at, productId, tenantId] = values;
+          const products = getStorage<any[]>('products', []);
+          const prod = products.find((p) => p.id === productId && p.tenant_id === tenantId);
+          if (prod) {
+            prod.stock = (prod.stock || 0) - delta;
+            prod.updated_at = updated_at || Date.now();
+            setStorage('products', products);
+          }
+          return [1, 1];
+        }
+
         if (query.startsWith('UPDATE products SET deleted_at = ?')) {
           const [deleted_at, updated_at, id, tenantId] = values;
           const products = getStorage<any[]>('products', []);
@@ -146,7 +158,13 @@ export function setupTauriBrowserMock(): void {
 
         if (query.startsWith('INSERT INTO outbox')) {
           const outbox = getStorage<any[]>('outbox', []);
-          const [id, tenant_id, entity_type, entity_id, operation, payload, status, created_at] = values;
+          let id: any, tenant_id: any, entity_type: any, entity_id: any, operation: any, payload: any, status: any, created_at: any;
+          if (values.length === 7) {
+            [id, tenant_id, entity_type, entity_id, operation, payload, created_at] = values;
+            status = 'pending';
+          } else {
+            [id, tenant_id, entity_type, entity_id, operation, payload, status, created_at] = values;
+          }
           outbox.push({
             id, tenant_id, entity_type, entity_id, operation, payload,
             status: status || 'pending',

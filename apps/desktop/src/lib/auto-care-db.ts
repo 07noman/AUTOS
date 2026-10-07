@@ -371,61 +371,117 @@ export const posOrderRepo = {
     /** If provided, this ONGOING order is updated to PAID instead of creating new */
     existingOrderId?: string;
   }): Promise<POSOrder> {
-    const tenantId = input.tenantId ?? TENANT_ID;
+    const tenantId = input.tenantId ?? getCurrentTenantId();
     const now = Date.now();
     const db = await getDatabase();
 
-    // If an ongoing order exists, update it
-    if (input.existingOrderId) {
-      await db.execute(
-        `UPDATE pos_orders SET status='PAID', payment_method=?, paid_amount=?, subtotal=?, tax=?, total=?, items=?, customer_name=?, customer_id=?, updated_at=? WHERE id=? AND tenant_id=?`,
-        [
-          input.paymentMethod, input.paidAmount,
-          input.subtotal, input.tax, input.total,
-          JSON.stringify(input.items),
-          input.customerName ?? null, input.customerId ?? null,
-          now, input.existingOrderId, tenantId,
-        ]
-      );
-      const updated = await this.findById(input.existingOrderId, tenantId);
-      if (updated) return updated;
+    let finalOrder: POSOrder | null = null;
+
+    await db.transaction(async (tx) => {
+      // 1. Deduct stock atomically for all product items
+      for (const item of input.items) {
+        if (item.type !== 'service' && item.quantity > 0) {
+          const rows = await tx.select<any[]>(
+            'SELECT stock, name FROM products WHERE id = ? AND tenant_id = ? AND deleted_at IS NULL',
+            [item.id, tenantId]
+          );
+          const existing = rows[0];
+          if (existing) {
+            if (existing.stock < item.quantity) {
+              throw new Error(
+                `Insufficient stock for "${existing.name}". Available: ${existing.stock}, Requested: ${item.quantity}`
+              );
+            }
+            await tx.execute(
+              'UPDATE products SET stock = stock - ?, updated_at = ? WHERE id = ? AND tenant_id = ?',
+              [item.quantity, now, item.id, tenantId]
+            );
+          }
+        }
+      }
+
+      // 2. If an ongoing order exists, update it to PAID
+      if (input.existingOrderId) {
+        await tx.execute(
+          `UPDATE pos_orders SET status='PAID', payment_method=?, paid_amount=?, subtotal=?, tax=?, total=?, items=?, customer_name=?, customer_id=?, updated_at=? WHERE id=? AND tenant_id=?`,
+          [
+            input.paymentMethod, input.paidAmount,
+            input.subtotal, input.tax, input.total,
+            JSON.stringify(input.items),
+            input.customerName ?? null, input.customerId ?? null,
+            now, input.existingOrderId, tenantId,
+          ]
+        );
+        const rows = await tx.select<any[]>(
+          'SELECT * FROM pos_orders WHERE id = ? AND tenant_id = ?',
+          [input.existingOrderId, tenantId]
+        );
+        if (rows.length > 0) {
+          finalOrder = mapPOSOrder(rows[0]);
+        }
+      } else {
+        // 3. Create new PAID order
+        const id = crypto.randomUUID();
+        const maxRows = await tx.select<any[]>(
+          'SELECT COALESCE(MAX(order_number), 0) as max_num FROM pos_orders WHERE tenant_id = ?',
+          [tenantId]
+        );
+        const orderNumber = (Number(maxRows[0]?.max_num) || 0) + 1;
+
+        finalOrder = {
+          id,
+          tenantId,
+          orderNumber,
+          status: 'PAID',
+          customerName: input.customerName,
+          customerId: input.customerId,
+          paymentMethod: input.paymentMethod,
+          subtotal: input.subtotal,
+          tax: input.tax,
+          total: input.total,
+          paidAmount: input.paidAmount,
+          items: input.items,
+          notes: input.notes,
+          createdAt: now,
+          updatedAt: now,
+        };
+
+        await tx.execute(
+          `INSERT INTO pos_orders (id, tenant_id, order_number, status, customer_name, customer_id, payment_method, subtotal, tax, total, paid_amount, items, notes, created_at, updated_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+          [
+            finalOrder.id, finalOrder.tenantId, finalOrder.orderNumber, finalOrder.status,
+            finalOrder.customerName ?? null, finalOrder.customerId ?? null, finalOrder.paymentMethod,
+            finalOrder.subtotal, finalOrder.tax, finalOrder.total, finalOrder.paidAmount,
+            JSON.stringify(finalOrder.items), finalOrder.notes ?? null,
+            finalOrder.createdAt, finalOrder.updatedAt,
+          ]
+        );
+      }
+
+      // 4. Atomically insert outbox mutation for future cloud synchronization
+      if (finalOrder) {
+        await tx.execute(
+          `INSERT INTO outbox (id, tenant_id, entity_type, entity_id, operation, payload, status, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)`,
+          [
+            crypto.randomUUID(),
+            tenantId,
+            'pos_order',
+            (finalOrder as POSOrder).id,
+            'create',
+            JSON.stringify(finalOrder),
+            now,
+          ]
+        );
+      }
+    });
+
+    if (!finalOrder) {
+      throw new Error('Failed to create or finalize paid order');
     }
 
-    // Create new PAID order
-    const id = crypto.randomUUID();
-    const orderNumber = await this.nextOrderNumber(tenantId);
-
-    const order: POSOrder = {
-      id,
-      tenantId,
-      orderNumber,
-      status: 'PAID',
-      customerName: input.customerName,
-      customerId: input.customerId,
-      paymentMethod: input.paymentMethod,
-      subtotal: input.subtotal,
-      tax: input.tax,
-      total: input.total,
-      paidAmount: input.paidAmount,
-      items: input.items,
-      notes: input.notes,
-      createdAt: now,
-      updatedAt: now,
-    };
-
-    await db.execute(
-      `INSERT INTO pos_orders (id, tenant_id, order_number, status, customer_name, customer_id, payment_method, subtotal, tax, total, paid_amount, items, notes, created_at, updated_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-      [
-        order.id, order.tenantId, order.orderNumber, order.status,
-        order.customerName ?? null, order.customerId ?? null, order.paymentMethod,
-        order.subtotal, order.tax, order.total, order.paidAmount,
-        JSON.stringify(order.items), order.notes ?? null,
-        order.createdAt, order.updatedAt,
-      ]
-    );
-
-    return order;
+    return finalOrder;
   },
 
   /** Soft-delete: set status to CANCELLED (never physically delete PAID orders) */
