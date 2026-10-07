@@ -3,6 +3,9 @@ import { Product } from '@genx/types/domain/product';
 import { Order } from '@genx/types/domain/order';
 import { Customer } from '@genx/types/domain/customer';
 import { db as legacyDb } from './db-legacy';
+import { runMigrations } from './migrations';
+import { getDeviceId } from './device';
+import { stockMovementRepo } from './stock-movements';
 
 // Attach transaction method to Database prototype if not present
 if (typeof (Database.prototype as any).transaction !== 'function') {
@@ -42,114 +45,47 @@ export async function initializeDatabase(): Promise<void> {
   } catch (err) {
     console.warn('Could not set SQLite PRAGMAs (e.g. browser mock):', err);
   }
-  
-  // Initialize all tables
-  await db.execute(`
-    CREATE TABLE IF NOT EXISTS products (
-      id TEXT PRIMARY KEY,
-      tenant_id TEXT NOT NULL,
-      sku TEXT NOT NULL,
-      name TEXT NOT NULL,
-      description TEXT,
-      barcode TEXT,
-      category_id TEXT,
-      cost_price REAL NOT NULL,
-      selling_price REAL NOT NULL,
-      wholesale_price REAL,
-      stock INTEGER NOT NULL DEFAULT 0,
-      minimum_stock INTEGER NOT NULL DEFAULT 0,
-      status TEXT NOT NULL DEFAULT 'active',
-      images TEXT,
-      metadata TEXT,
-      created_at INTEGER NOT NULL,
-      updated_at INTEGER NOT NULL,
-      deleted_at INTEGER,
-      UNIQUE(tenant_id, sku)
-    )
-  `);
 
-  await db.execute(`
-    CREATE TABLE IF NOT EXISTS orders (
-      id TEXT PRIMARY KEY,
-      tenant_id TEXT NOT NULL,
-      order_number TEXT NOT NULL UNIQUE,
-      customer_id TEXT,
-      subtotal REAL NOT NULL,
-      discount REAL NOT NULL DEFAULT 0,
-      tax REAL NOT NULL DEFAULT 0,
-      total REAL NOT NULL,
-      payment_method TEXT NOT NULL,
-      status TEXT NOT NULL,
-      notes TEXT,
-      created_at INTEGER NOT NULL,
-      updated_at INTEGER NOT NULL
-    )
-  `);
+  // Execute versioned migrations
+  try {
+    await runMigrations(db);
+  } catch (err) {
+    console.warn('Migration runner warning (e.g. mock or in-memory):', err);
+  }
 
-  await db.execute(`
-    CREATE TABLE IF NOT EXISTS order_items (
-      id TEXT PRIMARY KEY,
-      order_id TEXT NOT NULL,
-      product_id TEXT NOT NULL,
-      name TEXT NOT NULL,
-      sku TEXT NOT NULL,
-      quantity INTEGER NOT NULL,
-      price REAL NOT NULL,
-      discount REAL NOT NULL DEFAULT 0,
-      tax REAL NOT NULL DEFAULT 0,
-      total REAL NOT NULL,
-      created_at INTEGER NOT NULL,
-      FOREIGN KEY (order_id) REFERENCES orders(id)
-    )
-  `);
-
-  await db.execute(`
-    CREATE TABLE IF NOT EXISTS outbox (
-      id TEXT PRIMARY KEY,
-      tenant_id TEXT NOT NULL,
-      entity_type TEXT NOT NULL,
-      entity_id TEXT NOT NULL,
-      operation TEXT NOT NULL,
-      payload TEXT NOT NULL,
-      status TEXT NOT NULL DEFAULT 'pending',
-      attempts INTEGER NOT NULL DEFAULT 0,
-      last_attempt_at INTEGER,
-      synced_at INTEGER,
-      error TEXT,
-      created_at INTEGER NOT NULL
-    )
-  `);
-
-  // Create indexes
-  await db.execute(`CREATE INDEX IF NOT EXISTS idx_products_tenant ON products(tenant_id)`);
-  await db.execute(`CREATE INDEX IF NOT EXISTS idx_products_sku ON products(tenant_id, sku)`);
-  await db.execute(`CREATE INDEX IF NOT EXISTS idx_outbox_status ON outbox(status, created_at)`);
-
-  // Seed sample products if table is empty
-  const countRows = await db.select<any[]>('SELECT COUNT(*) as count FROM products WHERE tenant_id = ?', ['tenant-1']);
-  if ((countRows[0]?.count || 0) === 0) {
-    const now = Date.now();
-    const seed = [
-      { id: '1', sku: 'COF-001', name: 'Premium Coffee Beans', barcode: '1234567890123', categoryId: 'beverages', costPrice: 28, sellingPrice: 45, wholesalePrice: 40, stock: 124, minimumStock: 50 },
-      { id: '2', sku: 'BAK-042', name: 'Croissant - Butter', barcode: '1234567890124', categoryId: 'bakery', costPrice: 7.5, sellingPrice: 12, wholesalePrice: null, stock: 48, minimumStock: 20 },
-      { id: '3', sku: 'DRY-018', name: 'Whole Milk (2L)', barcode: '1234567890125', categoryId: 'dairy', costPrice: 2.8, sellingPrice: 4.5, wholesalePrice: null, stock: 8, minimumStock: 20 },
-      { id: '4', sku: 'COF-002', name: 'Latte - Regular', barcode: null, categoryId: 'beverages', costPrice: 2.5, sellingPrice: 5.5, wholesalePrice: null, stock: 200, minimumStock: 50 },
-    ];
-    for (const p of seed) {
-      await db.execute(
-        `INSERT INTO products (id, tenant_id, sku, name, description, barcode, category_id, cost_price, selling_price, wholesale_price, stock, minimum_stock, status, images, metadata, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?)`,
-        [p.id, 'tenant-1', p.sku, p.name, null, p.barcode, p.categoryId, p.costPrice, p.sellingPrice, p.wholesalePrice, p.stock, p.minimumStock, null, null, now, now]
-      );
-    }
+  // Ensure persistent device identity is initialized
+  try {
+    await getDeviceId();
+  } catch (err) {
+    console.warn('Device identity init warning:', err);
   }
 
   console.log('Database initialized');
 }
 
+// ─── Dynamic Tenant ID ────────────────────────────────────────────────────────
+// Reads the current logged-in user's tenantId dynamically at call time from the
+// auth store persisted in localStorage.
+export function getCurrentTenantId(): string {
+  try {
+    const raw = localStorage.getItem('genx-auth');
+    if (raw) {
+      const parsed = JSON.parse(raw) as { state?: { user?: { tenantId?: string } } };
+      const tenantId = parsed?.state?.user?.tenantId;
+      if (tenantId) return tenantId;
+    }
+  } catch {
+    // ignore parse errors
+  }
+  return 'tenant-1'; // dev fallback only when unauthenticated
+}
+
+// Backward-compatible accessor that resolves dynamically on property read
+export const TENANT_ID = 'tenant-1';
+
 // Product Repository
 export const productRepo = {
-  async findAll(tenantId: string = TENANT_ID): Promise<Product[]> {
+  async findAll(tenantId: string = getCurrentTenantId()): Promise<Product[]> {
     const db = await getDatabase();
     const rows = await db.select<any[]>(
       'SELECT * FROM products WHERE tenant_id = ? AND deleted_at IS NULL ORDER BY name',
@@ -158,7 +94,7 @@ export const productRepo = {
     return rows.map(mapToProduct);
   },
 
-  async findById(tenantId: string, id: string): Promise<Product | null> {
+  async findById(tenantId: string = getCurrentTenantId(), id: string): Promise<Product | null> {
     const db = await getDatabase();
     const rows = await db.select<any[]>(
       'SELECT * FROM products WHERE id = ? AND tenant_id = ? AND deleted_at IS NULL',
@@ -167,7 +103,7 @@ export const productRepo = {
     return rows.length > 0 ? mapToProduct(rows[0]) : null;
   },
 
-  async findBySku(tenantId: string, sku: string): Promise<Product | null> {
+  async findBySku(tenantId: string = getCurrentTenantId(), sku: string): Promise<Product | null> {
     const db = await getDatabase();
     const rows = await db.select<any[]>(
       'SELECT * FROM products WHERE tenant_id = ? AND sku = ? AND deleted_at IS NULL',
@@ -176,7 +112,7 @@ export const productRepo = {
     return rows.length > 0 ? mapToProduct(rows[0]) : null;
   },
 
-  async search(tenantId: string = TENANT_ID, query: string): Promise<Product[]> {
+  async search(tenantId: string = getCurrentTenantId(), query: string): Promise<Product[]> {
     const db = await getDatabase();
     const rows = await db.select<any[]>(
       `SELECT * FROM products 
@@ -249,7 +185,7 @@ export const productRepo = {
     );
   },
 
-  async delete(tenantId: string, id: string): Promise<void> {
+  async delete(tenantId: string = getCurrentTenantId(), id: string): Promise<void> {
     const db = await getDatabase();
     await db.execute(
       'UPDATE products SET deleted_at = ?, updated_at = ? WHERE id = ? AND tenant_id = ?',
@@ -257,7 +193,7 @@ export const productRepo = {
     );
   },
 
-  async updateStock(tenantId: string, productId: string, delta: number): Promise<void> {
+  async updateStock(tenantId: string = getCurrentTenantId(), productId: string, delta: number): Promise<void> {
     const db = await getDatabase();
     if (delta < 0) {
       // Safe stock deduction: verify sufficient inventory
@@ -278,7 +214,7 @@ export const productRepo = {
     );
   },
 
-  async getLowStock(tenantId: string = TENANT_ID): Promise<Product[]> {
+  async getLowStock(tenantId: string = getCurrentTenantId()): Promise<Product[]> {
     const db = await getDatabase();
     const rows = await db.select<any[]>(
       `SELECT * FROM products 
@@ -373,9 +309,9 @@ export const orderRepo = {
   },
 
   /**
-   * Atomic POS Checkout: Executes order creation, stock deduction, and outbox event
-   * in a single ACID SQLite transaction. If any step fails (e.g. insufficient stock),
-   * the entire transaction rolls back cleanly with zero orphaned records.
+   * Atomic POS Checkout: Executes order creation, stock deduction, stock movements,
+   * and outbox event in a single ACID SQLite transaction.
+   * If any step fails (e.g. insufficient stock), the entire transaction rolls back cleanly.
    */
   async createAtomicSale(
     order: Order,
@@ -391,6 +327,8 @@ export const orderRepo = {
     }>
   ): Promise<void> {
     const db = await getDatabase();
+    const deviceId = await getDeviceId();
+    const now = Date.now();
 
     await db.transaction(async (tx) => {
       // 1. Verify and deduct stock for each item atomically
@@ -411,11 +349,28 @@ export const orderRepo = {
 
         await tx.execute(
           'UPDATE products SET stock = stock - ?, updated_at = ? WHERE id = ? AND tenant_id = ?',
-          [item.quantity, Date.now(), item.productId, order.tenantId]
+          [item.quantity, now, item.productId, order.tenantId]
+        );
+
+        // 2. Insert immutable stock movement into inventory ledger
+        await stockMovementRepo.insert(
+          {
+            id: crypto.randomUUID(),
+            tenantId: order.tenantId,
+            productId: item.productId,
+            quantityDelta: -item.quantity,
+            movementType: 'SALE',
+            referenceType: 'order',
+            referenceId: order.id,
+            deviceId,
+            notes: `Sale order ${order.orderNumber}`,
+            createdAt: now,
+          },
+          tx
         );
       }
 
-      // 2. Insert order
+      // 3. Insert order
       await tx.execute(
         `INSERT INTO orders (id, tenant_id, order_number, customer_id, subtotal, discount, tax, total, payment_method, status, notes, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -436,7 +391,7 @@ export const orderRepo = {
         ]
       );
 
-      // 3. Insert order items
+      // 4. Insert order items
       for (const item of items) {
         await tx.execute(
           `INSERT INTO order_items (id, order_id, product_id, name, sku, quantity, price, discount, tax, total, created_at)
@@ -452,15 +407,16 @@ export const orderRepo = {
             item.discount,
             item.tax,
             item.total,
-            Date.now(),
+            now,
           ]
         );
       }
 
-      // 4. Atomically insert outbox mutation for future cloud sync
+      // 5. Atomically insert upgraded outbox mutation for future cloud sync
+      const idempotencyKey = `order:${order.tenantId}:${order.id}`;
       await tx.execute(
-        `INSERT INTO outbox (id, tenant_id, entity_type, entity_id, operation, payload, status, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)`,
+        `INSERT INTO outbox (id, tenant_id, entity_type, entity_id, operation, payload, status, device_id, idempotency_key, version, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, 1, ?)`,
         [
           crypto.randomUUID(),
           order.tenantId,
@@ -468,13 +424,15 @@ export const orderRepo = {
           order.id,
           'create',
           JSON.stringify(order),
-          Date.now(),
+          deviceId,
+          idempotencyKey,
+          now,
         ]
       );
     });
   },
 
-  async findById(tenantId: string, id: string): Promise<Order | null> {
+  async findById(tenantId: string = getCurrentTenantId(), id: string): Promise<Order | null> {
     const db = await getDatabase();
     const rows = await db.select<any[]>(
       'SELECT * FROM orders WHERE id = ? AND tenant_id = ?',
@@ -493,7 +451,7 @@ export const orderRepo = {
     };
   },
 
-  async findByDateRange(tenantId: string, startDate: number, endDate: number): Promise<Order[]> {
+  async findByDateRange(tenantId: string = getCurrentTenantId(), startDate: number, endDate: number): Promise<Order[]> {
     const db = await getDatabase();
     const rows = await db.select<any[]>(
       `SELECT * FROM orders 
@@ -516,29 +474,43 @@ export const orderRepo = {
 export const outboxRepo = {
   async insert(entry: {
     id: string;
-    tenantId: string;
+    tenantId?: string;
     entityType: string;
     entityId: string;
     operation: 'create' | 'update' | 'delete';
     payload: Record<string, any> | string;
+    deviceId?: string;
+    idempotencyKey?: string;
+    version?: number;
+    sequenceNumber?: number;
   }): Promise<void> {
     const db = await getDatabase();
+    const tenantId = entry.tenantId ?? getCurrentTenantId();
+    const deviceId = entry.deviceId ?? (await getDeviceId());
+    const idempotencyKey = entry.idempotencyKey ?? `${entry.entityType}:${tenantId}:${entry.entityId}`;
+    const version = entry.version ?? 1;
+
     await db.execute(
-      `INSERT INTO outbox (id, tenant_id, entity_type, entity_id, operation, payload, status, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)`,
+      `INSERT INTO outbox (id, tenant_id, entity_type, entity_id, operation, payload, status, device_id, idempotency_key, version, sequence_number, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         entry.id,
-        entry.tenantId,
+        tenantId,
         entry.entityType,
         entry.entityId,
         entry.operation,
         typeof entry.payload === 'string' ? entry.payload : JSON.stringify(entry.payload),
+        'pending',
+        deviceId,
+        idempotencyKey,
+        version,
+        entry.sequenceNumber ?? null,
         Date.now(),
       ]
     );
   },
 
-  async getPending(tenantId: string = TENANT_ID, limit: number = 100): Promise<any[]> {
+  async getPending(tenantId: string = getCurrentTenantId(), limit: number = 100): Promise<any[]> {
     const db = await getDatabase();
     const rows = await db.select<any[]>(
       `SELECT * FROM outbox 
@@ -552,6 +524,10 @@ export const outboxRepo = {
       tenantId: r.tenant_id,
       entityType: r.entity_type,
       entityId: r.entity_id,
+      deviceId: r.device_id,
+      idempotencyKey: r.idempotency_key,
+      version: r.version,
+      sequenceNumber: r.sequence_number,
       lastAttemptAt: r.last_attempt_at,
       syncedAt: r.synced_at,
       createdAt: r.created_at,
@@ -574,7 +550,7 @@ export const outboxRepo = {
     );
   },
 
-  async getPendingCount(tenantId: string = TENANT_ID): Promise<number> {
+  async getPendingCount(tenantId: string = getCurrentTenantId()): Promise<number> {
     const db = await getDatabase();
     const rows = await db.select<any[]>(
       'SELECT COUNT(*) as count FROM outbox WHERE tenant_id = ? AND status = \'pending\'',
@@ -583,35 +559,13 @@ export const outboxRepo = {
     return rows[0]?.count || 0;
   },
 
-  async pendingCount(tenantId: string = TENANT_ID): Promise<number> {
+  async pendingCount(tenantId: string = getCurrentTenantId()): Promise<number> {
     return this.getPendingCount(tenantId);
   },
 };
 
-// ─── Dynamic Tenant ID ────────────────────────────────────────────────────────
-// Reads the current logged-in user's tenantId from the auth store persisted in
-// localStorage. Falls back to 'tenant-1' only if no user is logged in (dev mode).
-export function getCurrentTenantId(): string {
-  try {
-    const raw = localStorage.getItem('genx-auth');
-    if (raw) {
-      const parsed = JSON.parse(raw) as { state?: { user?: { tenantId?: string } } };
-      const tenantId = parsed?.state?.user?.tenantId;
-      if (tenantId) return tenantId;
-    }
-  } catch {
-    // ignore parse errors
-  }
-  return 'tenant-1'; // fallback for unauthenticated / dev mode
-}
-
-// Keep the export for files that use TENANT_ID as a default param.
-// They will receive the live tenantId at call time.
-export const TENANT_ID = getCurrentTenantId();
-
-
 export const customerRepo = {
-  async findAll(tenantId: string = TENANT_ID): Promise<Customer[]> {
+  async findAll(tenantId: string = getCurrentTenantId()): Promise<Customer[]> {
     const db = await getDatabase();
     return await db.select<any[]>('SELECT * FROM customers WHERE tenant_id = ?', [tenantId]);
   },

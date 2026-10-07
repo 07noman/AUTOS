@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { posOrderRepo, type POSOrder, type POSOrderItem } from '../../lib/auto-care-db';
-import { TENANT_ID } from '../../lib/db';
+import { getCurrentTenantId } from '../../lib/db';
 import './POSOrdersPage.css';
 
 type FilterType = 'all' | 'active' | 'ONGOING' | 'PAID' | 'CANCELLED';
@@ -66,7 +66,7 @@ export function POSOrdersPage() {
 
   const loadOrders = async () => {
     try {
-      const all = await posOrderRepo.findAll(TENANT_ID);
+      const all = await posOrderRepo.findAll(getCurrentTenantId());
       setOrders(all);
       setSelected((prev) => {
         if (!prev && all.length > 0) return all[0];
@@ -109,7 +109,7 @@ export function POSOrdersPage() {
   }, [orders, filter, search]);
 
   const handleCancelOrder = async (order: POSOrder) => {
-    await posOrderRepo.cancel(order.id, TENANT_ID);
+    await posOrderRepo.cancel(order.id, getCurrentTenantId());
     setDeleteTarget(null);
     await loadOrders();
   };

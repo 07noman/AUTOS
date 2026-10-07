@@ -1,6 +1,7 @@
-import { getDatabase, TENANT_ID, getCurrentTenantId } from './db';
+import { getDatabase, getCurrentTenantId } from './db';
+import { getDeviceId } from './device';
+import { stockMovementRepo } from './stock-movements';
 import type { Vehicle, AutoCareService, ServiceJob, ServiceJobItem, AutoCareInvoice } from '@genx/types/domain/auto-care';
-
 
 // ─── Schema Initialisation ────────────────────────────────────────────────────
 export async function initializeAutoCareSchema(): Promise<void> {
@@ -120,63 +121,6 @@ export async function initializeAutoCareSchema(): Promise<void> {
   await db.execute(`CREATE INDEX IF NOT EXISTS idx_jobs_tenant ON service_jobs(tenant_id, status)`);
   await db.execute(`CREATE INDEX IF NOT EXISTS idx_jobs_number ON service_jobs(job_number)`);
   await db.execute(`CREATE INDEX IF NOT EXISTS idx_vehicles_tenant ON vehicles(tenant_id)`);
-
-  // Seed demo services if empty
-  const svcCount = await db.select<any[]>('SELECT COUNT(*) as count FROM auto_care_services WHERE tenant_id = ?', [TENANT_ID]);
-  if ((svcCount[0]?.count || 0) === 0) {
-    const now = Date.now();
-    const services = [
-      { id: 'svc-1', name: 'Oil Change', desc: 'Engine oil and filter replacement', rate: 80, hours: 0.5, cat: 'maintenance' },
-      { id: 'svc-2', name: 'Brake Repair', desc: 'Brake pad/rotor inspection and replacement', rate: 100, hours: 2.5, cat: 'brakes' },
-      { id: 'svc-3', name: 'AC Repair', desc: 'Air conditioning system diagnosis and repair', rate: 90, hours: 3, cat: 'electrical' },
-      { id: 'svc-4', name: 'Tire Rotation', desc: 'Rotate and balance all four tires', rate: 70, hours: 0.5, cat: 'tires' },
-      { id: 'svc-5', name: 'Engine Diagnostics', desc: 'Full engine computer diagnostic scan', rate: 85, hours: 1, cat: 'diagnostics' },
-      { id: 'svc-6', name: 'Wheel Alignment', desc: 'Four-wheel alignment adjustment', rate: 80, hours: 1, cat: 'tires' },
-      { id: 'svc-7', name: 'Battery Replacement', desc: 'Battery test and replacement', rate: 70, hours: 0.5, cat: 'electrical' },
-      { id: 'svc-8', name: 'Transmission Service', desc: 'Transmission fluid change and filter', rate: 110, hours: 2, cat: 'transmission' },
-    ];
-    for (const s of services) {
-      await db.execute(
-        `INSERT INTO auto_care_services (id, tenant_id, name, description, labor_rate, estimated_hours, category, is_active, created_at, updated_at) VALUES (?,?,?,?,?,?,?,1,?,?)`,
-        [s.id, TENANT_ID, s.name, s.desc, s.rate, s.hours, s.cat, now, now]
-      );
-    }
-  }
-
-  // Seed demo jobs if empty
-  const jobCount = await db.select<any[]>('SELECT COUNT(*) as count FROM service_jobs WHERE tenant_id = ?', [TENANT_ID]);
-  if ((jobCount[0]?.count || 0) === 0) {
-    const now = Date.now();
-    const jobs = [
-      { id: 'job-1', num: 'JOB-001', cust: 'John Smith', veh: '2020 Toyota Camry', status: 'in_progress', pri: 'high', mech: 'Mike Johnson', est: 2, act: 1.5 },
-      { id: 'job-2', num: 'JOB-002', cust: 'Sarah Williams', veh: '2019 Honda Civic', status: 'pending', pri: 'high', mech: null, est: 3, act: null },
-      { id: 'job-3', num: 'JOB-003', cust: 'Bob Martinez', veh: '2018 Ford F-150', status: 'waiting_parts', pri: 'normal', mech: 'Alex Chen', est: 4, act: null },
-      { id: 'job-4', num: 'JOB-004', cust: 'Lisa Johnson', veh: '2021 Chevrolet Malibu', status: 'completed', pri: 'low', mech: 'Mike Johnson', est: 1, act: 0.75 },
-    ];
-    for (const j of jobs) {
-      await db.execute(
-        `INSERT INTO service_jobs (id, tenant_id, job_number, customer_name, vehicle_summary, status, priority, mechanic_name, estimated_hours, actual_hours, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
-        [j.id, TENANT_ID, j.num, j.cust, j.veh, j.status, j.pri, j.mech, j.est, j.act, now, now]
-      );
-    }
-  }
-
-  // Seed demo vehicles if empty
-  const vehCount = await db.select<any[]>('SELECT COUNT(*) as count FROM vehicles WHERE tenant_id = ?', [TENANT_ID]);
-  if ((vehCount[0]?.count || 0) === 0) {
-    const now = Date.now();
-    const vehicles = [
-      { id: 'veh-1', make: 'Toyota', model: 'Camry', year: 2020, plate: 'ABC-1234', cust: 'John Smith', color: 'Silver', mileage: 45000 },
-      { id: 'veh-2', make: 'Honda', model: 'Civic', year: 2019, plate: 'XYZ-5678', cust: 'Sarah Williams', color: 'Blue', mileage: 62000 },
-      { id: 'veh-3', make: 'Ford', model: 'F-150', year: 2018, plate: 'LMN-9012', cust: 'Bob Martinez', color: 'Black', mileage: 89000 },
-    ];
-    for (const v of vehicles) {
-      await db.execute(
-        `INSERT INTO vehicles (id, tenant_id, customer_name, make, model, year, license_plate, color, mileage, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
-        [v.id, TENANT_ID, v.cust, v.make, v.model, v.year, v.plate, v.color, v.mileage, now, now]
-      );
-    }
-  }
 }
 
 // ─── Mappers ─────────────────────────────────────────────────────────────────
@@ -317,7 +261,7 @@ export const posOrderRepo = {
     notes?: string;
     tenantId?: string;
   }): Promise<POSOrder> {
-    const tenantId = input.tenantId ?? TENANT_ID;
+    const tenantId = input.tenantId ?? getCurrentTenantId();
     const now = Date.now();
     const id = crypto.randomUUID();
     const orderNumber = await this.nextOrderNumber(tenantId);
@@ -374,11 +318,12 @@ export const posOrderRepo = {
     const tenantId = input.tenantId ?? getCurrentTenantId();
     const now = Date.now();
     const db = await getDatabase();
+    const deviceId = await getDeviceId();
 
     let finalOrder: POSOrder | null = null;
 
     await db.transaction(async (tx) => {
-      // 1. Deduct stock atomically for all product items
+      // 1. Deduct stock atomically and write stock movements for all product items
       for (const item of input.items) {
         if (item.type !== 'service' && item.quantity > 0) {
           const rows = await tx.select<any[]>(
@@ -395,6 +340,23 @@ export const posOrderRepo = {
             await tx.execute(
               'UPDATE products SET stock = stock - ?, updated_at = ? WHERE id = ? AND tenant_id = ?',
               [item.quantity, now, item.id, tenantId]
+            );
+
+            // Record stock movement
+            await stockMovementRepo.insert(
+              {
+                id: crypto.randomUUID(),
+                tenantId,
+                productId: item.id,
+                quantityDelta: -item.quantity,
+                movementType: 'SALE',
+                referenceType: 'pos_order',
+                referenceId: input.existingOrderId ?? 'pending-order',
+                deviceId,
+                notes: `Auto care sale of ${item.name}`,
+                createdAt: now,
+              },
+              tx
             );
           }
         }
@@ -461,9 +423,10 @@ export const posOrderRepo = {
 
       // 4. Atomically insert outbox mutation for future cloud synchronization
       if (finalOrder) {
+        const idempotencyKey = `pos_order:${tenantId}:${finalOrder.id}`;
         await tx.execute(
-          `INSERT INTO outbox (id, tenant_id, entity_type, entity_id, operation, payload, status, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)`,
+          `INSERT INTO outbox (id, tenant_id, entity_type, entity_id, operation, payload, status, device_id, idempotency_key, version, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, 1, ?)`,
           [
             crypto.randomUUID(),
             tenantId,
@@ -471,6 +434,8 @@ export const posOrderRepo = {
             (finalOrder as POSOrder).id,
             'create',
             JSON.stringify(finalOrder),
+            deviceId,
+            idempotencyKey,
             now,
           ]
         );
@@ -495,18 +460,16 @@ export const posOrderRepo = {
   },
 };
 
-
 // ─── Repositories ─────────────────────────────────────────────────────────────
 
 export const jobRepo = {
-
   async findAll(tenantId = getCurrentTenantId()): Promise<ServiceJob[]> {
     const db = await getDatabase();
     const rows = await db.select<any[]>('SELECT * FROM service_jobs WHERE tenant_id = ? ORDER BY created_at DESC', [tenantId]);
     return rows.map(mapJob);
   },
 
-  async findByStatus(tenantId = TENANT_ID, status: string): Promise<ServiceJob[]> {
+  async findByStatus(status: string, tenantId = getCurrentTenantId()): Promise<ServiceJob[]> {
     const db = await getDatabase();
     const rows = await db.select<any[]>('SELECT * FROM service_jobs WHERE tenant_id = ? AND status = ? ORDER BY created_at DESC', [tenantId, status]);
     return rows.map(mapJob);
@@ -525,29 +488,31 @@ export const jobRepo = {
     await db.execute(
       `INSERT INTO service_jobs (id, tenant_id, job_number, customer_id, customer_name, vehicle_id, vehicle_summary, status, priority, mechanic_id, mechanic_name, estimated_hours, notes, created_at, updated_at)
        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-      [id, job.tenantId, job.jobNumber, job.customerId || null, job.customerName,
-       job.vehicleId || null, job.vehicleSummary, job.status, job.priority,
-       job.mechanicId || null, job.mechanicName || null, job.estimatedHours || null,
-       job.notes || null, now, now]
+      [
+        id, job.tenantId, job.jobNumber, job.customerId || null, job.customerName,
+        job.vehicleId || null, job.vehicleSummary, job.status, job.priority,
+        job.mechanicId || null, job.mechanicName || null, job.estimatedHours || null,
+        job.notes || null, now, now
+      ]
     );
-    return (await this.findById(id))!;
+    return (await this.findById(id, job.tenantId))!;
   },
 
-  async updateStatus(id: string, status: ServiceJob['status'], extras: Partial<{ actualHours: number; startedAt: number; completedAt: number }> = {}): Promise<void> {
+  async updateStatus(id: string, status: ServiceJob['status'], extras: Partial<{ actualHours: number; startedAt: number; completedAt: number }> = {}, tenantId = getCurrentTenantId()): Promise<void> {
     const db = await getDatabase();
     await db.execute(
-      `UPDATE service_jobs SET status = ?, actual_hours = COALESCE(?, actual_hours), started_at = COALESCE(?, started_at), completed_at = COALESCE(?, completed_at), updated_at = ? WHERE id = ?`,
-      [status, extras.actualHours ?? null, extras.startedAt ?? null, extras.completedAt ?? null, Date.now(), id]
+      `UPDATE service_jobs SET status = ?, actual_hours = COALESCE(?, actual_hours), started_at = COALESCE(?, started_at), completed_at = COALESCE(?, completed_at), updated_at = ? WHERE id = ? AND tenant_id = ?`,
+      [status, extras.actualHours ?? null, extras.startedAt ?? null, extras.completedAt ?? null, Date.now(), id, tenantId]
     );
   },
 
-  async update(id: string, data: Partial<ServiceJob>): Promise<void> {
+  async update(id: string, data: Partial<ServiceJob>, tenantId = getCurrentTenantId()): Promise<void> {
     const db = await getDatabase();
     await db.execute(
-      `UPDATE service_jobs SET customer_name = COALESCE(?, customer_name), vehicle_summary = COALESCE(?, vehicle_summary), status = COALESCE(?, status), priority = COALESCE(?, priority), mechanic_name = COALESCE(?, mechanic_name), estimated_hours = COALESCE(?, estimated_hours), notes = COALESCE(?, notes), updated_at = ? WHERE id = ?`,
+      `UPDATE service_jobs SET customer_name = COALESCE(?, customer_name), vehicle_summary = COALESCE(?, vehicle_summary), status = COALESCE(?, status), priority = COALESCE(?, priority), mechanic_name = COALESCE(?, mechanic_name), estimated_hours = COALESCE(?, estimated_hours), notes = COALESCE(?, notes), updated_at = ? WHERE id = ? AND tenant_id = ?`,
       [data.customerName ?? null, data.vehicleSummary ?? null, data.status ?? null,
        data.priority ?? null, data.mechanicName ?? null, data.estimatedHours ?? null,
-       data.notes ?? null, Date.now(), id]
+       data.notes ?? null, Date.now(), id, tenantId]
     );
   },
 
@@ -594,7 +559,7 @@ export const vehicleRepo = {
       `INSERT INTO vehicles (id, tenant_id, customer_id, customer_name, make, model, year, license_plate, vin, color, mileage, notes, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [id, v.tenantId, v.customerId||null, v.customerName||null, v.make, v.model, v.year, v.licensePlate, v.vin||null, v.color||null, v.mileage||null, v.notes||null, now, now]
     );
-    const rows = await db.select<any[]>('SELECT * FROM vehicles WHERE id = ?', [id]);
+    const rows = await db.select<any[]>('SELECT * FROM vehicles WHERE id = ? AND tenant_id = ?', [id, v.tenantId]);
     return mapVehicle(rows[0]);
   },
 };
@@ -612,7 +577,7 @@ export const invoiceRepo = {
        JSON.stringify(inv.items), inv.subtotal, inv.discount, inv.tax, inv.total,
        inv.paymentMethod, inv.status, inv.notes||null, now, now]
     );
-    const rows = await db.select<any[]>('SELECT * FROM auto_care_invoices WHERE id = ?', [id]);
+    const rows = await db.select<any[]>('SELECT * FROM auto_care_invoices WHERE id = ? AND tenant_id = ?', [id, inv.tenantId]);
     return mapInvoice(rows[0]);
   },
 
@@ -631,7 +596,7 @@ export const invoiceRepo = {
 };
 
 // ─── POSSale helper ────────────────────────────────────────────────────────────
-interface POSSaleInput {
+export interface POSSaleInput {
   items: { name: string; quantity: number; price: number }[];
   subtotal: number;
   tax: number;
@@ -649,83 +614,41 @@ export async function completePOSSale(
     throw new Error('Customer name is required for credit sales.');
   }
 
+  const tenantId = getCurrentTenantId();
   const now = Date.now();
-  const id = crypto.randomUUID();
+  const invoiceNumber = await invoiceRepo.nextInvoiceNumber(tenantId);
 
-  // ── Browser/dev fallback ─────────────────────────────────────────────────
-  const buildSyntheticInvoice = (invNumber: string): AutoCareInvoice => {
-    const invoiceItems: ServiceJobItem[] = input.items.map((item, i) => ({
-      id: `item-${i}`,
-      jobId: '',
-      type: 'part' as const,
-      name: item.name,
-      quantity: item.quantity,
-      unitPrice: item.price,
-      discount: 0,
-      tax: 0,
-      total: item.price * item.quantity,
-      createdAt: now,
-    }));
+  const invoiceItems: ServiceJobItem[] = input.items.map((item, i) => ({
+    id: crypto.randomUUID(),
+    jobId: '',
+    type: 'part' as const,
+    name: item.name,
+    quantity: item.quantity,
+    unitPrice: item.price,
+    discount: 0,
+    tax: 0,
+    total: item.price * item.quantity,
+    createdAt: now,
+  }));
 
-    return {
-      id,
-      tenantId: TENANT_ID,
-      invoiceNumber: invNumber,
-      jobId: undefined,
-      jobNumber: undefined,
-      customerId: input.customerId,
-      customerName: input.customerName ?? 'Walk-in Customer',
-      vehicleSummary: undefined,
-      items: invoiceItems,
-      subtotal: input.subtotal,
-      discount: 0,
-      tax: input.tax,
-      total: input.total,
-      paymentMethod: input.paymentMethod,
-      status: input.paymentMethod === 'credit' ? ('credit' as AutoCareInvoice['status']) : 'paid',
-      notes: input.notes,
-      createdAt: now,
-      updatedAt: now,
-    };
-  };
+  const status: AutoCareInvoice['status'] =
+    input.paymentMethod === 'credit' ? ('credit' as any) : 'paid';
 
-  // ── Try real DB (Tauri) ──────────────────────────────────────────────────
-  try {
-    const invoiceNumber = await invoiceRepo.nextInvoiceNumber(TENANT_ID);
-
-    const invoiceItems = input.items.map((item) => ({
-      name: item.name,
-      quantity: item.quantity,
-      unitPrice: item.price,
-      total: item.price * item.quantity,
-    }));
-
-    const status: AutoCareInvoice['status'] =
-      input.paymentMethod === 'credit'
-        ? ('credit' as AutoCareInvoice['status'])
-        : 'paid';
-
-    return await invoiceRepo.create({
-      tenantId: TENANT_ID,
-      invoiceNumber,
-      jobId: undefined,
-      jobNumber: undefined,
-      customerId: input.customerId,
-      customerName: input.customerName ?? 'Walk-in Customer',
-      vehicleSummary: undefined,
-      items: invoiceItems as any,
-      subtotal: input.subtotal,
-      discount: 0,
-      tax: input.tax,
-      total: input.total,
-      paymentMethod: input.paymentMethod,
-      status,
-      notes: input.notes,
-    });
-  } catch (dbErr) {
-    // DB not available (browser/dev mode without Tauri) — return in-memory invoice
-    console.warn('[Auto-Care] DB unavailable, using in-memory invoice:', dbErr);
-    const n = Math.floor(Math.random() * 9000) + 1000;
-    return buildSyntheticInvoice(`INV-${n}`);
-  }
+  return await invoiceRepo.create({
+    tenantId,
+    invoiceNumber,
+    jobId: undefined,
+    jobNumber: undefined,
+    customerId: input.customerId,
+    customerName: input.customerName ?? 'Walk-in Customer',
+    vehicleSummary: undefined,
+    items: invoiceItems,
+    subtotal: input.subtotal,
+    discount: 0,
+    tax: input.tax,
+    total: input.total,
+    paymentMethod: input.paymentMethod,
+    status,
+    notes: input.notes,
+  });
 }

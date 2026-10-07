@@ -1,4 +1,4 @@
-// Browser mock for Tauri SQL plugin when running outside Tauri desktop shell (e.g. vite dev in browser)
+// Browser mock for Tauri SQL plugin when running outside Tauri desktop shell (e.g. vite dev in browser or vitest)
 
 export function setupTauriBrowserMock(): void {
   if (typeof window === 'undefined') return;
@@ -41,9 +41,91 @@ export function setupTauriBrowserMock(): void {
           query.startsWith('CREATE') ||
           query.startsWith('BEGIN') ||
           query.startsWith('COMMIT') ||
-          query.startsWith('ROLLBACK')
+          query.startsWith('ROLLBACK') ||
+          query.startsWith('ALTER')
         ) {
           return [0, 0];
+        }
+
+        // ── schema_migrations INSERT ───────────────────────────────────────
+        if (query.startsWith('INSERT INTO schema_migrations')) {
+          const migrations = getStorage<any[]>('schema_migrations', []);
+          const [version, name, applied_at] = values;
+          migrations.push({ version, name, applied_at });
+          setStorage('schema_migrations', migrations);
+          return [1, 1];
+        }
+
+        // ── app_metadata INSERT / UPDATE ───────────────────────────────────
+        if (query.startsWith('INSERT INTO app_metadata')) {
+          const metadata = getStorage<any[]>('app_metadata', []);
+          const [key, value, created_at, updated_at] = values;
+          const idx = metadata.findIndex((m) => m.key === key);
+          if (idx >= 0) {
+            metadata[idx] = { key, value, created_at: metadata[idx].created_at, updated_at };
+          } else {
+            metadata.push({ key, value, created_at, updated_at });
+          }
+          setStorage('app_metadata', metadata);
+          return [1, 1];
+        }
+
+        // ── sync_state INSERT / UPDATE ─────────────────────────────────────
+        if (query.startsWith('INSERT INTO sync_state')) {
+          const syncState = getStorage<any[]>('sync_state', []);
+          const [id, tenant_id, device_id, scope, cursor, updated_at] = values;
+          const idx = syncState.findIndex(
+            (s) => s.tenant_id === tenant_id && s.device_id === device_id && s.scope === scope
+          );
+          if (idx >= 0) {
+            syncState[idx] = { ...syncState[idx], cursor, updated_at };
+          } else {
+            syncState.push({ id, tenant_id, device_id, scope, cursor, updated_at });
+          }
+          setStorage('sync_state', syncState);
+          return [1, 1];
+        }
+
+        if (query.startsWith('UPDATE sync_state SET cursor = ?')) {
+          const [cursor, updated_at, tenant_id, device_id, scope] = values;
+          const syncState = getStorage<any[]>('sync_state', []);
+          const item = syncState.find(
+            (s) => s.tenant_id === tenant_id && s.device_id === device_id && s.scope === scope
+          );
+          if (item) {
+            item.cursor = cursor;
+            item.updated_at = updated_at;
+            setStorage('sync_state', syncState);
+          }
+          return [1, 1];
+        }
+
+        // ── stock_movements INSERT ─────────────────────────────────────────
+        if (query.startsWith('INSERT INTO stock_movements')) {
+          const movements = getStorage<any[]>('stock_movements', []);
+          const [
+            id, tenant_id, product_id, quantity_delta, movement_type,
+            reference_type, reference_id, device_id, notes, created_at
+          ] = values;
+
+          // Enforce unique (tenant_id, reference_type, reference_id, product_id)
+          const dup = movements.find(
+            (m) =>
+              m.tenant_id === tenant_id &&
+              m.reference_type === reference_type &&
+              m.reference_id === reference_id &&
+              m.product_id === product_id
+          );
+          if (dup) {
+            throw new Error(`UNIQUE constraint failed: stock_movements (${reference_type}:${reference_id}:${product_id})`);
+          }
+
+          movements.push({
+            id, tenant_id, product_id, quantity_delta, movement_type,
+            reference_type, reference_id, device_id, notes, created_at,
+          });
+          setStorage('stock_movements', movements);
+          return [1, 1];
         }
 
         if (query.startsWith('INSERT INTO products')) {
@@ -158,22 +240,65 @@ export function setupTauriBrowserMock(): void {
 
         if (query.startsWith('INSERT INTO outbox')) {
           const outbox = getStorage<any[]>('outbox', []);
-          let id: any, tenant_id: any, entity_type: any, entity_id: any, operation: any, payload: any, status: any, created_at: any;
-          if (values.length === 7) {
-            [id, tenant_id, entity_type, entity_id, operation, payload, created_at] = values;
-            status = 'pending';
+          let entry: any = {};
+          if (values.length === 12) {
+            // Full upgraded schema
+            const [
+              id, tenant_id, entity_type, entity_id, operation, payload,
+              status, device_id, idempotency_key, version, sequence_number, created_at
+            ] = values;
+            entry = {
+              id, tenant_id, entity_type, entity_id, operation, payload,
+              status: status || 'pending',
+              device_id, idempotency_key, version, sequence_number,
+              attempts: 0, last_attempt_at: null, synced_at: null, error: null,
+              created_at: created_at || Date.now(),
+            };
+          } else if (values.length === 10) {
+            // Atomic sale outbox with device_id, idempotency_key, version
+            const [
+              id, tenant_id, entity_type, entity_id, operation, payload,
+              status, device_id, idempotency_key, created_at
+            ] = values;
+            entry = {
+              id, tenant_id, entity_type, entity_id, operation, payload,
+              status: status || 'pending',
+              device_id, idempotency_key, version: 1, sequence_number: null,
+              attempts: 0, last_attempt_at: null, synced_at: null, error: null,
+              created_at: created_at || Date.now(),
+            };
+          } else if (values.length === 9) {
+            // INSERT INTO outbox (..., status, device_id, idempotency_key, version, created_at) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, 1, ?)
+            const [
+              id, tenant_id, entity_type, entity_id, operation, payload,
+              device_id, idempotency_key, created_at
+            ] = values;
+            entry = {
+              id, tenant_id, entity_type, entity_id, operation, payload,
+              status: 'pending',
+              device_id, idempotency_key, version: 1, sequence_number: null,
+              attempts: 0, last_attempt_at: null, synced_at: null, error: null,
+              created_at: created_at || Date.now(),
+            };
+          } else if (values.length === 7) {
+            const [id, tenant_id, entity_type, entity_id, operation, payload, created_at] = values;
+            entry = {
+              id, tenant_id, entity_type, entity_id, operation, payload,
+              status: 'pending',
+              attempts: 0, last_attempt_at: null, synced_at: null, error: null,
+              created_at: created_at || Date.now(),
+            };
           } else {
-            [id, tenant_id, entity_type, entity_id, operation, payload, status, created_at] = values;
+            const [id, tenant_id, entity_type, entity_id, operation, payload, status, created_at] = values;
+            entry = {
+              id, tenant_id, entity_type, entity_id, operation, payload,
+              status: status || 'pending',
+              attempts: 0, last_attempt_at: null, synced_at: null, error: null,
+              created_at: created_at || Date.now(),
+            };
           }
-          outbox.push({
-            id, tenant_id, entity_type, entity_id, operation, payload,
-            status: status || 'pending',
-            attempts: 0,
-            last_attempt_at: null,
-            synced_at: null,
-            error: null,
-            created_at: created_at || Date.now(),
-          });
+
+          outbox.push(entry);
           setStorage('outbox', outbox);
           return [1, 1];
         }
@@ -225,9 +350,7 @@ export function setupTauriBrowserMock(): void {
         // ── pos_orders UPDATE (PAID / CANCELLED) ──────────────────────────
         if (query.startsWith('UPDATE pos_orders SET status=')) {
           const pos_orders = getStorage<any[]>('pos_orders', []);
-          // We match both update patterns: PAID update and CANCELLED update
           if (query.includes('payment_method=?')) {
-            // PAID update: SET status='PAID', payment_method=?, paid_amount=?, subtotal=?, tax=?, total=?, items=?, customer_name=?, customer_id=?, updated_at=? WHERE id=? AND tenant_id=?
             const [
               payment_method, paid_amount, subtotal, tax, total,
               items, customer_name, customer_id, updated_at, id, tenant_id
@@ -244,7 +367,6 @@ export function setupTauriBrowserMock(): void {
               setStorage('pos_orders', pos_orders);
             }
           } else {
-            // CANCELLED update: SET status='CANCELLED', updated_at=? WHERE id=? AND tenant_id=?
             const [updated_at, id, tenant_id] = values;
             const idx = pos_orders.findIndex((o) => o.id === id && o.tenant_id === tenant_id);
             if (idx >= 0) {
@@ -261,6 +383,71 @@ export function setupTauriBrowserMock(): void {
       if (cmd === 'plugin:sql|select') {
         const query: string = (args.query || '').trim();
         const values: any[] = args.values || [];
+
+        // ── schema_migrations SELECT ───────────────────────────────────────
+        if (query.includes('FROM schema_migrations')) {
+          const migrations = getStorage<any[]>('schema_migrations', []);
+          return migrations.sort((a, b) => a.version - b.version);
+        }
+
+        // ── app_metadata SELECT ───────────────────────────────────────────
+        if (query.includes('FROM app_metadata')) {
+          const metadata = getStorage<any[]>('app_metadata', []);
+          if (query.includes('WHERE key = ?')) {
+            const key = values[0];
+            const item = metadata.find((m) => m.key === key);
+            return item ? [item] : [];
+          }
+          return metadata;
+        }
+
+        // ── sync_state SELECT ─────────────────────────────────────────────
+        if (query.includes('FROM sync_state')) {
+          const syncState = getStorage<any[]>('sync_state', []);
+          if (query.includes('WHERE tenant_id = ? AND device_id = ? AND scope = ?')) {
+            const [tenantId, deviceId, scope] = values;
+            const item = syncState.find(
+              (s) => s.tenant_id === tenantId && s.device_id === deviceId && s.scope === scope
+            );
+            return item ? [item] : [];
+          }
+          const tenantId = values[0];
+          return syncState.filter((s) => !tenantId || s.tenant_id === tenantId);
+        }
+
+        // ── stock_movements SELECT ─────────────────────────────────────────
+        if (query.includes('FROM stock_movements')) {
+          const movements = getStorage<any[]>('stock_movements', []);
+          if (query.includes('COALESCE(SUM(quantity_delta), 0)')) {
+            const [tenantId, productId] = values;
+            const filtered = movements.filter(
+              (m) => m.tenant_id === tenantId && m.product_id === productId
+            );
+            const total = filtered.reduce((s, m) => s + Number(m.quantity_delta), 0);
+            return [{ total }];
+          }
+
+          if (query.includes('WHERE tenant_id = ? AND product_id = ?')) {
+            const [tenantId, productId] = values;
+            return movements
+              .filter((m) => m.tenant_id === tenantId && m.product_id === productId)
+              .sort((a, b) => b.created_at - a.created_at);
+          }
+
+          if (query.includes('WHERE tenant_id = ? AND reference_type = ? AND reference_id = ?')) {
+            const [tenantId, refType, refId] = values;
+            return movements
+              .filter((m) => m.tenant_id === tenantId && m.reference_type === refType && m.reference_id === refId)
+              .sort((a, b) => a.created_at - b.created_at);
+          }
+
+          const tenantId = values[0];
+          const limit = values[1] || 100;
+          return movements
+            .filter((m) => !tenantId || m.tenant_id === tenantId)
+            .sort((a, b) => b.created_at - a.created_at)
+            .slice(0, limit);
+        }
 
         if (query.includes('FROM products')) {
           const products = getStorage<any[]>('products', []);

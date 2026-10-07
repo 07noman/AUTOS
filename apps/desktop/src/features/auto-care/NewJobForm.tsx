@@ -4,7 +4,7 @@ import { ArrowLeft } from 'lucide-react';
 import { Button } from '@genx/ui/Button';
 import { Card, CardHeader, CardTitle, CardContent } from '@genx/ui/Card';
 import { jobRepo } from '@/lib/auto-care-db';
-import { TENANT_ID } from '@/lib/db';
+import { getCurrentTenantId } from '@/lib/db';
 import type { JobPriority, JobStatus } from '@genx/types/domain/auto-care';
 
 const MECHANICS = ['Mike Johnson', 'Alex Chen', 'Sarah Brown', 'David Lee'];
@@ -38,7 +38,7 @@ export function NewJobForm() {
       const jobNumber = await jobRepo.nextJobNumber();
       const vehicleSummary = `${form.vehicleYear} ${form.vehicleMake} ${form.vehicleModel}${form.licensePlate ? ` (${form.licensePlate})` : ''}`;
       const job = await jobRepo.create({
-        tenantId: TENANT_ID,
+        tenantId: getCurrentTenantId(),
         jobNumber,
         customerName: form.customerName,
         vehicleSummary,

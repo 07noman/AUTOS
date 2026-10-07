@@ -10,6 +10,8 @@
     "./domain/product": "./src/domain/product.ts",
     "./domain/order": "./src/domain/order.ts",
     "./domain/customer": "./src/domain/customer.ts",
-    "./domain/auto-care": "./src/domain/auto-care.ts"
+    "./domain/auto-care": "./src/domain/auto-care.ts",
+    "./domain/inventory": "./src/domain/inventory.ts",
+    "./sync": "./src/sync/index.ts"
   }
 }

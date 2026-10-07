@@ -30,7 +30,7 @@ import PaymentSuccessScreen from "./PaymentSuccessScreen";
 import { completePOSSale, posOrderRepo } from "../../lib/auto-care-db";
 import { useAuth } from "../../hooks/useAuth";
 import { useProducts } from "../../hooks/useProducts";
-import { productRepo, getCurrentTenantId, TENANT_ID } from "../../lib/db";
+import { productRepo, getCurrentTenantId } from "../../lib/db";
 import { isOnline } from "../../services/connectionManager";
 import { saveOfflineOrder } from "../../services/offlineOrders";
 import { reduceStock } from "../../services/offlineInventory";
@@ -284,9 +284,10 @@ export function AutoCarePOS() {
   const [currentOrderNumber, setCurrentOrderNumber] = useState<number | null>(null);
 
   useEffect(() => {
+    const activeTenant = getCurrentTenantId();
     const loadId = searchParams.get("loadOrderId");
     if (loadId) {
-      void posOrderRepo.findById(loadId, TENANT_ID).then((order) => {
+      void posOrderRepo.findById(loadId, activeTenant).then((order) => {
         if (order && order.status === "ONGOING") {
           setCurrentOrderId(order.id);
           setCurrentOrderNumber(order.orderNumber);
@@ -303,7 +304,7 @@ export function AutoCarePOS() {
         }
       });
     } else {
-      void posOrderRepo.nextOrderNumber(TENANT_ID).then(setCurrentOrderNumber);
+      void posOrderRepo.nextOrderNumber(activeTenant).then(setCurrentOrderNumber);
     }
   }, [searchParams]);
 
@@ -481,7 +482,7 @@ export function AutoCarePOS() {
           total,
           customerName: customer !== "Walk-in Customer" ? customer : (selectedPOSCustomer?.name || undefined),
           customerId: selectedPOSCustomer?.id,
-          tenantId: TENANT_ID,
+          tenantId: getCurrentTenantId(),
         });
       } catch (err) {
         console.warn("Could not save ongoing order:", err);
@@ -492,7 +493,7 @@ export function AutoCarePOS() {
     setCustomer("Walk-in Customer");
     setCurrentOrderId(null);
     try {
-      const nextNum = await posOrderRepo.nextOrderNumber(TENANT_ID);
+      const nextNum = await posOrderRepo.nextOrderNumber(getCurrentTenantId());
       setCurrentOrderNumber(nextNum);
     } catch {
       setCurrentOrderNumber((prev) => (prev ? prev + 1 : 1));
@@ -551,7 +552,7 @@ export function AutoCarePOS() {
         customer: data.customer,
         completedAt: new Date().toISOString(),
         source: "offline",
-        tenantId: TENANT_ID,
+        tenantId: activeTenant,
       });
 
       if (!invoiceNumber) {
@@ -590,7 +591,7 @@ export function AutoCarePOS() {
         completedAt: new Date().toISOString(),
         source: "online",
         syncStatus: "synced",
-        tenantId: TENANT_ID,
+        tenantId: activeTenant,
       }).catch(() => {});
     }
 
@@ -601,7 +602,7 @@ export function AutoCarePOS() {
     setSelectedPOSCustomer(null);
     setCustomer("Walk-in Customer");
     setCurrentOrderId(null);
-    void posOrderRepo.nextOrderNumber(TENANT_ID).then(setCurrentOrderNumber);
+    void posOrderRepo.nextOrderNumber(activeTenant).then(setCurrentOrderNumber);
   };
 
   const handleKeypadPress = (key: string) => {

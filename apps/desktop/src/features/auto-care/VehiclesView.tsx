@@ -4,7 +4,7 @@ import { Card, CardContent } from '@genx/ui/Card';
 import { Button } from '@genx/ui/Button';
 import { Badge } from '@genx/ui/Badge';
 import { vehicleRepo } from '@/lib/auto-care-db';
-import { TENANT_ID } from '@/lib/db';
+import { getCurrentTenantId } from '@/lib/db';
 import type { Vehicle } from '@genx/types/domain/auto-care';
 
 export function VehiclesView() {
@@ -24,7 +24,7 @@ export function VehiclesView() {
 
   const reload = async () => {
     try {
-      const data = await vehicleRepo.findAll();
+      const data = await vehicleRepo.findAll(getCurrentTenantId());
       setVehicles(data);
     } catch (e) {
       console.error(e);
@@ -42,7 +42,7 @@ export function VehiclesView() {
     if (!make || !model || !licensePlate) return;
     try {
       await vehicleRepo.create({
-        tenantId: TENANT_ID,
+        tenantId: getCurrentTenantId(),
         make,
         model,
         year: Number(year) || 2021,
