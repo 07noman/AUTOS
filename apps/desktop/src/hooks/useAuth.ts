@@ -96,21 +96,26 @@ export const useAuth = create<AuthState>()(
           set({ user: data.user, token: data.token, isAuthenticated: true, isLoading: false, error: null });
 
         } catch (err: unknown) {
-          // ── Offline fallback ────────────────────────────────────────────
-          // 1. Check locally saved offline credentials (any user that registered offline)
-          const offlineUser = verifyOfflineCred(email, password);
-          if (offlineUser) {
-            localStorage.setItem('genx:authToken', 'offline-dev');
-            set({ user: offlineUser, token: 'offline-dev', isAuthenticated: true, isLoading: false, error: null });
-            return;
-          }
+          // ── Offline fallback (Development/Offline Local Mode Only) ────────
+          // In production builds, offline-dev tokens are strictly forbidden.
+          const isDev = import.meta.env.DEV;
 
-          // 2. Legacy demo user fallback for dev mode
-          if (import.meta.env.DEV && email === 'demo@genx.com') {
-            const demoUser: User = { id: 'user-1', email, name: 'Demo User', role: 'owner', tenantId: 'tenant-1' };
-            localStorage.setItem('genx:authToken', 'offline-dev');
-            set({ user: demoUser, token: 'offline-dev', isAuthenticated: true, isLoading: false, error: null });
-            return;
+          if (isDev) {
+            // 1. Check locally saved offline credentials (any user that registered locally in dev)
+            const offlineUser = verifyOfflineCred(email, password);
+            if (offlineUser) {
+              localStorage.setItem('genx:authToken', 'offline-dev');
+              set({ user: offlineUser, token: 'offline-dev', isAuthenticated: true, isLoading: false, error: null });
+              return;
+            }
+
+            // 2. Legacy demo user fallback for dev mode
+            if (email === 'demo@genx.com') {
+              const demoUser: User = { id: 'user-1', email, name: 'Demo User', role: 'owner', tenantId: 'tenant-1' };
+              localStorage.setItem('genx:authToken', 'offline-dev');
+              set({ user: demoUser, token: 'offline-dev', isAuthenticated: true, isLoading: false, error: null });
+              return;
+            }
           }
 
           const message = err instanceof Error ? err.message : 'Login failed';
@@ -135,16 +140,17 @@ export const useAuth = create<AuthState>()(
 
           const data = (await res.json()) as { user: User; token: string };
           localStorage.setItem('genx:authToken', data.token);
-          // Also save offline creds so login works if server goes down
+          // Also save offline creds for dev offline support
           saveOfflineCred(inputData.email, inputData.password, data.user);
           set({ user: data.user, token: data.token, isAuthenticated: true, isLoading: false, error: null });
 
         } catch (err: unknown) {
-          // ── Offline registration fallback ───────────────────────────────
+          // ── Offline registration fallback (Development Only) ────────────
+          const isDev = import.meta.env.DEV;
           const isNetworkError = err instanceof Error &&
             (err.message.includes('Failed to fetch') || err.message.includes('fetch') || err.message.includes('NetworkError'));
 
-          if (isNetworkError) {
+          if (isDev && isNetworkError) {
             const tenantId = `tenant-${(inputData.storeCode || inputData.storeName).toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
             const offlineUser: User = {
               id: crypto.randomUUID(),
@@ -153,7 +159,7 @@ export const useAuth = create<AuthState>()(
               role: 'owner',
               tenantId,
             };
-            // Save credentials locally so login works after logout
+            // Save credentials locally so login works in dev
             saveOfflineCred(inputData.email, inputData.password, offlineUser);
             localStorage.setItem('genx:authToken', 'offline-dev');
             set({ user: offlineUser, token: 'offline-dev', isAuthenticated: true, isLoading: false, error: null });
