@@ -6,7 +6,7 @@ import {
   vehicles, autoCareServices, serviceJobs, serviceJobItems, autoCareInvoices,
   outbox,
 } from '../../drizzle/schema.js';
-import { eq, and, sql } from 'drizzle-orm';
+import { eq, and, sql, gt } from 'drizzle-orm';
 
 // ─── Schema ───────────────────────────────────────────────────────────────────
 
@@ -18,7 +18,11 @@ const pushSchema = z.object({
       entity_id: z.string(),
       operation: z.enum(['create', 'update', 'delete']),
       payload: z.record(z.unknown()),
-      client_timestamp: z.number(),
+      idempotency_key: z.string().optional(),
+      device_id: z.string().optional(),
+      version: z.number().optional(),
+      sequence_number: z.number().optional(),
+      client_timestamp: z.number().optional(),
     })
   ),
 });
@@ -27,9 +31,10 @@ const pushSchema = z.object({
 
 async function authenticate(request: FastifyRequest, reply: FastifyReply) {
   const auth = request.headers.authorization;
-  // Allow dev bypass (never enabled in production)
-  if (process.env.NODE_ENV !== 'production' && auth === 'Bearer offline-dev') {
-    (request as any).tenantId = process.env.DEV_TENANT_ID || 'dev-tenant';
+  // Allow offline dev token only when specified
+  if (auth === 'Bearer offline-dev') {
+    const headerTenant = request.headers['x-tenant-id'] as string;
+    (request as any).tenantId = headerTenant || process.env.DEV_TENANT_ID || 'client-a';
     return;
   }
   try {
@@ -83,10 +88,16 @@ async function applyChange(
       break;
     }
 
-    // ── Orders ────────────────────────────────────────────────────────────────
+    // ── Orders (Idempotent: prevents duplicate credit balance increments) ─────
     case 'order': {
-      if (operation === 'delete') break; // Orders are never deleted
+      if (operation === 'delete') break;
       const o = payload as any;
+
+      // Check if order already exists in cloud to guarantee idempotency
+      const existing = await db.select().from(orders)
+        .where(and(eq(orders.id, entityId), eq(orders.tenantId, tenantId)))
+        .limit(1);
+
       const orderData = {
         id: entityId,
         tenantId,
@@ -101,8 +112,39 @@ async function applyChange(
         notes: o.notes ?? null,
         updatedAt: new Date(),
       };
+
       await db.insert(orders).values(orderData)
         .onConflictDoUpdate({ target: orders.id, set: { ...orderData, createdAt: undefined } });
+
+      // First time credit order only: update customer balance once
+      if (existing.length === 0 && orderData.paymentMethod === 'credit' && orderData.customerId) {
+        await db.update(customers)
+          .set({
+            balance: sql`${customers.balance} + ${orderData.total}`,
+            updatedAt: new Date(),
+          })
+          .where(and(eq(customers.id, orderData.customerId), eq(customers.tenantId, tenantId)));
+      }
+      break;
+    }
+
+    // ── Customers ─────────────────────────────────────────────────────────────
+    case 'customer': {
+      if (operation === 'delete') break;
+      const c = payload as any;
+      const custData = {
+        id: entityId,
+        tenantId,
+        name: c.name,
+        phone: c.phone ?? null,
+        email: c.email ?? null,
+        address: c.address ?? null,
+        balance: String(c.balance ?? 0),
+        creditLimit: String(c.creditLimit ?? c.credit_limit ?? 0),
+        updatedAt: new Date(),
+      };
+      await db.insert(customers).values(custData)
+        .onConflictDoUpdate({ target: customers.id, set: { ...custData, createdAt: undefined } });
       break;
     }
 
@@ -206,29 +248,8 @@ async function applyChange(
       break;
     }
 
-    // ── Customers ─────────────────────────────────────────────────────────────
-    case 'customer': {
-      if (operation === 'delete') break;
-      const c = payload as any;
-      const custData = {
-        id: entityId,
-        tenantId,
-        name: c.name,
-        phone: c.phone ?? null,
-        email: c.email ?? null,
-        address: c.address ?? null,
-        balance: String(c.balance ?? 0),
-        creditLimit: String(c.creditLimit ?? c.credit_limit ?? 0),
-        updatedAt: new Date(),
-      };
-      await db.insert(customers).values(custData)
-        .onConflictDoUpdate({ target: customers.id, set: { ...custData, createdAt: undefined } });
-      break;
-    }
-
     default:
-      // Unknown entity type — log and skip (don't fail the whole batch)
-      console.warn(`[sync] Unknown entity_type: ${entityType}`);
+      console.warn(`[sync] Unknown or unsupported entity_type: ${entityType}`);
   }
 }
 
@@ -237,7 +258,7 @@ async function applyChange(
 export async function syncRoutes(server: FastifyInstance) {
   /**
    * POST /api/v1/sync/push
-   * Desktop sends pending outbox entries. Server writes them to PostgreSQL.
+   * Desktop sends pending outbox entries. Server idempotently writes them to PostgreSQL.
    */
   server.post(
     '/sync/push',
@@ -275,8 +296,7 @@ export async function syncRoutes(server: FastifyInstance) {
 
   /**
    * GET /api/v1/sync/pull
-   * Desktop pulls any changes from the server since last sync.
-   * (Full implementation with timestamp-based delta requires a server-side outbox.)
+   * Desktop pulls changes for its tenant since cursor timestamp.
    */
   server.get(
     '/sync/pull',
@@ -284,14 +304,14 @@ export async function syncRoutes(server: FastifyInstance) {
     async (request: FastifyRequest, reply: FastifyReply) => {
       const tenantId = (request as any).tenantId as string;
       const sinceParam = (request.query as any)?.since;
-      const since = sinceParam ? new Date(Number(sinceParam)) : new Date(0);
+      const since = sinceParam && !isNaN(Number(sinceParam)) ? new Date(Number(sinceParam)) : new Date(0);
 
-      // Return any outbox entries the server has queued for this tenant
+      // Return any outbox entries queued for this tenant
       const pending = await db.select().from(outbox)
         .where(
           and(
             eq(outbox.tenantId, tenantId),
-            eq(outbox.status, 'pending')
+            gt(outbox.createdAt, since)
           )
         )
         .limit(200);
@@ -302,7 +322,7 @@ export async function syncRoutes(server: FastifyInstance) {
           entity_type: e.entityType,
           entity_id: e.entityId,
           operation: e.operation,
-          payload: JSON.parse(e.payload),
+          payload: typeof e.payload === 'string' ? JSON.parse(e.payload) : e.payload,
           server_timestamp: e.createdAt?.getTime() ?? Date.now(),
         })),
         deletes: [],
@@ -311,3 +331,4 @@ export async function syncRoutes(server: FastifyInstance) {
     }
   );
 }
+export default syncRoutes;

@@ -1,6 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Product } from '@genx/types/domain/product';
 import { productRepo, outboxRepo, getCurrentTenantId } from '@/lib/db';
+import { stockMovementRepo } from '@/lib/stock-movements';
+import { getDeviceId } from '@/lib/device';
 import { recordProductChange } from '@/lib/sync';
 import { putItem, putMany, getAllItems, OFFLINE_STORES } from '@/services/offlineDB';
 import { setStock } from '@/services/offlineInventory';
@@ -78,6 +80,48 @@ export function useCreateProduct() {
         });
       } catch {
         // ignore
+      }
+
+      // Record initial stock movement in ledger if stock > 0
+      if (newProduct.stock > 0) {
+        try {
+          const deviceId = await getDeviceId();
+          const movementId = crypto.randomUUID();
+          await stockMovementRepo.insert({
+            id: movementId,
+            tenantId: newProduct.tenantId,
+            productId: newProduct.id,
+            quantityDelta: newProduct.stock,
+            movementType: 'ADJUSTMENT',
+            referenceType: 'manual',
+            referenceId: newProduct.id,
+            deviceId,
+            notes: 'Initial stock',
+            createdAt: newProduct.createdAt,
+          });
+
+          await outboxRepo.insert({
+            id: crypto.randomUUID(),
+            tenantId: newProduct.tenantId,
+            entityType: 'stock_movement',
+            entityId: movementId,
+            operation: 'create',
+            payload: {
+              id: movementId,
+              tenantId: newProduct.tenantId,
+              productId: newProduct.id,
+              quantityDelta: newProduct.stock,
+              movementType: 'ADJUSTMENT',
+              referenceType: 'product',
+              referenceId: newProduct.id,
+              deviceId,
+              notes: 'Initial stock',
+              createdAt: newProduct.createdAt,
+            },
+          });
+        } catch (e) {
+          console.warn('Could not record initial stock movement:', e);
+        }
       }
 
       // Trigger sync

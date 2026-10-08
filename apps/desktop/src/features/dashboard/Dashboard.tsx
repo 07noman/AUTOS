@@ -1,22 +1,34 @@
+import { useMemo } from 'react';
 import { TrendingUp, AlertTriangle, Package, DollarSign } from 'lucide-react';
-import { useLiveQuery } from 'dexie-react-hooks';
+import { useQuery } from '@tanstack/react-query';
 import { Card, CardHeader, CardTitle, CardContent } from '@genx/ui/Card';
 import { Badge } from '@genx/ui/Badge';
-import { db, getCurrentTenantId } from '@/lib/db';
+import { productRepo, orderRepo, getCurrentTenantId } from '@/lib/db';
 
 export function Dashboard() {
   const currentTenant = getCurrentTenantId();
-  const products = useLiveQuery(() => db.products.where('tenantId').equals(currentTenant).toArray(), [currentTenant]);
-  const todayStart = new Date();
-  todayStart.setHours(0, 0, 0, 0);
-  const todayOrders = useLiveQuery(
-    () => db.orders.where('createdAt').aboveOrEqual(todayStart.getTime()).toArray(),
-    []
-  );
 
-  const lowStock = products?.filter((p) => p.stock <= p.minimumStock && p.stock > 0) ?? [];
-  const outOfStock = products?.filter((p) => p.stock === 0) ?? [];
-  const totalSales = todayOrders?.reduce((s, o) => s + o.total, 0) ?? 0;
+  const { data: products = [] } = useQuery({
+    queryKey: ['products', currentTenant],
+    queryFn: () => productRepo.findAll(currentTenant),
+  });
+
+  const { data: orders = [] } = useQuery({
+    queryKey: ['orders-dashboard', currentTenant],
+    queryFn: () => orderRepo.findAll(currentTenant),
+  });
+
+  const { lowStock, outOfStock, todayOrders, totalSales } = useMemo(() => {
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    const todayOrders = orders.filter((o) => o.createdAt >= todayStart.getTime());
+    const totalSales = todayOrders.reduce((sum, o) => sum + (Number(o.total) || 0), 0);
+    const lowStock = products.filter((p) => p.stock <= p.minimumStock && p.stock > 0);
+    const outOfStock = products.filter((p) => p.stock === 0);
+
+    return { lowStock, outOfStock, todayOrders, totalSales };
+  }, [products, orders]);
 
   return (
     <div className="p-6 space-y-6">
@@ -38,7 +50,7 @@ export function Dashboard() {
           <CardContent>
             <div className="text-2xl font-bold">${totalSales.toFixed(2)}</div>
             <p className="text-xs text-success flex items-center mt-2">
-              <TrendingUp className="h-3 w-3 mr-1" /> Live from local orders
+              <TrendingUp className="h-3 w-3 mr-1" /> Live from SQLite orders
             </p>
           </CardContent>
         </Card>
@@ -47,7 +59,7 @@ export function Dashboard() {
             <CardTitle className="text-sm font-medium text-text-secondary">Orders Today</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{todayOrders?.length ?? 0}</div>
+            <div className="text-2xl font-bold">{todayOrders.length}</div>
           </CardContent>
         </Card>
         <Card>
@@ -65,7 +77,7 @@ export function Dashboard() {
             <Package className="h-4 w-4 text-text-muted" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{products?.length ?? 0}</div>
+            <div className="text-2xl font-bold">{products.length}</div>
           </CardContent>
         </Card>
       </div>

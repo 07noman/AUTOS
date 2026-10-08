@@ -412,7 +412,15 @@ export const orderRepo = {
         );
       }
 
-      // 5. Atomically insert upgraded outbox mutation for future cloud sync
+      // 5. Atomically update customer balance on credit sales
+      if (order.paymentMethod === 'credit' && order.customerId) {
+        await tx.execute(
+          'UPDATE customers SET balance = balance + ?, updated_at = ? WHERE id = ? AND tenant_id = ?',
+          [order.total, now, order.customerId, order.tenantId]
+        );
+      }
+
+      // 6. Atomically insert upgraded outbox mutation for future cloud sync
       const idempotencyKey = `order:${order.tenantId}:${order.id}`;
       await tx.execute(
         `INSERT INTO outbox (id, tenant_id, entity_type, entity_id, operation, payload, status, device_id, idempotency_key, version, created_at)
@@ -430,6 +438,21 @@ export const orderRepo = {
         ]
       );
     });
+  },
+
+  async findAll(tenantId: string = getCurrentTenantId()): Promise<Order[]> {
+    const db = await getDatabase();
+    const rows = await db.select<any[]>(
+      'SELECT * FROM orders WHERE tenant_id = ? ORDER BY created_at DESC',
+      [tenantId]
+    );
+    return rows.map((row) => ({
+      ...row,
+      tenantId: row.tenant_id,
+      orderNumber: row.order_number,
+      customerId: row.customer_id,
+      paymentMethod: row.payment_method,
+    }));
   },
 
   async findById(tenantId: string = getCurrentTenantId(), id: string): Promise<Order | null> {
@@ -567,9 +590,78 @@ export const outboxRepo = {
 export const customerRepo = {
   async findAll(tenantId: string = getCurrentTenantId()): Promise<Customer[]> {
     const db = await getDatabase();
-    return await db.select<any[]>('SELECT * FROM customers WHERE tenant_id = ?', [tenantId]);
+    const rows = await db.select<any[]>('SELECT * FROM customers WHERE tenant_id = ? ORDER BY name', [tenantId]);
+    return rows.map(mapToCustomer);
+  },
+
+  async findById(tenantId: string = getCurrentTenantId(), id: string): Promise<Customer | null> {
+    const db = await getDatabase();
+    const rows = await db.select<any[]>('SELECT * FROM customers WHERE id = ? AND tenant_id = ?', [id, tenantId]);
+    return rows.length > 0 ? mapToCustomer(rows[0]) : null;
+  },
+
+  async create(customer: Omit<Customer, 'createdAt' | 'updatedAt'> & { id?: string; createdAt?: number; updatedAt?: number }): Promise<Customer> {
+    const db = await getDatabase();
+    const tenantId = customer.tenantId || getCurrentTenantId();
+    const id = customer.id || crypto.randomUUID();
+    const now = customer.createdAt || Date.now();
+    const balance = Number(customer.balance || 0);
+    const creditLimit = Number(customer.creditLimit || 0);
+
+    await db.execute(
+      `INSERT INTO customers (id, tenant_id, name, phone, email, address, balance, credit_limit, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        id,
+        tenantId,
+        customer.name,
+        customer.phone || null,
+        customer.email || null,
+        customer.address || null,
+        balance,
+        creditLimit,
+        now,
+        now,
+      ]
+    );
+
+    return {
+      id,
+      tenantId,
+      name: customer.name,
+      phone: customer.phone,
+      email: customer.email,
+      address: customer.address,
+      balance,
+      creditLimit,
+      createdAt: now,
+      updatedAt: now,
+    };
+  },
+
+  async updateBalance(tenantId: string = getCurrentTenantId(), id: string, amountDelta: number, tx?: any): Promise<void> {
+    const db = tx ?? (await getDatabase());
+    await db.execute(
+      'UPDATE customers SET balance = balance + ?, updated_at = ? WHERE id = ? AND tenant_id = ?',
+      [amountDelta, Date.now(), id, tenantId]
+    );
   },
 };
+
+function mapToCustomer(row: any): Customer {
+  return {
+    id: row.id,
+    tenantId: row.tenant_id,
+    name: row.name,
+    phone: row.phone ?? undefined,
+    email: row.email ?? undefined,
+    address: row.address ?? undefined,
+    balance: Number(row.balance || 0),
+    creditLimit: Number(row.credit_limit || 0),
+    createdAt: Number(row.created_at),
+    updatedAt: Number(row.updated_at),
+  };
+}
 
 export const db = legacyDb;
 

@@ -20,7 +20,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@genx/ui/Dialo
 import type { Product } from '@genx/types/domain/product';
 import { db } from '@/lib/db';
 import { useProducts } from '@/hooks/useProducts';
-import { useCustomers } from '@/hooks/useCustomers';
+import { useCustomers, useCreateCustomer } from '@/hooks/useCustomers';
 import { completeSale as persistSale, printOrderReceipt } from './OrderService';
 
 interface CartItem extends Product {
@@ -50,8 +50,12 @@ export function POS() {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [isCompleting, setIsCompleting] = useState(false);
+  const [showAddCustomer, setShowAddCustomer] = useState(false);
+  const [newCustName, setNewCustName] = useState('');
+  const [newCustPhone, setNewCustPhone] = useState('');
   const queryClient = useQueryClient();
   const { data: customers } = useCustomers();
+  const createCustomer = useCreateCustomer();
 
   const { data: allProducts = [] } = useProducts();
 
@@ -125,6 +129,10 @@ export function POS() {
 
   const completeSale = async () => {
     if (cart.length === 0 || isCompleting) return;
+    if (paymentMethod === 'credit' && !selectedCustomer) {
+      setError('Please select or add a customer for credit sales');
+      return;
+    }
     if (paymentMethod === 'cash' && cashReceived && parseFloat(cashReceived || '0') < total) {
       setError('Cash received is less than the total');
       return;
@@ -276,10 +284,20 @@ export function POS() {
               <option value="">Walk-in Customer</option>
               {customers?.map((c) => (
                 <option key={c.id} value={c.id}>
-                  {c.name}
+                  {c.name} {Number(c.balance || 0) > 0 ? `(Bal: $${Number(c.balance).toFixed(2)})` : ''}
                 </option>
               ))}
             </select>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setShowAddCustomer(true)}
+              title="Add Customer"
+              className="px-2"
+            >
+              <Plus className="h-4 w-4" />
+            </Button>
           </div>
           <div className="flex items-center gap-2">
             <Percent className="h-4 w-4 text-text-muted" />
@@ -383,6 +401,54 @@ export function POS() {
               </div>
             ))
           )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showAddCustomer} onOpenChange={setShowAddCustomer}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Quick Add Customer</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <Input
+              label="Customer Name *"
+              placeholder="e.g. Client A Customer"
+              value={newCustName}
+              onChange={(e) => setNewCustName(e.target.value)}
+            />
+            <Input
+              label="Phone"
+              placeholder="03000000001"
+              value={newCustPhone}
+              onChange={(e) => setNewCustPhone(e.target.value)}
+            />
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" size="sm" onClick={() => setShowAddCustomer(false)}>
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              disabled={!newCustName.trim()}
+              onClick={async () => {
+                if (!newCustName.trim()) return;
+                try {
+                  const cust = await createCustomer.mutateAsync({
+                    name: newCustName.trim(),
+                    phone: newCustPhone.trim() || undefined,
+                  });
+                  setSelectedCustomer(cust.id);
+                  setNewCustName('');
+                  setNewCustPhone('');
+                  setShowAddCustomer(false);
+                } catch {
+                  setError('Failed to create customer');
+                }
+              }}
+            >
+              Add & Select
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

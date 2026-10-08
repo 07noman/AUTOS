@@ -377,6 +377,41 @@ export function setupTauriBrowserMock(): void {
           return [1, 1];
         }
 
+        // ── customers INSERT ──────────────────────────────────────────────
+        if (query.startsWith('INSERT INTO customers')) {
+          const customers = getStorage<any[]>('customers', []);
+          const [
+            id, tenant_id, name, phone, email, address, balance, credit_limit,
+            created_at, updated_at
+          ] = values;
+          const existingIdx = customers.findIndex((c) => c.id === id);
+          const item = {
+            id, tenant_id, name, phone, email, address,
+            balance: Number(balance || 0), credit_limit: Number(credit_limit || 0),
+            created_at: created_at || Date.now(), updated_at: updated_at || Date.now(),
+          };
+          if (existingIdx >= 0) {
+            customers[existingIdx] = item;
+          } else {
+            customers.push(item);
+          }
+          setStorage('customers', customers);
+          return [1, 1];
+        }
+
+        // ── customers UPDATE balance ──────────────────────────────────────
+        if (query.startsWith('UPDATE customers SET balance = balance + ?')) {
+          const [delta, updated_at, id, tenantId] = values;
+          const customers = getStorage<any[]>('customers', []);
+          const cust = customers.find((c) => c.id === id && c.tenant_id === tenantId);
+          if (cust) {
+            cust.balance = (Number(cust.balance) || 0) + Number(delta);
+            cust.updated_at = updated_at || Date.now();
+            setStorage('customers', customers);
+          }
+          return [1, 1];
+        }
+
         return [0, 0];
       }
 
@@ -550,6 +585,20 @@ export function setupTauriBrowserMock(): void {
           return outbox
             .filter((o) => (!tenantId || o.tenant_id === tenantId) && o.status === 'pending')
             .slice(0, limit);
+        }
+
+        // ── customers SELECT ──────────────────────────────────────────────
+        if (query.includes('FROM customers')) {
+          const customers = getStorage<any[]>('customers', []);
+          if (query.includes('WHERE id = ? AND tenant_id = ?')) {
+            const [id, tenantId] = values;
+            const item = customers.find((c) => c.id === id && c.tenant_id === tenantId);
+            return item ? [item] : [];
+          }
+          const tenantId = values[0];
+          return customers
+            .filter((c) => !tenantId || c.tenant_id === tenantId)
+            .sort((a, b) => a.name.localeCompare(b.name));
         }
 
         return [];

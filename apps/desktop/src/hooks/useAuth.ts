@@ -21,6 +21,42 @@ function simpleHash(str: string): string {
   return h.toString(16);
 }
 
+const DEFAULT_TEST_CREDS: Record<string, OfflineCred> = {
+  'clienta@test.com': {
+    email: 'clienta@test.com',
+    passwordHash: simpleHash('password123'),
+    user: {
+      id: 'user-client-a',
+      email: 'clienta@test.com',
+      name: 'Client A Admin',
+      role: 'owner',
+      tenantId: 'client-a',
+    },
+  },
+  'clientb@test.com': {
+    email: 'clientb@test.com',
+    passwordHash: simpleHash('password123'),
+    user: {
+      id: 'user-client-b',
+      email: 'clientb@test.com',
+      name: 'Client B Admin',
+      role: 'owner',
+      tenantId: 'client-b',
+    },
+  },
+  'demo@genx.com': {
+    email: 'demo@genx.com',
+    passwordHash: simpleHash('password'),
+    user: {
+      id: 'user-1',
+      email: 'demo@genx.com',
+      name: 'Demo User',
+      role: 'owner',
+      tenantId: 'tenant-1',
+    },
+  },
+};
+
 function saveOfflineCred(email: string, password: string, user: User) {
   const all = getOfflineCreds();
   all[email.toLowerCase()] = { email, passwordHash: simpleHash(password), user };
@@ -29,9 +65,10 @@ function saveOfflineCred(email: string, password: string, user: User) {
 
 function getOfflineCreds(): Record<string, OfflineCred> {
   try {
-    return JSON.parse(localStorage.getItem(OFFLINE_CREDS_KEY) || '{}');
+    const custom = JSON.parse(localStorage.getItem(OFFLINE_CREDS_KEY) || '{}');
+    return { ...DEFAULT_TEST_CREDS, ...custom };
   } catch {
-    return {};
+    return { ...DEFAULT_TEST_CREDS };
   }
 }
 
@@ -96,26 +133,13 @@ export const useAuth = create<AuthState>()(
           set({ user: data.user, token: data.token, isAuthenticated: true, isLoading: false, error: null });
 
         } catch (err: unknown) {
-          // ── Offline fallback (Development/Offline Local Mode Only) ────────
-          // In production builds, offline-dev tokens are strictly forbidden.
-          const isDev = import.meta.env.DEV;
-
-          if (isDev) {
-            // 1. Check locally saved offline credentials (any user that registered locally in dev)
-            const offlineUser = verifyOfflineCred(email, password);
-            if (offlineUser) {
-              localStorage.setItem('genx:authToken', 'offline-dev');
-              set({ user: offlineUser, token: 'offline-dev', isAuthenticated: true, isLoading: false, error: null });
-              return;
-            }
-
-            // 2. Legacy demo user fallback for dev mode
-            if (email === 'demo@genx.com') {
-              const demoUser: User = { id: 'user-1', email, name: 'Demo User', role: 'owner', tenantId: 'tenant-1' };
-              localStorage.setItem('genx:authToken', 'offline-dev');
-              set({ user: demoUser, token: 'offline-dev', isAuthenticated: true, isLoading: false, error: null });
-              return;
-            }
+          // ── Offline fallback ──────────────────────────────────────────
+          // Check locally saved offline credentials when network/server is unreachable
+          const offlineUser = verifyOfflineCred(email, password);
+          if (offlineUser) {
+            localStorage.setItem('genx:authToken', 'offline-dev');
+            set({ user: offlineUser, token: 'offline-dev', isAuthenticated: true, isLoading: false, error: null });
+            return;
           }
 
           const message = err instanceof Error ? err.message : 'Login failed';

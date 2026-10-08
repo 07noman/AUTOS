@@ -13,6 +13,10 @@ export interface SyncChange {
   entity_id: string;
   operation: 'create' | 'update' | 'delete';
   payload: Record<string, unknown>;
+  idempotency_key?: string;
+  device_id?: string;
+  version?: number;
+  sequence_number?: number;
   client_timestamp: number;
 }
 
@@ -22,9 +26,13 @@ export interface OutboxEntry {
   entity_type: string;
   entity_id: string;
   operation: 'create' | 'update' | 'delete';
-  payload: string;
+  payload: string | Record<string, unknown>;
   status: 'pending' | 'synced' | 'failed';
   attempts: number;
+  device_id?: string;
+  idempotency_key?: string;
+  version?: number;
+  sequence_number?: number;
   created_at: number;
 }
 

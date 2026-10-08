@@ -6,6 +6,7 @@ import { Dashboard } from './features/dashboard/Dashboard';
 import { POS } from './features/pos/POS';
 import { AdvancedPOS } from './features/pos/AdvancedPOS';
 import { Products } from './features/products/Products';
+import { Customers } from './features/customers/Customers';
 import { SalesReport } from './features/reports/SalesReport';
 import { LoginPage } from './features/auth/LoginPage';
 import { ModuleSelector } from './features/module-selector/ModuleSelector';
@@ -122,7 +123,7 @@ function App() {
         <Route path="pos/advanced" element={<AdvancedPOS />} />
         <Route path="dashboard" element={<Dashboard />} />
         <Route path="products" element={<Products />} />
-        <Route path="customers" element={<div className="p-6 text-text-secondary">Customers — coming soon</div>} />
+        <Route path="customers" element={<Customers />} />
         <Route path="reports" element={<SalesReport />} />
         {/* If in auto care mode, /settings redirects to /auto-care/settings */}
         <Route
