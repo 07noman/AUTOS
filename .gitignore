@@ -4,8 +4,9 @@ dist/
 build/
 out/
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
+
 *.db
 *.sqlite
 *.sqlite3

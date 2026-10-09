@@ -134,6 +134,98 @@ export async function authRoutes(server: FastifyInstance) {
       }
 
       const { email, password } = parsed.data;
+      const lowerEmail = email.toLowerCase().trim();
+
+      // ── Supabase Auth Verification ──────────────────────────
+      const supabaseUrl = process.env.SUPABASE_URL;
+      const supabaseKey = process.env.SUPABASE_ANON_KEY;
+
+      if (supabaseUrl && supabaseKey) {
+        try {
+          const sbRes = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=password`, {
+          method: 'POST',
+          headers: {
+            apikey: supabaseKey,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ email: lowerEmail, password }),
+        });
+
+        if (sbRes.ok) {
+          const sbData = (await sbRes.json()) as any;
+          if (sbData.user) {
+            const sbUser = sbData.user;
+            let [dbUser] = await db
+              .select()
+              .from(users)
+              .where(eq(users.email, lowerEmail))
+              .limit(1);
+
+            let tenantId: string;
+            if (!dbUser) {
+              const tenantCode = `store-${sbUser.id.slice(0, 8)}`;
+              let [tenant] = await db
+                .select()
+                .from(tenants)
+                .where(eq(tenants.code, tenantCode))
+                .limit(1);
+
+              if (!tenant) {
+                [tenant] = await db
+                  .insert(tenants)
+                  .values({
+                    name: `${sbUser.user_metadata?.store_name || lowerEmail.split('@')[0]}'s Store`,
+                    code: tenantCode,
+                    businessType: 'retail',
+                    email: lowerEmail,
+                  })
+                  .returning();
+              }
+              tenantId = tenant.id;
+
+              const passwordHash = await bcrypt.hash(password, 10);
+              [dbUser] = await db
+                .insert(users)
+                .values({
+                  id: sbUser.id,
+                  tenantId: tenant.id,
+                  email: lowerEmail,
+                  passwordHash,
+                  name: sbUser.user_metadata?.full_name || sbUser.user_metadata?.name || lowerEmail.split('@')[0],
+                  role: 'owner',
+                  isActive: 1,
+                })
+                .returning();
+            } else {
+              tenantId = dbUser.tenantId;
+            }
+
+            const token = await reply.jwtSign(
+              {
+                sub: dbUser.id,
+                email: dbUser.email,
+                tenant_id: tenantId,
+                role: dbUser.role,
+              },
+              { expiresIn: '24h' },
+            );
+
+            return reply.send({
+              user: {
+                id: dbUser.id,
+                email: dbUser.email,
+                name: dbUser.name,
+                role: dbUser.role,
+                tenantId,
+              },
+              token,
+            });
+          }
+        }
+      } catch {
+        // Continue to local database query if Supabase check fails
+      }
+    }
 
       // Query database for user
       const [user] = await db

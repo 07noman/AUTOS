@@ -99,8 +99,9 @@ export function LoginPage() {
       setLoading(true);
       await login(loginData.email, loginData.password);
       redirectAfterAuth();
-    } catch {
-      setError('Unable to sign in. Please check your credentials.');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Unable to sign in. Please check your credentials.';
+      setError(msg);
     } finally {
       setLoading(false);
     }

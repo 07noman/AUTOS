@@ -102,6 +102,8 @@ interface AuthState {
 }
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
 export const useAuth = create<AuthState>()(
   persist(
@@ -114,86 +116,194 @@ export const useAuth = create<AuthState>()(
 
       login: async (email: string, password: string) => {
         set({ isLoading: true, error: null });
+        const trimmedEmail = email.trim().toLowerCase();
 
-        try {
-          const res = await fetch(`${API_URL}/api/v1/auth/login`, {
+        // ── 1. Direct Supabase Auth Attempt ─────────────────────────────────────────
+        if (SUPABASE_URL && SUPABASE_ANON_KEY) {
+          try {
+            const sbRes = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, password }),
-            signal: AbortSignal.timeout(5000),
+            headers: {
+              apikey: SUPABASE_ANON_KEY,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ email: trimmedEmail, password }),
+            signal: AbortSignal.timeout(6000),
           });
 
-          if (!res.ok) {
-            const body = (await res.json().catch(() => ({}))) as { error?: string };
-            throw new Error(body.error || `Login failed (${res.status})`);
-          }
+          const sbData = (await sbRes.json().catch(() => ({}))) as any;
 
-          const data = (await res.json()) as { user: User; token: string };
-          localStorage.setItem('genx:authToken', data.token);
-          set({ user: data.user, token: data.token, isAuthenticated: true, isLoading: false, error: null });
+          if (sbRes.ok && sbData.access_token && sbData.user) {
+            const meta = sbData.user.user_metadata || {};
+            // Each Supabase user gets their own isolated space/tenant
+            const tenantId = meta.tenant_id || sbData.user.id;
+            const user: User = {
+              id: sbData.user.id,
+              email: sbData.user.email || trimmedEmail,
+              name: meta.full_name || meta.name || trimmedEmail.split('@')[0],
+              role: (meta.role as User['role']) || 'owner',
+              tenantId,
+            };
 
-        } catch (err: unknown) {
-          // ── Offline fallback ──────────────────────────────────────────
-          // Check locally saved offline credentials when network/server is unreachable
-          const offlineUser = verifyOfflineCred(email, password);
-          if (offlineUser) {
-            localStorage.setItem('genx:authToken', 'offline-dev');
-            set({ user: offlineUser, token: 'offline-dev', isAuthenticated: true, isLoading: false, error: null });
+            localStorage.setItem('genx:authToken', sbData.access_token);
+            saveOfflineCred(trimmedEmail, password, user);
+            set({
+              user,
+              token: sbData.access_token,
+              isAuthenticated: true,
+              isLoading: false,
+              error: null,
+            });
             return;
           }
 
-          const message = err instanceof Error ? err.message : 'Login failed';
-          set({ isLoading: false, error: message, isAuthenticated: false });
-          throw err;
-        }
-      },
+          // Handle known Supabase Auth errors
+          if (sbData.error_code === 'invalid_credentials' || sbData.msg === 'Invalid login credentials') {
+            const offlineUser = verifyOfflineCred(trimmedEmail, password);
+            if (offlineUser) {
+              localStorage.setItem('genx:authToken', 'offline-dev');
+              set({ user: offlineUser, token: 'offline-dev', isAuthenticated: true, isLoading: false, error: null });
+              return;
+            }
+            throw new Error('Invalid email or password');
+          }
 
-      registerStore: async (inputData) => {
-        set({ isLoading: true, error: null });
+          if (sbData.error_code === 'email_not_confirmed' || sbData.msg?.includes('Email not confirmed')) {
+            throw new Error('Email is not confirmed. Please click "Confirm User" in Supabase dashboard or check your confirmation email.');
+          }
+        } catch (err: unknown) {
+          const errMsg = err instanceof Error ? err.message : '';
+          if (errMsg === 'Invalid email or password' || errMsg.includes('Email is not confirmed')) {
+            set({ isLoading: false, error: errMsg, isAuthenticated: false });
+            throw err;
+          }
+          // If Supabase was unreachable or timed out, fall through to local API / offline fallback
+        }
+      }
+
+      // ── 2. Local API Server Fallback ──────────────────────────────────────────
+      try {
+        const res = await fetch(`${API_URL}/api/v1/auth/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: trimmedEmail, password }),
+          signal: AbortSignal.timeout(3000),
+        });
+
+        if (res.ok) {
+          const data = (await res.json()) as { user: User; token: string };
+          localStorage.setItem('genx:authToken', data.token);
+          saveOfflineCred(trimmedEmail, password, data.user);
+          set({ user: data.user, token: data.token, isAuthenticated: true, isLoading: false, error: null });
+          return;
+        }
+      } catch {
+        // Local API server not reachable
+      }
+
+      // ── 3. Offline Cache Fallback ─────────────────────────────────────────────
+      const offlineUser = verifyOfflineCred(trimmedEmail, password);
+      if (offlineUser) {
+        localStorage.setItem('genx:authToken', 'offline-dev');
+        set({ user: offlineUser, token: 'offline-dev', isAuthenticated: true, isLoading: false, error: null });
+        return;
+      }
+
+      const message = 'Login failed. Invalid email/password or server unreachable.';
+      set({ isLoading: false, error: message, isAuthenticated: false });
+      throw new Error(message);
+    },
+
+    registerStore: async (inputData) => {
+      set({ isLoading: true, error: null });
+      const trimmedEmail = inputData.email.trim().toLowerCase();
+      const tenantId = `tenant-${(inputData.storeCode || inputData.storeName).toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
+
+      // ── 1. Create User in Supabase Auth ──────────────────────────────────────
+      if (SUPABASE_URL && SUPABASE_ANON_KEY) {
+        try {
+          const sbRes = await fetch(`${SUPABASE_URL}/auth/v1/signup`, {
+            method: 'POST',
+            headers: {
+              apikey: SUPABASE_ANON_KEY,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              email: trimmedEmail,
+              password: inputData.password,
+              data: {
+                name: inputData.name,
+                store_name: inputData.storeName,
+                store_code: inputData.storeCode,
+                tenant_id: tenantId,
+                role: 'owner',
+                phone: inputData.phone,
+              },
+            }),
+            signal: AbortSignal.timeout(6000),
+          });
+
+          const sbData = (await sbRes.json().catch(() => ({}))) as any;
+
+          if (sbRes.ok && sbData.user) {
+            const user: User = {
+              id: sbData.user.id,
+              email: sbData.user.email || trimmedEmail,
+              name: inputData.name,
+              role: 'owner',
+              tenantId,
+            };
+
+            const token = sbData.access_token || 'supabase-registered';
+            localStorage.setItem('genx:authToken', token);
+            saveOfflineCred(trimmedEmail, inputData.password, user);
+            set({ user, token, isAuthenticated: true, isLoading: false, error: null });
+
+            // Notify local API server in background if reachable
+            fetch(`${API_URL}/api/v1/auth/register`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(inputData),
+            }).catch(() => {});
+
+            return;
+          }
+        } catch {
+          // If Supabase direct signup fails, fallback to local API or offline
+        }
+      }
+
+      // ── 2. Local API Register Fallback ────────────────────────────────────────
         try {
           const res = await fetch(`${API_URL}/api/v1/auth/register`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(inputData),
+            signal: AbortSignal.timeout(4000),
           });
 
-          if (!res.ok) {
-            const body = (await res.json().catch(() => ({}))) as { error?: string };
-            throw new Error(body.error || `Registration failed (${res.status})`);
-          }
-
-          const data = (await res.json()) as { user: User; token: string };
-          localStorage.setItem('genx:authToken', data.token);
-          // Also save offline creds for dev offline support
-          saveOfflineCred(inputData.email, inputData.password, data.user);
-          set({ user: data.user, token: data.token, isAuthenticated: true, isLoading: false, error: null });
-
-        } catch (err: unknown) {
-          // ── Offline registration fallback (Development Only) ────────────
-          const isDev = import.meta.env.DEV;
-          const isNetworkError = err instanceof Error &&
-            (err.message.includes('Failed to fetch') || err.message.includes('fetch') || err.message.includes('NetworkError'));
-
-          if (isDev && isNetworkError) {
-            const tenantId = `tenant-${(inputData.storeCode || inputData.storeName).toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
-            const offlineUser: User = {
-              id: crypto.randomUUID(),
-              email: inputData.email,
-              name: inputData.name,
-              role: 'owner',
-              tenantId,
-            };
-            // Save credentials locally so login works in dev
-            saveOfflineCred(inputData.email, inputData.password, offlineUser);
-            localStorage.setItem('genx:authToken', 'offline-dev');
-            set({ user: offlineUser, token: 'offline-dev', isAuthenticated: true, isLoading: false, error: null });
+          if (res.ok) {
+            const data = (await res.json()) as { user: User; token: string };
+            localStorage.setItem('genx:authToken', data.token);
+            saveOfflineCred(trimmedEmail, inputData.password, data.user);
+            set({ user: data.user, token: data.token, isAuthenticated: true, isLoading: false, error: null });
             return;
           }
-
-          const message = err instanceof Error ? err.message : 'Registration failed';
-          set({ isLoading: false, error: message, isAuthenticated: false });
-          throw err;
+        } catch {
+          // Fallback to offline creation
         }
+
+        // ── 3. Offline / Dev Fallback ─────────────────────────────────────────────
+        const offlineUser: User = {
+          id: crypto.randomUUID(),
+          email: trimmedEmail,
+          name: inputData.name,
+          role: 'owner',
+          tenantId,
+        };
+        saveOfflineCred(trimmedEmail, inputData.password, offlineUser);
+        localStorage.setItem('genx:authToken', 'offline-dev');
+        set({ user: offlineUser, token: 'offline-dev', isAuthenticated: true, isLoading: false, error: null });
       },
 
       logout: () => {
