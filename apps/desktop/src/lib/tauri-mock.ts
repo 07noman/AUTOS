@@ -412,6 +412,25 @@ export function setupTauriBrowserMock(): void {
           return [1, 1];
         }
 
+        // ── auto_care_invoices INSERT ──────────────────────────────────────
+        if (query.startsWith('INSERT INTO auto_care_invoices')) {
+          const invoices = getStorage<any[]>('auto_care_invoices', []);
+          const [
+            id, tenant_id, invoice_number, job_id, job_number, customer_id, customer_name,
+            vehicle_summary, items, subtotal, discount, tax, total, payment_method,
+            status, notes, created_at, updated_at
+          ] = values;
+          invoices.push({
+            id, tenant_id, invoice_number, job_id, job_number, customer_id, customer_name,
+            vehicle_summary,
+            items: typeof items === 'string' ? items : JSON.stringify(items),
+            subtotal, discount, tax, total, payment_method, status, notes,
+            created_at, updated_at
+          });
+          setStorage('auto_care_invoices', invoices);
+          return [1, 1];
+        }
+
         return [0, 0];
       }
 
@@ -599,6 +618,25 @@ export function setupTauriBrowserMock(): void {
           return customers
             .filter((c) => !tenantId || c.tenant_id === tenantId)
             .sort((a, b) => a.name.localeCompare(b.name));
+        }
+
+        // ── auto_care_invoices SELECT ──────────────────────────────────────
+        if (query.includes('FROM auto_care_invoices')) {
+          const invoices = getStorage<any[]>('auto_care_invoices', []);
+          if (query.includes('COUNT(*)')) {
+            const tenantId = values[0];
+            const count = invoices.filter((i) => !tenantId || i.tenant_id === tenantId).length;
+            return [{ count }];
+          }
+          if (query.includes('WHERE id = ?')) {
+            const [id, tenantId] = values;
+            const item = invoices.find((i) => i.id === id && (!tenantId || i.tenant_id === tenantId));
+            return item ? [item] : [];
+          }
+          const tenantId = values[0];
+          return invoices
+            .filter((i) => !tenantId || i.tenant_id === tenantId)
+            .sort((a, b) => b.created_at - a.created_at);
         }
 
         return [];

@@ -126,47 +126,86 @@ export async function initializeAutoCareSchema(): Promise<void> {
 // ─── Mappers ─────────────────────────────────────────────────────────────────
 
 function mapJob(r: any): ServiceJob {
+  if (!r) return {} as ServiceJob;
   return {
-    id: r.id, tenantId: r.tenant_id, jobNumber: r.job_number,
-    customerId: r.customer_id, customerName: r.customer_name,
-    vehicleId: r.vehicle_id, vehicleSummary: r.vehicle_summary,
-    status: r.status, priority: r.priority,
-    mechanicId: r.mechanic_id, mechanicName: r.mechanic_name,
-    estimatedHours: r.estimated_hours, actualHours: r.actual_hours,
-    notes: r.notes, startedAt: r.started_at, completedAt: r.completed_at,
-    createdAt: r.created_at, updatedAt: r.updated_at,
+    id: r.id || '',
+    tenantId: r.tenant_id || '',
+    jobNumber: r.job_number || '',
+    customerId: r.customer_id || undefined,
+    customerName: r.customer_name || '',
+    vehicleId: r.vehicle_id || undefined,
+    vehicleSummary: r.vehicle_summary || '',
+    status: r.status || 'pending',
+    priority: r.priority || 'normal',
+    mechanicId: r.mechanic_id || undefined,
+    mechanicName: r.mechanic_name || undefined,
+    estimatedHours: r.estimated_hours != null ? Number(r.estimated_hours) : undefined,
+    actualHours: r.actual_hours != null ? Number(r.actual_hours) : undefined,
+    notes: r.notes || undefined,
+    startedAt: r.started_at ? Number(r.started_at) : undefined,
+    completedAt: r.completed_at ? Number(r.completed_at) : undefined,
+    createdAt: Number(r.created_at || Date.now()),
+    updatedAt: Number(r.updated_at || Date.now()),
   };
 }
 
 function mapService(r: any): AutoCareService {
+  if (!r) return {} as AutoCareService;
   return {
-    id: r.id, tenantId: r.tenant_id, name: r.name, description: r.description,
-    laborRate: r.labor_rate, estimatedHours: r.estimated_hours,
-    category: r.category, isActive: r.is_active === 1,
-    createdAt: r.created_at, updatedAt: r.updated_at,
+    id: r.id || '',
+    tenantId: r.tenant_id || '',
+    name: r.name || '',
+    description: r.description || undefined,
+    laborRate: Number(r.labor_rate || 0),
+    estimatedHours: Number(r.estimated_hours || 0),
+    category: r.category || 'general',
+    isActive: r.is_active === 1,
+    createdAt: Number(r.created_at || Date.now()),
+    updatedAt: Number(r.updated_at || Date.now()),
   };
 }
 
 function mapVehicle(r: any): Vehicle {
+  if (!r) return {} as Vehicle;
   return {
-    id: r.id, tenantId: r.tenant_id, customerId: r.customer_id,
-    customerName: r.customer_name, make: r.make, model: r.model,
-    year: r.year, licensePlate: r.license_plate, vin: r.vin,
-    color: r.color, mileage: r.mileage, notes: r.notes,
-    createdAt: r.created_at, updatedAt: r.updated_at,
+    id: r.id || '',
+    tenantId: r.tenant_id || '',
+    customerId: r.customer_id || undefined,
+    customerName: r.customer_name || undefined,
+    make: r.make || '',
+    model: r.model || '',
+    year: Number(r.year || 0),
+    licensePlate: r.license_plate || '',
+    vin: r.vin || undefined,
+    color: r.color || undefined,
+    mileage: r.mileage != null ? Number(r.mileage) : undefined,
+    notes: r.notes || undefined,
+    createdAt: Number(r.created_at || Date.now()),
+    updatedAt: Number(r.updated_at || Date.now()),
   };
 }
 
 function mapInvoice(r: any): AutoCareInvoice {
+  if (!r) return {} as AutoCareInvoice;
   return {
-    id: r.id, tenantId: r.tenant_id, invoiceNumber: r.invoice_number,
-    jobId: r.job_id, jobNumber: r.job_number,
-    customerId: r.customer_id, customerName: r.customer_name,
-    vehicleSummary: r.vehicle_summary,
+    id: r.id || '',
+    tenantId: r.tenant_id || '',
+    invoiceNumber: r.invoice_number || '',
+    jobId: r.job_id || undefined,
+    jobNumber: r.job_number || undefined,
+    customerId: r.customer_id || undefined,
+    customerName: r.customer_name || '',
+    vehicleSummary: r.vehicle_summary || undefined,
     items: typeof r.items === 'string' ? JSON.parse(r.items) : (r.items || []),
-    subtotal: r.subtotal, discount: r.discount, tax: r.tax, total: r.total,
-    paymentMethod: r.payment_method, status: r.status, notes: r.notes,
-    createdAt: r.created_at, updatedAt: r.updated_at,
+    subtotal: Number(r.subtotal || 0),
+    discount: Number(r.discount || 0),
+    tax: Number(r.tax || 0),
+    total: Number(r.total || 0),
+    paymentMethod: r.payment_method || 'cash',
+    status: r.status || 'paid',
+    notes: r.notes || undefined,
+    createdAt: Number(r.created_at || Date.now()),
+    updatedAt: Number(r.updated_at || Date.now()),
   };
 }
 
@@ -201,22 +240,23 @@ export interface POSOrder {
 }
 
 function mapPOSOrder(r: any): POSOrder {
+  if (!r) return {} as POSOrder;
   return {
-    id: r.id,
-    tenantId: r.tenant_id,
-    orderNumber: Number(r.order_number),
-    status: r.status as POSOrderStatus,
+    id: r.id || '',
+    tenantId: r.tenant_id || '',
+    orderNumber: Number(r.order_number || 0),
+    status: (r.status as POSOrderStatus) || 'ONGOING',
     customerName: r.customer_name ?? undefined,
     customerId: r.customer_id ?? undefined,
     paymentMethod: r.payment_method ?? undefined,
-    subtotal: Number(r.subtotal),
-    tax: Number(r.tax),
-    total: Number(r.total),
+    subtotal: Number(r.subtotal || 0),
+    tax: Number(r.tax || 0),
+    total: Number(r.total || 0),
     paidAmount: r.paid_amount != null ? Number(r.paid_amount) : undefined,
     items: typeof r.items === 'string' ? JSON.parse(r.items) : (r.items || []),
     notes: r.notes ?? undefined,
-    createdAt: Number(r.created_at),
-    updatedAt: Number(r.updated_at),
+    createdAt: Number(r.created_at || Date.now()),
+    updatedAt: Number(r.updated_at || Date.now()),
   };
 }
 
@@ -378,11 +418,13 @@ export const posOrderRepo = {
           'SELECT * FROM pos_orders WHERE id = ? AND tenant_id = ?',
           [input.existingOrderId, tenantId]
         );
-        if (rows.length > 0) {
+        if (rows.length > 0 && rows[0]) {
           finalOrder = mapPOSOrder(rows[0]);
         }
-      } else {
-        // 3. Create new PAID order
+      }
+
+      // 3. If no existing order or not found, create new PAID order
+      if (!finalOrder) {
         const id = crypto.randomUUID();
         const maxRows = await tx.select<any[]>(
           'SELECT COALESCE(MAX(order_number), 0) as max_num FROM pos_orders WHERE tenant_id = ?',
@@ -559,8 +601,30 @@ export const vehicleRepo = {
       `INSERT INTO vehicles (id, tenant_id, customer_id, customer_name, make, model, year, license_plate, vin, color, mileage, notes, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [id, v.tenantId, v.customerId||null, v.customerName||null, v.make, v.model, v.year, v.licensePlate, v.vin||null, v.color||null, v.mileage||null, v.notes||null, now, now]
     );
-    const rows = await db.select<any[]>('SELECT * FROM vehicles WHERE id = ? AND tenant_id = ?', [id, v.tenantId]);
-    return mapVehicle(rows[0]);
+    try {
+      const rows = await db.select<any[]>('SELECT * FROM vehicles WHERE id = ? AND tenant_id = ?', [id, v.tenantId]);
+      if (rows && rows[0]) {
+        return mapVehicle(rows[0]);
+      }
+    } catch {
+      // fallback
+    }
+    return {
+      id,
+      tenantId: v.tenantId,
+      customerId: v.customerId,
+      customerName: v.customerName,
+      make: v.make,
+      model: v.model,
+      year: v.year,
+      licensePlate: v.licensePlate,
+      vin: v.vin,
+      color: v.color,
+      mileage: v.mileage,
+      notes: v.notes,
+      createdAt: now,
+      updatedAt: now,
+    };
   },
 };
 
@@ -577,8 +641,34 @@ export const invoiceRepo = {
        JSON.stringify(inv.items), inv.subtotal, inv.discount, inv.tax, inv.total,
        inv.paymentMethod, inv.status, inv.notes||null, now, now]
     );
-    const rows = await db.select<any[]>('SELECT * FROM auto_care_invoices WHERE id = ? AND tenant_id = ?', [id, inv.tenantId]);
-    return mapInvoice(rows[0]);
+    try {
+      const rows = await db.select<any[]>('SELECT * FROM auto_care_invoices WHERE id = ? AND tenant_id = ?', [id, inv.tenantId]);
+      if (rows && rows[0]) {
+        return mapInvoice(rows[0]);
+      }
+    } catch {
+      // fallback
+    }
+    return {
+      id,
+      tenantId: inv.tenantId,
+      invoiceNumber: inv.invoiceNumber,
+      jobId: inv.jobId,
+      jobNumber: inv.jobNumber,
+      customerId: inv.customerId,
+      customerName: inv.customerName,
+      vehicleSummary: inv.vehicleSummary,
+      items: inv.items,
+      subtotal: inv.subtotal,
+      discount: inv.discount,
+      tax: inv.tax,
+      total: inv.total,
+      paymentMethod: inv.paymentMethod,
+      status: inv.status,
+      notes: inv.notes,
+      createdAt: now,
+      updatedAt: now,
+    };
   },
 
   async nextInvoiceNumber(tenantId = getCurrentTenantId()): Promise<string> {

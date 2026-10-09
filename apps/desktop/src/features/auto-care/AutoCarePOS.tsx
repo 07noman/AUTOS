@@ -512,13 +512,13 @@ export function AutoCarePOS() {
     // 1. Atomic SQLite Order creation + Stock deduction + Outbox event
     try {
       const paidOrder = await posOrderRepo.createPaid({
-        items: data.items.map((item) => ({
-          id: String(item.id),
-          name: item.name,
-          quantity: item.quantity,
-          price: item.price,
-          type: item.type || 'product',
-          subtotal: item.price * item.quantity,
+        items: (data.items || []).map((item) => ({
+          id: String(item?.id || (item as any)?.productId || crypto.randomUUID()),
+          name: item?.name || 'Item',
+          quantity: item?.quantity || 1,
+          price: item?.price || 0,
+          type: item?.type || 'product',
+          subtotal: (item?.price || 0) * (item?.quantity || 1),
         })),
         subtotal: data.subtotal,
         tax: data.tax,
@@ -531,7 +531,7 @@ export function AutoCarePOS() {
         tenantId: activeTenant,
       });
 
-      invoiceNumber = String(paidOrder.orderNumber).padStart(4, "0");
+      invoiceNumber = String(paidOrder?.orderNumber ?? 1).padStart(4, "0");
     } catch (e) {
       console.error("Atomic POS sale failed in SQLite:", e);
       throw e;
