@@ -1,0 +1,21 @@
+{
+  "name": "GENX Cloud POS",
+  "short_name": "GENX POS",
+  "description": "Multi-tenant Cloud Point of Sale — Auto Care, Retail, and more",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#1d1d23",
+  "theme_color": "#1d1d23",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

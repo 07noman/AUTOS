@@ -19,6 +19,9 @@
     },
     "typecheck": {
       "outputs": []
+    },
+    "preview": {
+      "cache": false
     }
   }
 }
