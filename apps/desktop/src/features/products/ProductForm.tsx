@@ -1,159 +1,439 @@
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
-import { Button } from '@genx/ui/Button';
-import { Input } from '@genx/ui/Input';
-import { Dialog, DialogHeader, DialogTitle, DialogContent, DialogFooter } from '@genx/ui/Dialog';
-import { useCreateProduct, useCategories, useCreateCategory } from '@/hooks/useProducts';
-import { getCurrentTenantId } from '@/lib/db';
-import { useState } from 'react';
-import { Plus } from 'lucide-react';
+"use client";
 
-const schema = z.object({
-  sku: z.string().min(1, 'SKU is required'),
-  name: z.string().min(2, 'Name must be at least 2 characters'),
-  categoryId: z.string().optional(),
-  costPrice: z.coerce.number().min(0),
-  sellingPrice: z.coerce.number().min(0),
-  stock: z.coerce.number().min(0).default(0),
-  minimumStock: z.coerce.number().min(0).default(0),
-});
+import React, { useState, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
+import { X } from "lucide-react";
+import "./OdooProductModal.css";
+import { useCreateProduct, useCategories } from "@/hooks/useProducts";
+import { getCurrentTenantId } from "@/lib/db";
 
-type FormData = z.infer<typeof schema>;
+const COLOR_PALETTE = [
+  "#ffffff",
+  "#ef4444",
+  "#f97316",
+  "#eab308",
+  "#22c55e",
+  "#06b6d4",
+  "#3b82f6",
+  "#8b5cf6",
+  "#ec4899",
+  "#64748b",
+];
 
-interface ProductFormProps {
+const TAX_OPTIONS = [
+  { id: "none", label: "No Tax (0%)", rate: 0 },
+  { id: "gst-17", label: "Sales Tax 17%", rate: 17 },
+  { id: "gst-18", label: "GST 18%", rate: 18 },
+  { id: "gst-5", label: "Reduced 5%", rate: 5 },
+  { id: "sts-8", label: "Services Tax 8%", rate: 8 },
+];
+
+export interface ProductFormProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onSaved?: () => void;
 }
 
-export function ProductForm({ open, onOpenChange }: ProductFormProps) {
+export function ProductForm({ open, onOpenChange, onSaved }: ProductFormProps) {
   const createProduct = useCreateProduct();
   const { data: categories = [] } = useCategories();
-  const createCategory = useCreateCategory();
-  const [newCatName, setNewCatName] = useState('');
-  const [showAddCat, setShowAddCat] = useState(false);
 
-  const {
-    register,
-    handleSubmit,
-    reset,
-    setValue,
-    formState: { errors, isSubmitting },
-  } = useForm<FormData>({ resolver: zodResolver(schema), defaultValues: { stock: 0, minimumStock: 0, categoryId: '' } });
+  // Form states matching screenshot
+  const [name, setName] = useState("");
+  const [barcode, setBarcode] = useState("");
+  const [trackInventory, setTrackInventory] = useState(true);
+  const [salesPrice, setSalesPrice] = useState("1.00");
+  const [costPrice, setCostPrice] = useState("0.00");
+  const [selectedTax, setSelectedTax] = useState("");
+  const [posCategory, setPosCategory] = useState("");
+  const [color, setColor] = useState("#ffffff");
+  const [imageDataUrl, setImageDataUrl] = useState<string | null>(null);
 
-  const onSubmit = async (data: FormData) => {
-    await createProduct.mutateAsync({
-      tenantId: getCurrentTenantId(),
-      sku: data.sku,
-      name: data.name,
-      categoryId: data.categoryId && data.categoryId !== '' ? data.categoryId : undefined,
-      costPrice: data.costPrice,
-      sellingPrice: data.sellingPrice,
-      stock: data.stock,
-      minimumStock: data.minimumStock,
-      status: 'active',
-    });
-    reset();
-    onOpenChange(false);
+  const [showColorPicker, setShowColorPicker] = useState(false);
+  const [errors, setErrors] = useState<{ name?: string; barcode?: string; salesPrice?: string }>({});
+  const [saving, setSaving] = useState(false);
+
+  const nameInputRef = useRef<HTMLInputElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (open) {
+      setTimeout(() => nameInputRef.current?.focus(), 80);
+      setErrors({});
+    }
+  }, [open]);
+
+  if (!open) return null;
+
+  const resetForm = () => {
+    setName("");
+    setBarcode("");
+    setTrackInventory(true);
+    setSalesPrice("1.00");
+    setCostPrice("0.00");
+    setSelectedTax("");
+    setPosCategory("");
+    setColor("#ffffff");
+    setImageDataUrl(null);
+    setErrors({});
   };
 
-  const handleCreateCategory = async () => {
-    if (!newCatName.trim()) return;
+  const handleImageFile = (file: File) => {
+    if (!file.type.startsWith("image/")) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      setImageDataUrl(e.target?.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const generateBarcode = () => {
+    // Generate standard EAN-13 style random barcode
+    const randomBarcode = "2" + Math.floor(10000000000 + Math.random() * 90000000000).toString();
+    setBarcode(randomBarcode);
+  };
+
+  const validate = () => {
+    const errs: typeof errors = {};
+    if (!name.trim()) errs.name = "Product name is required";
+    const priceNum = parseFloat(salesPrice);
+    if (isNaN(priceNum) || priceNum < 0) errs.salesPrice = "Valid sales price is required";
+    setErrors(errs);
+    return Object.keys(errs).length === 0;
+  };
+
+  const doSave = async (): Promise<boolean> => {
+    if (!validate()) return false;
+    setSaving(true);
     try {
-      const created = await createCategory.mutateAsync(newCatName.trim());
-      setValue('categoryId', created.id);
-      setNewCatName('');
-      setShowAddCat(false);
+      const tenantId = getCurrentTenantId();
+      const sku = barcode.trim() || `SKU-${Date.now().toString().slice(-6)}`;
+      const price = parseFloat(salesPrice) || 0;
+      const cost = parseFloat(costPrice) || 0;
+
+      await createProduct.mutateAsync({
+        tenantId,
+        sku,
+        name: name.trim(),
+        barcode: barcode.trim() || undefined,
+        categoryId: posCategory || undefined,
+        sellingPrice: price,
+        costPrice: cost,
+        stock: trackInventory ? 10 : 0,
+        minimumStock: trackInventory ? 2 : 0,
+        status: "active",
+        images: imageDataUrl ? [imageDataUrl] : undefined,
+        metadata: {
+          color: color || undefined,
+          tax: selectedTax || undefined,
+          trackInventory,
+        },
+      });
+
+      onSaved?.();
+      return true;
     } catch (err) {
-      console.error('Failed to create category:', err);
+      console.error("Save product failed:", err);
+      return false;
+    } finally {
+      setSaving(false);
     }
   };
 
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Add Product</DialogTitle>
-        </DialogHeader>
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <Input label="SKU / Internal Ref *" {...register('sku')} error={errors.sku?.message} />
-            <Input label="Product Name *" {...register('name')} error={errors.name?.message} />
-          </div>
+  const handleAddAndNew = async () => {
+    const success = await doSave();
+    if (success) {
+      resetForm();
+      nameInputRef.current?.focus();
+    }
+  };
 
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <label className="text-sm font-medium text-slate-700">Category</label>
-              <button
-                type="button"
-                onClick={() => setShowAddCat(!showAddCat)}
-                className="text-xs text-[#79556f] hover:underline flex items-center gap-1 font-medium"
-              >
-                <Plus className="h-3 w-3" />
-                {showAddCat ? 'Cancel' : 'New Category'}
-              </button>
+  const handleAddAndClose = async () => {
+    const success = await doSave();
+    if (success) {
+      resetForm();
+      onOpenChange(false);
+    }
+  };
+
+  const handleDiscard = () => {
+    resetForm();
+    onOpenChange(false);
+  };
+
+  const modal = (
+    <div
+      className="odoo-prod-overlay"
+      onClick={(e) => e.target === e.currentTarget && handleDiscard()}
+    >
+      <div className="odoo-prod-modal" role="dialog" aria-modal="true">
+        {/* Header */}
+        <div className="odoo-prod-header">
+          <span className="odoo-prod-title">New Product</span>
+          <button
+            type="button"
+            className="odoo-prod-close"
+            onClick={handleDiscard}
+            aria-label="Close"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="odoo-prod-body">
+          {/* Left: Input Fields */}
+          <div className="odoo-prod-fields">
+            {/* Product Name */}
+            <div className="odoo-prod-row">
+              <span className="odoo-prod-label">Product Name</span>
+              <div className="odoo-prod-control" style={{ flexDirection: "column", alignItems: "stretch" }}>
+                <input
+                  ref={nameInputRef}
+                  type="text"
+                  className={`odoo-prod-input ${errors.name ? "error" : ""}`}
+                  placeholder="e.g. Cheese Burger"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                />
+                {errors.name && <span className="odoo-prod-err">{errors.name}</span>}
+              </div>
             </div>
 
-            {showAddCat && (
-              <div className="flex gap-2 mb-2 p-2 bg-slate-50 rounded-lg border border-slate-200">
-                <input
-                  type="text"
-                  placeholder="New category name..."
-                  value={newCatName}
-                  onChange={(e) => setNewCatName(e.target.value)}
-                  className="flex-1 text-sm px-3 py-1.5 border border-slate-300 rounded-md focus:outline-none focus:border-[#79556f]"
-                />
-                <Button
-                  type="button"
-                  size="sm"
-                  onClick={handleCreateCategory}
-                  isLoading={createCategory.isPending}
-                  className="bg-[#79556f] text-white hover:bg-[#63435a]"
-                >
-                  Add
-                </Button>
+            {/* Barcode */}
+            <div className="odoo-prod-row">
+              <span className="odoo-prod-label">Barcode</span>
+              <div className="odoo-prod-control">
+                <div className="odoo-prod-barcode-wrap">
+                  <input
+                    type="text"
+                    className="odoo-prod-input"
+                    placeholder="e.g. 1234567890"
+                    value={barcode}
+                    onChange={(e) => setBarcode(e.target.value)}
+                  />
+                  <span
+                    className="odoo-prod-barcode-icon"
+                    title="Generate / Scan Barcode"
+                    onClick={generateBarcode}
+                  >
+                    {/* Barcode visual lines icon */}
+                    <svg width="22" height="15" viewBox="0 0 24 16" fill="currentColor">
+                      <rect x="0" y="0" width="2" height="16" />
+                      <rect x="3" y="0" width="1" height="16" />
+                      <rect x="5" y="0" width="3" height="16" />
+                      <rect x="9" y="0" width="1" height="16" />
+                      <rect x="11" y="0" width="2" height="16" />
+                      <rect x="14" y="0" width="1" height="16" />
+                      <rect x="16" y="0" width="3" height="16" />
+                      <rect x="20" y="0" width="1.5" height="16" />
+                      <rect x="22.5" y="0" width="1.5" height="16" />
+                    </svg>
+                  </span>
+                </div>
               </div>
-            )}
+            </div>
 
-            <select
-              {...register('categoryId')}
-              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#79556f]"
-            >
-              <option value="">No Category (Uncategorized)</option>
-              {categories.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
+            {/* Track Inventory */}
+            <div className="odoo-prod-row">
+              <span className="odoo-prod-label">
+                Track Inventory <span className="odoo-prod-help" title="Track inventory and stock alerts for this item">?</span>
+              </span>
+              <div className="odoo-prod-control">
+                <label className="odoo-prod-checkbox-wrap">
+                  <input
+                    type="checkbox"
+                    className="odoo-prod-checkbox"
+                    checked={trackInventory}
+                    onChange={(e) => setTrackInventory(e.target.checked)}
+                  />
+                </label>
+              </div>
+            </div>
+
+            {/* Sales Price */}
+            <div className="odoo-prod-row">
+              <span className="odoo-prod-label">
+                Sales Price <span className="odoo-prod-help" title="Customer sales price in PKR">?</span>
+              </span>
+              <div className="odoo-prod-control" style={{ flexDirection: "column", alignItems: "stretch" }}>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  className={`odoo-prod-input ${errors.salesPrice ? "error" : ""}`}
+                  placeholder="1.00"
+                  value={salesPrice}
+                  onChange={(e) => setSalesPrice(e.target.value)}
+                />
+                {errors.salesPrice && <span className="odoo-prod-err">{errors.salesPrice}</span>}
+              </div>
+            </div>
+
+            {/* Sales Taxes */}
+            <div className="odoo-prod-row">
+              <span className="odoo-prod-label">
+                Sales Taxes <span className="odoo-prod-help" title="Applicable sales taxes">?</span>
+              </span>
+              <div className="odoo-prod-control">
+                <select
+                  className="odoo-prod-select"
+                  value={selectedTax}
+                  onChange={(e) => setSelectedTax(e.target.value)}
+                >
+                  <option value="">Select tax...</option>
+                  {TAX_OPTIONS.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* POS Category */}
+            <div className="odoo-prod-row">
+              <span className="odoo-prod-label">
+                POS Category <span className="odoo-prod-help" title="Assign category to display in POS screen">?</span>
+              </span>
+              <div className="odoo-prod-control">
+                <select
+                  className="odoo-prod-select category-select"
+                  value={posCategory}
+                  onChange={(e) => setPosCategory(e.target.value)}
+                >
+                  <option value="">Select category...</option>
+                  {categories.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Color */}
+            <div className="odoo-prod-row">
+              <span className="odoo-prod-label">Color</span>
+              <div className="odoo-prod-control">
+                <div
+                  className="odoo-prod-color-circle"
+                  style={{ backgroundColor: color }}
+                  onClick={() => setShowColorPicker(!showColorPicker)}
+                  title="Choose card color"
+                >
+                  {showColorPicker && (
+                    <div
+                      className="odoo-prod-color-palette"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {COLOR_PALETTE.map((c) => (
+                        <div
+                          key={c}
+                          className="odoo-prod-color-swatch"
+                          style={{ backgroundColor: c }}
+                          onClick={() => {
+                            setColor(c);
+                            setShowColorPicker(false);
+                          }}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <Input label="Cost (PKR) *" type="number" step="0.01" {...register('costPrice')} error={errors.costPrice?.message} />
-            <Input
-              label="Sales Price (PKR) *"
-              type="number"
-              step="0.01"
-              {...register('sellingPrice')}
-              error={errors.sellingPrice?.message}
+          {/* Right: Camera Photo Box matching screenshot */}
+          <div
+            className="odoo-prod-photo-box"
+            onClick={() => imageInputRef.current?.click()}
+            title="Click to upload image"
+          >
+            {imageDataUrl ? (
+              <>
+                <img
+                  src={imageDataUrl}
+                  alt="Product preview"
+                  className="odoo-prod-photo-preview"
+                />
+                <button
+                  type="button"
+                  className="odoo-prod-photo-remove"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setImageDataUrl(null);
+                  }}
+                  title="Remove photo"
+                >
+                  ×
+                </button>
+              </>
+            ) : (
+              /* Camera + Plus SVG Icon from Screenshot */
+              <svg
+                className="odoo-prod-photo-svg-icon"
+                viewBox="0 0 72 72"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                {/* Camera body */}
+                <path d="M12 24h9l3-5h24l3 5h9a5 5 0 0 1 5 5v26a5 5 0 0 1-5 5H12a5 5 0 0 1-5-5V29a5 5 0 0 1 5-5z" />
+                {/* Camera Lens Circle */}
+                <circle cx="36" cy="40" r="11" />
+                {/* Plus circle badge */}
+                <circle cx="53" cy="46" r="10" fill="#cbd5e1" stroke="#ffffff" strokeWidth="2" />
+                <line x1="53" y1="41" x2="53" y2="51" stroke="#ffffff" strokeWidth="2.5" />
+                <line x1="48" y1="46" x2="58" y2="46" stroke="#ffffff" strokeWidth="2.5" />
+              </svg>
+            )}
+            <input
+              ref={imageInputRef}
+              type="file"
+              accept="image/*"
+              style={{ display: "none" }}
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) handleImageFile(f);
+              }}
             />
           </div>
+        </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <Input label="Initial Stock" type="number" {...register('stock')} />
-            <Input label="Min Stock Alert" type="number" {...register('minimumStock')} />
-          </div>
-
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" isLoading={isSubmitting} className="bg-[#79556f] text-white hover:bg-[#63435a]">
-              Save Product
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+        {/* Footer */}
+        <div className="odoo-prod-footer">
+          <button
+            type="button"
+            className="odoo-prod-btn-primary"
+            onClick={handleAddAndNew}
+            disabled={saving}
+          >
+            {saving ? "Adding..." : "Add & New"}
+          </button>
+          <button
+            type="button"
+            className="odoo-prod-btn-secondary"
+            onClick={handleAddAndClose}
+            disabled={saving}
+          >
+            Add & Close
+          </button>
+          <button
+            type="button"
+            className="odoo-prod-btn-discard"
+            onClick={handleDiscard}
+            disabled={saving}
+          >
+            Discard
+          </button>
+        </div>
+      </div>
+    </div>
   );
+
+  return typeof document !== "undefined" ? createPortal(modal, document.body) : null;
 }
