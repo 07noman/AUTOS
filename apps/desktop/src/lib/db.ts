@@ -65,24 +65,60 @@ export async function initializeDatabase(): Promise<void> {
 }
 
 // ─── Dynamic Tenant ID ────────────────────────────────────────────────────────
-// Reads the current logged-in user's tenantId dynamically at call time from the
-// auth store persisted in localStorage.
+// Reads the current logged-in user's tenantId dynamically at call time.
+// Sources (in priority order):
+//   1. Zustand persist store (genx-auth localStorage key) — set on every login
+//   2. Supabase auth session stored by Supabase client (sb-*-auth-token)
+//   3. Falls back to 'tenant-1' ONLY when truly unauthenticated (dev/local only)
+
+function _deriveTenantFromMeta(meta: Record<string, any>, userId: string): string {
+  if (meta?.tenant_id && typeof meta.tenant_id === 'string' && meta.tenant_id.trim()) {
+    return meta.tenant_id.trim();
+  }
+  if (meta?.store_code && typeof meta.store_code === 'string') {
+    return `tenant-${meta.store_code.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
+  }
+  return userId;
+}
+
 export function getCurrentTenantId(): string {
+  // 1. Check Zustand persisted auth state (most up-to-date after login)
   try {
     const raw = localStorage.getItem('genx-auth');
     if (raw) {
       const parsed = JSON.parse(raw) as { state?: { user?: { tenantId?: string } } };
       const tenantId = parsed?.state?.user?.tenantId;
-      if (tenantId) return tenantId;
+      if (tenantId && tenantId !== 'tenant-1') return tenantId;
     }
   } catch {
     // ignore parse errors
   }
-  return 'tenant-1'; // dev fallback only when unauthenticated
+
+  // 2. Check Supabase session keys written by the Supabase JS client (sb-*-auth-token)
+  try {
+    const sbKeys = Object.keys(localStorage).filter(
+      (k) => k.startsWith('sb-') && k.endsWith('-auth-token')
+    );
+    for (const key of sbKeys) {
+      const raw = localStorage.getItem(key);
+      if (!raw) continue;
+      const session = JSON.parse(raw);
+      const user = session?.user;
+      if (user?.id) {
+        return _deriveTenantFromMeta(user.user_metadata || {}, user.id);
+      }
+    }
+  } catch {
+    // ignore
+  }
+
+  // 3. Unauthenticated dev fallback — never reached in production for a logged-in user
+  return 'tenant-1';
 }
 
-// Backward-compatible accessor that resolves dynamically on property read
+// Backward-compatible alias
 export const TENANT_ID = 'tenant-1';
+
 
 // Product Repository
 export const productRepo = {

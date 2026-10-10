@@ -7,6 +7,9 @@ export function useCustomers(tenantId?: string) {
   return useQuery({
     queryKey: ['customers', effectiveTenantId],
     queryFn: () => customerRepo.findAll(effectiveTenantId),
+    staleTime: 0,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
   });
 }
 
@@ -16,6 +19,8 @@ export function useCustomer(id: string, tenantId?: string) {
     queryKey: ['customer', effectiveTenantId, id],
     queryFn: () => customerRepo.findById(effectiveTenantId, id),
     enabled: Boolean(id),
+    staleTime: 0,
+    refetchOnWindowFocus: true,
   });
 }
 

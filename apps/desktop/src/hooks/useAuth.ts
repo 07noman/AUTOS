@@ -24,6 +24,20 @@ interface AuthState {
   clearError: () => void;
 }
 
+// ── Derive a stable tenant_id from user metadata ─────────────────────────────
+// Priority: meta.tenant_id (set at registerStore) → deterministic from storeCode → user.id
+// This ALWAYS produces the same result on every device for the same user.
+function deriveTenantId(meta: Record<string, any>, userId: string): string {
+  if (meta?.tenant_id && typeof meta.tenant_id === 'string' && meta.tenant_id.trim()) {
+    return meta.tenant_id.trim();
+  }
+  if (meta?.store_code && typeof meta.store_code === 'string') {
+    return `tenant-${meta.store_code.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
+  }
+  // Last resort: user's Supabase UUID — consistent across all devices for same user
+  return userId;
+}
+
 export const useAuth = create<AuthState>()(
   persist(
     (set, get) => ({
@@ -58,20 +72,26 @@ export const useAuth = create<AuthState>()(
               localStorage.removeItem('genx:authToken');
               localStorage.removeItem('genx:offline-creds');
 
-              if (errMsg.includes('banned') || errMsg.includes('disabled') || (error as any).error_code === 'user_banned') {
+              if (
+                errMsg.includes('banned') ||
+                errMsg.includes('disabled') ||
+                (error as any).error_code === 'user_banned'
+              ) {
                 const message = 'This account has been banned by the administrator. Login denied.';
                 set({ user: null, token: null, isAuthenticated: false, isLoading: false, error: message });
                 throw new Error(message);
               }
 
               if (errMsg.includes('invalid login credentials') || errMsg.includes('invalid_grant')) {
-                const message = 'Invalid email or password. If this user was deleted, please create a new business account.';
+                const message =
+                  'Invalid email or password. If this user was deleted, please create a new business account.';
                 set({ user: null, token: null, isAuthenticated: false, isLoading: false, error: message });
                 throw new Error(message);
               }
 
               if (errMsg.includes('email not confirmed')) {
-                const message = 'Email is not confirmed. Please click "Confirm User" in Supabase dashboard or check your verification email.';
+                const message =
+                  'Email is not confirmed. Please click "Confirm User" in Supabase dashboard or check your verification email.';
                 set({ user: null, token: null, isAuthenticated: false, isLoading: false, error: message });
                 throw new Error(message);
               }
@@ -83,8 +103,18 @@ export const useAuth = create<AuthState>()(
 
             if (data?.user && data?.session) {
               const meta = data.user.user_metadata || {};
-              // Isolate each tenant by their configured store tenant_id or user id
-              const tenantId = meta.tenant_id || data.user.id;
+
+              // ── CRITICAL: derive tenant_id deterministically — same result on EVERY device ──
+              const tenantId = deriveTenantId(meta, data.user.id);
+
+              // If meta.tenant_id was missing (old accounts created before this fix),
+              // backfill it so ALL future logins on all devices get the same tenant_id.
+              if (!meta.tenant_id) {
+                supabase.auth
+                  .updateUser({ data: { ...meta, tenant_id: tenantId } })
+                  .catch(() => {});
+              }
+
               const user: User = {
                 id: data.user.id,
                 email: data.user.email || trimmedEmail,
@@ -104,18 +134,16 @@ export const useAuth = create<AuthState>()(
 
               // Ensure tenant row exists in Supabase tenants table
               Promise.resolve(
-                supabase
-                  .from('tenants')
-                  .upsert(
-                    {
-                      id: tenantId,
-                      name: meta.store_name || user.name,
-                      code: meta.store_code || tenantId,
-                      business_type: meta.business_type || 'general',
-                      email: user.email,
-                    },
-                    { onConflict: 'id' }
-                  )
+                supabase.from('tenants').upsert(
+                  {
+                    id: tenantId,
+                    name: meta.store_name || user.name,
+                    code: meta.store_code || tenantId,
+                    business_type: meta.business_type || 'general',
+                    email: user.email,
+                  },
+                  { onConflict: 'id' }
+                )
               ).catch(() => {});
 
               return;
@@ -134,7 +162,13 @@ export const useAuth = create<AuthState>()(
       registerStore: async (inputData) => {
         set({ isLoading: true, error: null });
         const trimmedEmail = inputData.email.trim().toLowerCase();
-        const tenantId = `tenant-${(inputData.storeCode || inputData.storeName).toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
+
+        // ── CRITICAL: same formula as deriveTenantId(store_code) above ──
+        // This guarantees login on any device produces the same tenantId.
+        const tenantId = `tenant-${inputData.storeCode
+          .trim()
+          .toLowerCase()
+          .replace(/[^a-z0-9]/g, '-')}`;
 
         if (!isSupabaseConfigured()) {
           const err = 'Supabase is not configured.';
@@ -149,8 +183,10 @@ export const useAuth = create<AuthState>()(
             options: {
               data: {
                 name: inputData.name,
+                full_name: inputData.name,
                 store_name: inputData.storeName,
-                store_code: inputData.storeCode,
+                store_code: inputData.storeCode.trim().toUpperCase(),
+                // ── Embed tenant_id in metadata so every device login gets the same value ──
                 tenant_id: tenantId,
                 role: 'owner',
                 phone: inputData.phone,
@@ -169,7 +205,7 @@ export const useAuth = create<AuthState>()(
             {
               id: tenantId,
               name: inputData.storeName,
-              code: inputData.storeCode,
+              code: inputData.storeCode.trim().toUpperCase(),
               business_type: inputData.businessType || 'general',
               email: trimmedEmail,
               phone: inputData.phone || null,
@@ -220,6 +256,16 @@ export const useAuth = create<AuthState>()(
             await get().logout();
             return false;
           }
+
+          // Re-sync tenantId in case metadata was updated after initial registration
+          const meta = data.user.user_metadata || {};
+          const tenantId = deriveTenantId(meta, data.user.id);
+          const currentUser = get().user;
+          if (currentUser && currentUser.tenantId !== tenantId) {
+            console.log('[auth] Syncing tenantId from Supabase metadata:', tenantId);
+            set({ user: { ...currentUser, tenantId } });
+          }
+
           return true;
         } catch {
           return true; // network transient error, allow offline

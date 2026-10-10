@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Product } from '@genx/types/domain/product';
 import { productRepo, outboxRepo, getCurrentTenantId } from '@/lib/db';
@@ -6,6 +7,49 @@ import { getDeviceId } from '@/lib/device';
 import { recordProductChange } from '@/lib/sync';
 import { putItem, putMany, getAllItems, OFFLINE_STORES } from '@/services/offlineDB';
 import { setStock } from '@/services/offlineInventory';
+import { supabase } from '@/lib/supabase';
+
+// ── Realtime subscription: invalidate queries when another device changes data ─
+// Call this once at app startup (e.g. in App.tsx or a layout component).
+// Returns an unsubscribe function.
+export function subscribeToRealtimeSync(tenantId: string, queryClient: ReturnType<typeof useQueryClient>) {
+  const channel = supabase
+    .channel(`realtime:tenant:${tenantId}`)
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'products', filter: `tenant_id=eq.${tenantId}` },
+      () => {
+        queryClient.invalidateQueries({ queryKey: ['products'] });
+      }
+    )
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'orders', filter: `tenant_id=eq.${tenantId}` },
+      () => {
+        queryClient.invalidateQueries({ queryKey: ['orders'] });
+        queryClient.invalidateQueries({ queryKey: ['sales'] });
+      }
+    )
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'customers', filter: `tenant_id=eq.${tenantId}` },
+      () => {
+        queryClient.invalidateQueries({ queryKey: ['customers'] });
+      }
+    )
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'receipt_settings', filter: `tenant_id=eq.${tenantId}` },
+      () => {
+        queryClient.invalidateQueries({ queryKey: ['receiptSettings'] });
+      }
+    )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
+}
 
 export function useProducts() {
   const tenantId = getCurrentTenantId();
@@ -27,7 +71,7 @@ export function useProducts() {
         console.warn('Failed to load products from repo, checking offline DB:', err);
       }
 
-      // Offline fallback: load from IndexedDB (still same tenant, cached earlier)
+      // Offline fallback: load from IndexedDB (same tenant, cached earlier)
       try {
         const offlineProducts = await getAllItems(OFFLINE_STORES.products);
         if (offlineProducts && offlineProducts.length > 0) {
@@ -39,7 +83,13 @@ export function useProducts() {
 
       return [];
     },
-    staleTime: 1000 * 30, // 30 seconds
+    // 0 staleTime = always fetch fresh from Supabase on mount.
+    // Data comes from cloud so it's always in sync across all devices.
+    staleTime: 0,
+    // Refetch when the window regains focus (user switches tabs/opens laptop)
+    refetchOnWindowFocus: true,
+    // Refetch when network reconnects
+    refetchOnReconnect: true,
   });
 }
 
@@ -57,7 +107,7 @@ export function useCreateProduct() {
         updatedAt: Date.now(),
       };
 
-      // Save to local SQLite database
+      // Save to Supabase (primary) + local SQLite (offline fallback)
       await productRepo.create(newProduct);
 
       // Save to offline IndexedDB
@@ -176,7 +226,8 @@ export function useCategories() {
         return [];
       }
     },
-    staleTime: 1000 * 60,
+    staleTime: 0,
+    refetchOnWindowFocus: true,
   });
 }
 
@@ -261,7 +312,7 @@ export function useAdjustStock() {
         throw new Error(`Cannot reduce stock below 0. Current stock is ${product.stock}`);
       }
 
-      // Update product table stock
+      // Update product table stock (Supabase + local)
       await productRepo.updateStock(tenantId, productId, quantityDelta);
 
       // Record immutable stock movement ledger
@@ -318,4 +369,15 @@ export function useAdjustStock() {
   });
 }
 
+// Hook to activate Supabase Realtime for the current tenant
+// Use this in App.tsx or a top-level layout component
+export function useRealtimeSync() {
+  const queryClient = useQueryClient();
+  const tenantId = getCurrentTenantId();
 
+  useEffect(() => {
+    if (!tenantId || tenantId === 'tenant-1') return;
+    const unsub = subscribeToRealtimeSync(tenantId, queryClient);
+    return unsub;
+  }, [tenantId, queryClient]);
+}

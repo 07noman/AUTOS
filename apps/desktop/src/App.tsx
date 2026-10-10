@@ -23,6 +23,7 @@ import { POSOrdersPage } from './features/auto-care/POSOrdersPage';
 import { SettingsPage } from './features/settings/SettingsPage';
 import { ReceiptBrandingPage } from './features/settings/ReceiptBrandingPage';
 import { useAuth } from './hooks/useAuth';
+import { useRealtimeSync } from './hooks/useProducts';
 import { initializeDatabase } from './lib/db';
 import { initializeAutoCareSchema } from './lib/auto-care-db';
 import { initializeSync } from './lib/sync';
@@ -31,6 +32,9 @@ function App() {
   const { isAuthenticated, validateSession } = useAuth();
   const [dbReady, setDbReady] = useState(false);
   const location = useLocation();
+
+  // Supabase Realtime: push data changes across all open devices in real time
+  useRealtimeSync();
 
   useEffect(() => {
     void (async () => {
@@ -57,6 +61,7 @@ function App() {
       initializeSync();
     }
   }, [isAuthenticated, dbReady]);
+
 
   if (!dbReady) {
     return (
