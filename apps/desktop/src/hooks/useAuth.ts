@@ -1,85 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { User } from '@genx/types';
-
-// ─── Local Offline Credential Store ──────────────────────────────────────────
-// When the API server is unreachable, we store credentials locally so the user
-// can log back in after logout without needing the server.
-const OFFLINE_CREDS_KEY = 'genx:offline-creds';
-
-interface OfflineCred {
-  email: string;
-  passwordHash: string; // simple obfuscation — NOT real security, just prevents plaintext
-  user: User;
-}
-
-function simpleHash(str: string): string {
-  let h = 0;
-  for (let i = 0; i < str.length; i++) {
-    h = (Math.imul(31, h) + str.charCodeAt(i)) >>> 0;
-  }
-  return h.toString(16);
-}
-
-const DEFAULT_TEST_CREDS: Record<string, OfflineCred> = {
-  'clienta@test.com': {
-    email: 'clienta@test.com',
-    passwordHash: simpleHash('password123'),
-    user: {
-      id: 'user-client-a',
-      email: 'clienta@test.com',
-      name: 'Client A Admin',
-      role: 'owner',
-      tenantId: 'client-a',
-    },
-  },
-  'clientb@test.com': {
-    email: 'clientb@test.com',
-    passwordHash: simpleHash('password123'),
-    user: {
-      id: 'user-client-b',
-      email: 'clientb@test.com',
-      name: 'Client B Admin',
-      role: 'owner',
-      tenantId: 'client-b',
-    },
-  },
-  'demo@genx.com': {
-    email: 'demo@genx.com',
-    passwordHash: simpleHash('password'),
-    user: {
-      id: 'user-1',
-      email: 'demo@genx.com',
-      name: 'Demo User',
-      role: 'owner',
-      tenantId: 'tenant-1',
-    },
-  },
-};
-
-function saveOfflineCred(email: string, password: string, user: User) {
-  const all = getOfflineCreds();
-  all[email.toLowerCase()] = { email, passwordHash: simpleHash(password), user };
-  localStorage.setItem(OFFLINE_CREDS_KEY, JSON.stringify(all));
-}
-
-function getOfflineCreds(): Record<string, OfflineCred> {
-  try {
-    const custom = JSON.parse(localStorage.getItem(OFFLINE_CREDS_KEY) || '{}');
-    return { ...DEFAULT_TEST_CREDS, ...custom };
-  } catch {
-    return { ...DEFAULT_TEST_CREDS };
-  }
-}
-
-function verifyOfflineCred(email: string, password: string): User | null {
-  const cred = getOfflineCreds()[email.toLowerCase()];
-  if (!cred) return null;
-  if (cred.passwordHash !== simpleHash(password)) return null;
-  return cred.user;
-}
-
-// ─── Auth State ───────────────────────────────────────────────────────────────
+import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 
 interface AuthState {
   user: User | null;
@@ -97,21 +19,14 @@ interface AuthState {
     name: string;
     phone?: string;
   }) => Promise<void>;
-  logout: () => void;
+  validateSession: () => Promise<boolean>;
+  logout: () => Promise<void>;
   clearError: () => void;
 }
 
-const DEFAULT_SUPABASE_URL = 'https://zqngkqsdpgtoytuleogn.supabase.co';
-const DEFAULT_SUPABASE_ANON_KEY =
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpxbmdrcXNkcGd0b3l0dWxlb2duIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTExMzI5NjgsImV4cCI6MjEwNjcwODk2OH0.zEP2fNgSNLQ-vnNDwfdYm6jsGyH2KomgMYku-okXhLY';
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || DEFAULT_SUPABASE_URL;
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || DEFAULT_SUPABASE_ANON_KEY;
-
 export const useAuth = create<AuthState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       user: null,
       token: null,
       isAuthenticated: false,
@@ -122,119 +37,116 @@ export const useAuth = create<AuthState>()(
         set({ isLoading: true, error: null });
         const trimmedEmail = email.trim().toLowerCase();
 
-        // ── 1. Direct Supabase Auth Attempt ─────────────────────────────────────────
-        if (SUPABASE_URL && SUPABASE_ANON_KEY) {
+        if (!trimmedEmail || !password) {
+          const err = 'Please enter both email and password.';
+          set({ isLoading: false, error: err });
+          throw new Error(err);
+        }
+
+        // ── Direct Real Supabase Auth (Single Source of Truth) ─────────────────────
+        if (isSupabaseConfigured()) {
           try {
-            const sbRes = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
-            method: 'POST',
-            headers: {
-              apikey: SUPABASE_ANON_KEY,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ email: trimmedEmail, password }),
-            signal: AbortSignal.timeout(6000),
-          });
-
-          const sbData = (await sbRes.json().catch(() => ({}))) as any;
-
-          if (sbRes.ok && sbData.access_token && sbData.user) {
-            const meta = sbData.user.user_metadata || {};
-            // Each Supabase user gets their own isolated space/tenant
-            const tenantId = meta.tenant_id || sbData.user.id;
-            const user: User = {
-              id: sbData.user.id,
-              email: sbData.user.email || trimmedEmail,
-              name: meta.full_name || meta.name || trimmedEmail.split('@')[0],
-              role: (meta.role as User['role']) || 'owner',
-              tenantId,
-            };
-
-            localStorage.setItem('genx:authToken', sbData.access_token);
-            saveOfflineCred(trimmedEmail, password, user);
-            set({
-              user,
-              token: sbData.access_token,
-              isAuthenticated: true,
-              isLoading: false,
-              error: null,
+            const { data, error } = await supabase.auth.signInWithPassword({
+              email: trimmedEmail,
+              password,
             });
-            return;
-          }
 
-          // Handle known Supabase Auth errors
-          if (sbData.error_code === 'invalid_credentials' || sbData.msg === 'Invalid login credentials') {
-            const offlineUser = verifyOfflineCred(trimmedEmail, password);
-            if (offlineUser) {
-              localStorage.setItem('genx:authToken', 'offline-dev');
-              set({ user: offlineUser, token: 'offline-dev', isAuthenticated: true, isLoading: false, error: null });
+            if (error) {
+              const errMsg = (error.message || '').toLowerCase();
+
+              // Clean up any stale tokens immediately
+              localStorage.removeItem('genx:authToken');
+              localStorage.removeItem('genx:offline-creds');
+
+              if (errMsg.includes('banned') || errMsg.includes('disabled') || (error as any).error_code === 'user_banned') {
+                const message = 'This account has been banned by the administrator. Login denied.';
+                set({ user: null, token: null, isAuthenticated: false, isLoading: false, error: message });
+                throw new Error(message);
+              }
+
+              if (errMsg.includes('invalid login credentials') || errMsg.includes('invalid_grant')) {
+                const message = 'Invalid email or password. If this user was deleted, please create a new business account.';
+                set({ user: null, token: null, isAuthenticated: false, isLoading: false, error: message });
+                throw new Error(message);
+              }
+
+              if (errMsg.includes('email not confirmed')) {
+                const message = 'Email is not confirmed. Please click "Confirm User" in Supabase dashboard or check your verification email.';
+                set({ user: null, token: null, isAuthenticated: false, isLoading: false, error: message });
+                throw new Error(message);
+              }
+
+              const message = error.message || 'Login failed. Please check your credentials.';
+              set({ user: null, token: null, isAuthenticated: false, isLoading: false, error: message });
+              throw new Error(message);
+            }
+
+            if (data?.user && data?.session) {
+              const meta = data.user.user_metadata || {};
+              // Isolate each tenant by their configured store tenant_id or user id
+              const tenantId = meta.tenant_id || data.user.id;
+              const user: User = {
+                id: data.user.id,
+                email: data.user.email || trimmedEmail,
+                name: meta.full_name || meta.name || trimmedEmail.split('@')[0],
+                role: (meta.role as User['role']) || 'owner',
+                tenantId,
+              };
+
+              localStorage.setItem('genx:authToken', data.session.access_token);
+              set({
+                user,
+                token: data.session.access_token,
+                isAuthenticated: true,
+                isLoading: false,
+                error: null,
+              });
+
+              // Ensure tenant row exists in Supabase tenants table
+              Promise.resolve(
+                supabase
+                  .from('tenants')
+                  .upsert(
+                    {
+                      id: tenantId,
+                      name: meta.store_name || user.name,
+                      code: meta.store_code || tenantId,
+                      business_type: meta.business_type || 'general',
+                      email: user.email,
+                    },
+                    { onConflict: 'id' }
+                  )
+              ).catch(() => {});
+
               return;
             }
-            throw new Error('Invalid email or password');
-          }
-
-          if (sbData.error_code === 'email_not_confirmed' || sbData.msg?.includes('Email not confirmed')) {
-            throw new Error('Email is not confirmed. Please click "Confirm User" in Supabase dashboard or check your confirmation email.');
-          }
-        } catch (err: unknown) {
-          const errMsg = err instanceof Error ? err.message : '';
-          if (errMsg === 'Invalid email or password' || errMsg.includes('Email is not confirmed')) {
-            set({ isLoading: false, error: errMsg, isAuthenticated: false });
+          } catch (err: unknown) {
+            set({ isLoading: false });
             throw err;
           }
-          // If Supabase was unreachable or timed out, fall through to local API / offline fallback
         }
-      }
 
-      // ── 2. Local API Server Fallback ──────────────────────────────────────────
-      try {
-        const res = await fetch(`${API_URL}/api/v1/auth/login`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: trimmedEmail, password }),
-          signal: AbortSignal.timeout(3000),
-        });
+        const message = 'Supabase credentials not configured. Please check your environment variables.';
+        set({ isLoading: false, error: message, isAuthenticated: false });
+        throw new Error(message);
+      },
 
-        if (res.ok) {
-          const data = (await res.json()) as { user: User; token: string };
-          localStorage.setItem('genx:authToken', data.token);
-          saveOfflineCred(trimmedEmail, password, data.user);
-          set({ user: data.user, token: data.token, isAuthenticated: true, isLoading: false, error: null });
-          return;
+      registerStore: async (inputData) => {
+        set({ isLoading: true, error: null });
+        const trimmedEmail = inputData.email.trim().toLowerCase();
+        const tenantId = `tenant-${(inputData.storeCode || inputData.storeName).toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
+
+        if (!isSupabaseConfigured()) {
+          const err = 'Supabase is not configured.';
+          set({ isLoading: false, error: err });
+          throw new Error(err);
         }
-      } catch {
-        // Local API server not reachable
-      }
 
-      // ── 3. Offline Cache Fallback ─────────────────────────────────────────────
-      const offlineUser = verifyOfflineCred(trimmedEmail, password);
-      if (offlineUser) {
-        localStorage.setItem('genx:authToken', 'offline-dev');
-        set({ user: offlineUser, token: 'offline-dev', isAuthenticated: true, isLoading: false, error: null });
-        return;
-      }
-
-      const message = 'Login failed. Invalid email/password or server unreachable.';
-      set({ isLoading: false, error: message, isAuthenticated: false });
-      throw new Error(message);
-    },
-
-    registerStore: async (inputData) => {
-      set({ isLoading: true, error: null });
-      const trimmedEmail = inputData.email.trim().toLowerCase();
-      const tenantId = `tenant-${(inputData.storeCode || inputData.storeName).toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
-
-      // ── 1. Create User in Supabase Auth ──────────────────────────────────────
-      if (SUPABASE_URL && SUPABASE_ANON_KEY) {
         try {
-          const sbRes = await fetch(`${SUPABASE_URL}/auth/v1/signup`, {
-            method: 'POST',
-            headers: {
-              apikey: SUPABASE_ANON_KEY,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              email: trimmedEmail,
-              password: inputData.password,
+          const { data, error } = await supabase.auth.signUp({
+            email: trimmedEmail,
+            password: inputData.password,
+            options: {
               data: {
                 name: inputData.name,
                 store_name: inputData.storeName,
@@ -242,83 +154,90 @@ export const useAuth = create<AuthState>()(
                 tenant_id: tenantId,
                 role: 'owner',
                 phone: inputData.phone,
+                business_type: inputData.businessType || 'general',
               },
-            }),
-            signal: AbortSignal.timeout(6000),
+            },
           });
 
-          const sbData = (await sbRes.json().catch(() => ({}))) as any;
+          if (error) {
+            set({ isLoading: false, error: error.message });
+            throw new Error(error.message);
+          }
 
-          if (sbRes.ok && sbData.user) {
+          // Register tenant in database table
+          await supabase.from('tenants').upsert(
+            {
+              id: tenantId,
+              name: inputData.storeName,
+              code: inputData.storeCode,
+              business_type: inputData.businessType || 'general',
+              email: trimmedEmail,
+              phone: inputData.phone || null,
+            },
+            { onConflict: 'id' }
+          );
+
+          if (data?.session && data?.user) {
             const user: User = {
-              id: sbData.user.id,
-              email: sbData.user.email || trimmedEmail,
+              id: data.user.id,
+              email: data.user.email || trimmedEmail,
               name: inputData.name,
               role: 'owner',
               tenantId,
             };
 
-            const token = sbData.access_token || 'supabase-registered';
-            localStorage.setItem('genx:authToken', token);
-            saveOfflineCred(trimmedEmail, inputData.password, user);
-            set({ user, token, isAuthenticated: true, isLoading: false, error: null });
-
-            // Notify local API server in background if reachable
-            fetch(`${API_URL}/api/v1/auth/register`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(inputData),
-            }).catch(() => {});
-
+            localStorage.setItem('genx:authToken', data.session.access_token);
+            set({
+              user,
+              token: data.session.access_token,
+              isAuthenticated: true,
+              isLoading: false,
+              error: null,
+            });
             return;
           }
-        } catch {
-          // If Supabase direct signup fails, fallback to local API or offline
-        }
-      }
 
-      // ── 2. Local API Register Fallback ────────────────────────────────────────
-        try {
-          const res = await fetch(`${API_URL}/api/v1/auth/register`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(inputData),
-            signal: AbortSignal.timeout(4000),
+          // If Supabase has email confirmation enabled
+          set({
+            isLoading: false,
+            error:
+              'Registration successful! Please check your email or confirm this user in the Supabase Dashboard before signing in.',
           });
-
-          if (res.ok) {
-            const data = (await res.json()) as { user: User; token: string };
-            localStorage.setItem('genx:authToken', data.token);
-            saveOfflineCred(trimmedEmail, inputData.password, data.user);
-            set({ user: data.user, token: data.token, isAuthenticated: true, isLoading: false, error: null });
-            return;
-          }
-        } catch {
-          // Fallback to offline creation
+        } catch (err: unknown) {
+          set({ isLoading: false });
+          throw err;
         }
-
-        // ── 3. Offline / Dev Fallback ─────────────────────────────────────────────
-        const offlineUser: User = {
-          id: crypto.randomUUID(),
-          email: trimmedEmail,
-          name: inputData.name,
-          role: 'owner',
-          tenantId,
-        };
-        saveOfflineCred(trimmedEmail, inputData.password, offlineUser);
-        localStorage.setItem('genx:authToken', 'offline-dev');
-        set({ user: offlineUser, token: 'offline-dev', isAuthenticated: true, isLoading: false, error: null });
       },
 
-      logout: () => {
-        // Clear authentication tokens and tenant credentials
+      validateSession: async () => {
+        if (!isSupabaseConfigured()) return true;
+
+        try {
+          const { data, error } = await supabase.auth.getUser();
+          if (error || !data?.user) {
+            // User was deleted or banned in Supabase! Kick out immediately.
+            console.warn('[auth] Session invalid or user deleted/banned in Supabase. Logging out.');
+            await get().logout();
+            return false;
+          }
+          return true;
+        } catch {
+          return true; // network transient error, allow offline
+        }
+      },
+
+      logout: async () => {
+        try {
+          await supabase.auth.signOut();
+        } catch {
+          // ignore
+        }
         localStorage.removeItem('genx:authToken');
         localStorage.removeItem('genx:selectedModule');
         localStorage.removeItem('genx:lastSyncTimestamp');
+        localStorage.removeItem('genx:offline-creds');
 
-        // Clear transient UI state
         set({ user: null, token: null, isAuthenticated: false, error: null });
-
       },
 
       clearError: () => set({ error: null }),
@@ -330,6 +249,6 @@ export const useAuth = create<AuthState>()(
         token: state.token,
         isAuthenticated: state.isAuthenticated,
       }),
-    },
-  ),
+    }
+  )
 );

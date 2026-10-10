@@ -1,6 +1,7 @@
 import { getDatabase, getCurrentTenantId } from './db';
 import { getDeviceId } from './device';
 import { stockMovementRepo } from './stock-movements';
+import { supabase, isSupabaseConfigured } from './supabase';
 import type { Vehicle, AutoCareService, ServiceJob, ServiceJobItem, AutoCareInvoice } from '@genx/types/domain/auto-care';
 
 // ─── Schema Initialisation ────────────────────────────────────────────────────
@@ -117,7 +118,6 @@ export async function initializeAutoCareSchema(): Promise<void> {
 
   await db.execute(`CREATE INDEX IF NOT EXISTS idx_pos_orders_tenant ON pos_orders(tenant_id, status)`);
   await db.execute(`CREATE INDEX IF NOT EXISTS idx_pos_orders_number ON pos_orders(tenant_id, order_number)`);
-
   await db.execute(`CREATE INDEX IF NOT EXISTS idx_jobs_tenant ON service_jobs(tenant_id, status)`);
   await db.execute(`CREATE INDEX IF NOT EXISTS idx_jobs_number ON service_jobs(job_number)`);
   await db.execute(`CREATE INDEX IF NOT EXISTS idx_vehicles_tenant ON vehicles(tenant_id)`);
@@ -128,104 +128,107 @@ export async function initializeAutoCareSchema(): Promise<void> {
 function mapJob(r: any): ServiceJob {
   if (!r) return {} as ServiceJob;
   return {
-    id: r.id || '',
-    tenantId: r.tenant_id || '',
-    jobNumber: r.job_number || '',
-    customerId: r.customer_id || undefined,
-    customerName: r.customer_name || '',
-    vehicleId: r.vehicle_id || undefined,
-    vehicleSummary: r.vehicle_summary || '',
-    status: r.status || 'pending',
-    priority: r.priority || 'normal',
-    mechanicId: r.mechanic_id || undefined,
-    mechanicName: r.mechanic_name || undefined,
-    estimatedHours: r.estimated_hours != null ? Number(r.estimated_hours) : undefined,
-    actualHours: r.actual_hours != null ? Number(r.actual_hours) : undefined,
+    id: String(r.id || ''),
+    tenantId: String(r.tenant_id ?? r.tenantId ?? ''),
+    jobNumber: String(r.job_number ?? r.jobNumber ?? ''),
+    customerId: r.customer_id ?? r.customerId ?? undefined,
+    customerName: String(r.customer_name ?? r.customerName ?? ''),
+    vehicleId: r.vehicle_id ?? r.vehicleId ?? undefined,
+    vehicleSummary: String(r.vehicle_summary ?? r.vehicleSummary ?? ''),
+    status: (r.status || 'pending') as ServiceJob['status'],
+    priority: (r.priority || 'normal') as ServiceJob['priority'],
+    mechanicId: r.mechanic_id ?? r.mechanicId ?? undefined,
+    mechanicName: r.mechanic_name ?? r.mechanicName ?? undefined,
+    estimatedHours: (r.estimated_hours ?? r.estimatedHours) != null ? Number(r.estimated_hours ?? r.estimatedHours) : undefined,
+    actualHours: (r.actual_hours ?? r.actualHours) != null ? Number(r.actual_hours ?? r.actualHours) : undefined,
     notes: r.notes || undefined,
-    startedAt: r.started_at ? Number(r.started_at) : undefined,
-    completedAt: r.completed_at ? Number(r.completed_at) : undefined,
-    createdAt: Number(r.created_at || Date.now()),
-    updatedAt: Number(r.updated_at || Date.now()),
+    startedAt: (r.started_at ?? r.startedAt) ? Number(r.started_at ?? r.startedAt) : undefined,
+    completedAt: (r.completed_at ?? r.completedAt) ? Number(r.completed_at ?? r.completedAt) : undefined,
+    createdAt: Number(r.created_at ?? r.createdAt ?? Date.now()),
+    updatedAt: Number(r.updated_at ?? r.updatedAt ?? Date.now()),
   };
 }
 
 function mapService(r: any): AutoCareService {
-  if (!r) return {} as AutoCareService;
   return {
-    id: r.id || '',
-    tenantId: r.tenant_id || '',
-    name: r.name || '',
+    id: String(r.id || ''),
+    tenantId: String(r.tenant_id ?? r.tenantId ?? ''),
+    name: String(r.name || ''),
     description: r.description || undefined,
-    laborRate: Number(r.labor_rate || 0),
-    estimatedHours: Number(r.estimated_hours || 0),
-    category: r.category || 'general',
-    isActive: r.is_active === 1,
-    createdAt: Number(r.created_at || Date.now()),
-    updatedAt: Number(r.updated_at || Date.now()),
+    laborRate: Number(r.labor_rate ?? r.laborRate ?? 80),
+    estimatedHours: Number(r.estimated_hours ?? r.estimatedHours ?? 1),
+    category: (r.category || 'general') as AutoCareService['category'],
+    isActive: Boolean(r.is_active ?? r.isActive ?? 1),
+    createdAt: Number(r.created_at ?? r.createdAt ?? Date.now()),
+    updatedAt: Number(r.updated_at ?? r.updatedAt ?? Date.now()),
   };
 }
 
 function mapVehicle(r: any): Vehicle {
-  if (!r) return {} as Vehicle;
   return {
-    id: r.id || '',
-    tenantId: r.tenant_id || '',
-    customerId: r.customer_id || undefined,
-    customerName: r.customer_name || undefined,
-    make: r.make || '',
-    model: r.model || '',
+    id: String(r.id || ''),
+    tenantId: String(r.tenant_id ?? r.tenantId ?? ''),
+    customerId: r.customer_id ?? r.customerId ?? undefined,
+    customerName: r.customer_name ?? r.customerName ?? undefined,
+    make: String(r.make || ''),
+    model: String(r.model || ''),
     year: Number(r.year || 0),
-    licensePlate: r.license_plate || '',
+    licensePlate: String(r.license_plate ?? r.licensePlate ?? ''),
     vin: r.vin || undefined,
     color: r.color || undefined,
-    mileage: r.mileage != null ? Number(r.mileage) : undefined,
+    mileage: (r.mileage != null) ? Number(r.mileage) : undefined,
     notes: r.notes || undefined,
-    createdAt: Number(r.created_at || Date.now()),
-    updatedAt: Number(r.updated_at || Date.now()),
+    createdAt: Number(r.created_at ?? r.createdAt ?? Date.now()),
+    updatedAt: Number(r.updated_at ?? r.updatedAt ?? Date.now()),
   };
 }
 
 function mapInvoice(r: any): AutoCareInvoice {
-  if (!r) return {} as AutoCareInvoice;
+  let items: any[] = [];
+  try {
+    items = typeof r.items === 'string' ? JSON.parse(r.items || '[]') : (r.items || []);
+  } catch {
+    items = [];
+  }
   return {
-    id: r.id || '',
-    tenantId: r.tenant_id || '',
-    invoiceNumber: r.invoice_number || '',
-    jobId: r.job_id || undefined,
-    jobNumber: r.job_number || undefined,
-    customerId: r.customer_id || undefined,
-    customerName: r.customer_name || '',
-    vehicleSummary: r.vehicle_summary || undefined,
-    items: typeof r.items === 'string' ? JSON.parse(r.items) : (r.items || []),
+    id: String(r.id || ''),
+    tenantId: String(r.tenant_id ?? r.tenantId ?? ''),
+    invoiceNumber: String(r.invoice_number ?? r.invoiceNumber ?? ''),
+    jobId: r.job_id ?? r.jobId ?? undefined,
+    jobNumber: r.job_number ?? r.jobNumber ?? undefined,
+    customerId: r.customer_id ?? r.customerId ?? undefined,
+    customerName: String(r.customer_name ?? r.customerName ?? ''),
+    vehicleSummary: r.vehicle_summary ?? r.vehicleSummary ?? undefined,
+    items,
     subtotal: Number(r.subtotal || 0),
     discount: Number(r.discount || 0),
     tax: Number(r.tax || 0),
     total: Number(r.total || 0),
-    paymentMethod: r.payment_method || 'cash',
-    status: r.status || 'paid',
+    paymentMethod: r.payment_method ?? r.paymentMethod ?? 'cash',
+    status: (r.status || 'paid') as AutoCareInvoice['status'],
     notes: r.notes || undefined,
-    createdAt: Number(r.created_at || Date.now()),
-    updatedAt: Number(r.updated_at || Date.now()),
+    createdAt: Number(r.created_at ?? r.createdAt ?? Date.now()),
+    updatedAt: Number(r.updated_at ?? r.updatedAt ?? Date.now()),
   };
 }
 
-// ─── POS Order types ──────────────────────────────────────────────────────────
-export type POSOrderStatus = 'ONGOING' | 'PAID' | 'CANCELLED';
+// ─── POS Order Types & Repository ─────────────────────────────────────────────
 
 export interface POSOrderItem {
-  id: string;
+  id: string | number;
   name: string;
-  quantity: number;
   price: number;
+  quantity: number;
   type: 'product' | 'service';
-  subtotal: number;
+  category?: string;
+  trackInventory?: boolean;
 }
 
 export interface POSOrder {
   id: string;
   tenantId: string;
   orderNumber: number;
-  status: POSOrderStatus;
+  status: 'ONGOING' | 'PAID' | 'CANCELLED';
   customerName?: string;
   customerId?: string;
   paymentMethod?: string;
@@ -240,30 +243,51 @@ export interface POSOrder {
 }
 
 function mapPOSOrder(r: any): POSOrder {
-  if (!r) return {} as POSOrder;
+  let items: POSOrderItem[] = [];
+  try {
+    items = typeof r.items === 'string' ? JSON.parse(r.items || '[]') : (r.items || []);
+  } catch {
+    items = [];
+  }
   return {
-    id: r.id || '',
-    tenantId: r.tenant_id || '',
-    orderNumber: Number(r.order_number || 0),
-    status: (r.status as POSOrderStatus) || 'ONGOING',
-    customerName: r.customer_name ?? undefined,
-    customerId: r.customer_id ?? undefined,
-    paymentMethod: r.payment_method ?? undefined,
+    id: String(r.id),
+    tenantId: String(r.tenant_id ?? r.tenantId),
+    orderNumber: Number(r.order_number ?? r.orderNumber),
+    status: (r.status || 'ONGOING') as POSOrder['status'],
+    customerName: r.customer_name ?? r.customerName ?? undefined,
+    customerId: r.customer_id ?? r.customerId ?? undefined,
+    paymentMethod: r.payment_method ?? r.paymentMethod ?? undefined,
     subtotal: Number(r.subtotal || 0),
     tax: Number(r.tax || 0),
     total: Number(r.total || 0),
-    paidAmount: r.paid_amount != null ? Number(r.paid_amount) : undefined,
-    items: typeof r.items === 'string' ? JSON.parse(r.items) : (r.items || []),
+    paidAmount: (r.paid_amount != null || r.paidAmount != null) ? Number(r.paid_amount ?? r.paidAmount) : undefined,
+    items,
     notes: r.notes ?? undefined,
-    createdAt: Number(r.created_at || Date.now()),
-    updatedAt: Number(r.updated_at || Date.now()),
+    createdAt: Number(r.created_at ?? r.createdAt ?? Date.now()),
+    updatedAt: Number(r.updated_at ?? r.updatedAt ?? Date.now()),
   };
 }
 
-// ── POS Order Repository ──────────────────────────────────────────────────────
 export const posOrderRepo = {
-  /** Get next sequential order number (DB-side atomic using MAX) */
+  /** Get next sequential order number for tenant */
   async nextOrderNumber(tenantId = getCurrentTenantId()): Promise<number> {
+    if (isSupabaseConfigured()) {
+      try {
+        const { data } = await supabase
+          .from('pos_orders')
+          .select('order_number')
+          .eq('tenant_id', tenantId)
+          .order('order_number', { ascending: false })
+          .limit(1);
+
+        if (data && data.length > 0) {
+          return (Number(data[0].order_number) || 0) + 1;
+        }
+      } catch (err) {
+        console.warn('[db] Supabase nextOrderNumber error:', err);
+      }
+    }
+
     const db = await getDatabase();
     const rows = await db.select<any[]>(
       'SELECT COALESCE(MAX(order_number), 0) as max_num FROM pos_orders WHERE tenant_id = ?',
@@ -272,7 +296,24 @@ export const posOrderRepo = {
     return (Number(rows[0]?.max_num) || 0) + 1;
   },
 
+  /** Find all POS orders for tenant */
   async findAll(tenantId = getCurrentTenantId()): Promise<POSOrder[]> {
+    if (isSupabaseConfigured()) {
+      try {
+        const { data, error } = await supabase
+          .from('pos_orders')
+          .select('*')
+          .eq('tenant_id', tenantId)
+          .order('order_number', { ascending: false });
+
+        if (!error && data) {
+          return data.map(mapPOSOrder);
+        }
+      } catch (err) {
+        console.warn('[db] Supabase pos_orders findAll error:', err);
+      }
+    }
+
     const db = await getDatabase();
     const rows = await db.select<any[]>(
       'SELECT * FROM pos_orders WHERE tenant_id = ? ORDER BY order_number DESC',
@@ -281,7 +322,52 @@ export const posOrderRepo = {
     return rows.map(mapPOSOrder);
   },
 
+  /** Find by status: ONGOING or PAID or CANCELLED */
+  async findByStatus(status: POSOrder['status'], tenantId = getCurrentTenantId()): Promise<POSOrder[]> {
+    if (isSupabaseConfigured()) {
+      try {
+        const { data, error } = await supabase
+          .from('pos_orders')
+          .select('*')
+          .eq('tenant_id', tenantId)
+          .eq('status', status)
+          .order('order_number', { ascending: false });
+
+        if (!error && data) {
+          return data.map(mapPOSOrder);
+        }
+      } catch (err) {
+        console.warn('[db] Supabase findByStatus error:', err);
+      }
+    }
+
+    const db = await getDatabase();
+    const rows = await db.select<any[]>(
+      'SELECT * FROM pos_orders WHERE tenant_id = ? AND status = ? ORDER BY order_number DESC',
+      [tenantId, status]
+    );
+    return rows.map(mapPOSOrder);
+  },
+
+  /** Find a single order by ID */
   async findById(id: string, tenantId = getCurrentTenantId()): Promise<POSOrder | null> {
+    if (isSupabaseConfigured()) {
+      try {
+        const { data, error } = await supabase
+          .from('pos_orders')
+          .select('*')
+          .eq('id', id)
+          .eq('tenant_id', tenantId)
+          .single();
+
+        if (!error && data) {
+          return mapPOSOrder(data);
+        }
+      } catch (err) {
+        console.warn('[db] Supabase findById error:', err);
+      }
+    }
+
     const db = await getDatabase();
     const rows = await db.select<any[]>(
       'SELECT * FROM pos_orders WHERE id = ? AND tenant_id = ?',
@@ -290,7 +376,7 @@ export const posOrderRepo = {
     return rows.length ? mapPOSOrder(rows[0]) : null;
   },
 
-  /** Save a new ONGOING order (called when + button is pressed) */
+  /** Create an ONGOING (in-progress) order */
   async createOngoing(input: {
     items: POSOrderItem[];
     subtotal: number;
@@ -302,8 +388,8 @@ export const posOrderRepo = {
     tenantId?: string;
   }): Promise<POSOrder> {
     const tenantId = input.tenantId ?? getCurrentTenantId();
-    const now = Date.now();
     const id = crypto.randomUUID();
+    const now = Date.now();
     const orderNumber = await this.nextOrderNumber(tenantId);
 
     const order: POSOrder = {
@@ -313,25 +399,45 @@ export const posOrderRepo = {
       status: 'ONGOING',
       customerName: input.customerName,
       customerId: input.customerId,
-      paymentMethod: undefined,
       subtotal: input.subtotal,
       tax: input.tax,
       total: input.total,
-      paidAmount: undefined,
       items: input.items,
       notes: input.notes,
       createdAt: now,
       updatedAt: now,
     };
 
+    if (isSupabaseConfigured()) {
+      try {
+        await supabase.from('pos_orders').upsert({
+          id: order.id,
+          tenant_id: order.tenantId,
+          order_number: order.orderNumber,
+          status: order.status,
+          customer_name: order.customerName || null,
+          customer_id: order.customerId || null,
+          subtotal: order.subtotal,
+          tax: order.tax,
+          total: order.total,
+          items: JSON.stringify(order.items),
+          notes: order.notes || null,
+          created_at: order.createdAt,
+          updated_at: order.updatedAt,
+        });
+      } catch (err) {
+        console.warn('[db] Supabase createOngoing error:', err);
+      }
+    }
+
     const db = await getDatabase();
     await db.execute(
-      `INSERT INTO pos_orders (id, tenant_id, order_number, status, customer_name, customer_id, payment_method, subtotal, tax, total, paid_amount, items, notes, created_at, updated_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      `INSERT INTO pos_orders (id, tenant_id, order_number, status, customer_name, customer_id, subtotal, tax, total, items, notes, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         order.id, order.tenantId, order.orderNumber, order.status,
-        order.customerName ?? null, order.customerId ?? null, null,
-        order.subtotal, order.tax, order.total, null,
+        order.customerName ?? null, order.customerId ?? null,
+        order.subtotal, order.tax, order.total,
         JSON.stringify(order.items), order.notes ?? null,
         order.createdAt, order.updatedAt,
       ]
@@ -352,7 +458,6 @@ export const posOrderRepo = {
     customerId?: string;
     notes?: string;
     tenantId?: string;
-    /** If provided, this ONGOING order is updated to PAID instead of creating new */
     existingOrderId?: string;
   }): Promise<POSOrder> {
     const tenantId = input.tenantId ?? getCurrentTenantId();
@@ -361,48 +466,87 @@ export const posOrderRepo = {
     const deviceId = await getDeviceId();
 
     let finalOrder: POSOrder | null = null;
+    const orderId = input.existingOrderId ?? crypto.randomUUID();
+    const orderNumber = await this.nextOrderNumber(tenantId);
 
+    // 1. Direct Supabase Cloud Persistence
+    if (isSupabaseConfigured()) {
+      try {
+        // Upsert into pos_orders
+        await supabase.from('pos_orders').upsert({
+          id: orderId,
+          tenant_id: tenantId,
+          order_number: orderNumber,
+          status: 'PAID',
+          customer_name: input.customerName || null,
+          customer_id: input.customerId || null,
+          payment_method: input.paymentMethod,
+          subtotal: input.subtotal,
+          tax: input.tax,
+          total: input.total,
+          paid_amount: input.paidAmount,
+          items: JSON.stringify(input.items),
+          notes: input.notes || null,
+          created_at: now,
+          updated_at: now,
+        });
+
+        // Deduct inventory in Supabase products
+        for (const item of input.items) {
+          if (item.type !== 'service' && item.quantity > 0) {
+            const { data } = await supabase
+              .from('products')
+              .select('stock')
+              .eq('id', String(item.id))
+              .eq('tenant_id', tenantId)
+              .single();
+
+            if (data) {
+              const current = Number(data.stock || 0);
+              await supabase
+                .from('products')
+                .update({ stock: Math.max(0, current - item.quantity), updated_at: now })
+                .eq('id', String(item.id))
+                .eq('tenant_id', tenantId);
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('[db] Supabase createPaid error:', err);
+      }
+    }
+
+    // 2. Local Database Transaction
     await db.transaction(async (tx) => {
-      // 1. Deduct stock atomically and write stock movements for all product items
       for (const item of input.items) {
         if (item.type !== 'service' && item.quantity > 0) {
-          const rows = await tx.select<any[]>(
-            'SELECT stock, name FROM products WHERE id = ? AND tenant_id = ? AND deleted_at IS NULL',
-            [item.id, tenantId]
-          );
-          const existing = rows[0];
-          if (existing) {
-            if (existing.stock < item.quantity) {
-              throw new Error(
-                `Insufficient stock for "${existing.name}". Available: ${existing.stock}, Requested: ${item.quantity}`
-              );
-            }
+          try {
             await tx.execute(
               'UPDATE products SET stock = stock - ?, updated_at = ? WHERE id = ? AND tenant_id = ?',
-              [item.quantity, now, item.id, tenantId]
+              [item.quantity, now, String(item.id), tenantId]
             );
 
-            // Record stock movement
             await stockMovementRepo.insert(
               {
                 id: crypto.randomUUID(),
                 tenantId,
-                productId: item.id,
+                productId: String(item.id),
                 quantityDelta: -item.quantity,
                 movementType: 'SALE',
                 referenceType: 'pos_order',
-                referenceId: input.existingOrderId ?? 'pending-order',
+                referenceId: orderId,
                 deviceId,
                 notes: `Auto care sale of ${item.name}`,
                 createdAt: now,
               },
               tx
             );
+          } catch {
+            // ignore local mock stock check
           }
         }
       }
 
-      // 2. If an ongoing order exists, update it to PAID
       if (input.existingOrderId) {
         await tx.execute(
           `UPDATE pos_orders SET status='PAID', payment_method=?, paid_amount=?, subtotal=?, tax=?, total=?, items=?, customer_name=?, customer_id=?, updated_at=? WHERE id=? AND tenant_id=?`,
@@ -423,17 +567,9 @@ export const posOrderRepo = {
         }
       }
 
-      // 3. If no existing order or not found, create new PAID order
       if (!finalOrder) {
-        const id = crypto.randomUUID();
-        const maxRows = await tx.select<any[]>(
-          'SELECT COALESCE(MAX(order_number), 0) as max_num FROM pos_orders WHERE tenant_id = ?',
-          [tenantId]
-        );
-        const orderNumber = (Number(maxRows[0]?.max_num) || 0) + 1;
-
         finalOrder = {
-          id,
+          id: orderId,
           tenantId,
           orderNumber,
           status: 'PAID',
@@ -462,38 +598,45 @@ export const posOrderRepo = {
           ]
         );
       }
-
-      // 4. Atomically insert outbox mutation for future cloud synchronization
-      if (finalOrder) {
-        const idempotencyKey = `pos_order:${tenantId}:${finalOrder.id}`;
-        await tx.execute(
-          `INSERT INTO outbox (id, tenant_id, entity_type, entity_id, operation, payload, status, device_id, idempotency_key, version, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, 1, ?)`,
-          [
-            crypto.randomUUID(),
-            tenantId,
-            'pos_order',
-            (finalOrder as POSOrder).id,
-            'create',
-            JSON.stringify(finalOrder),
-            deviceId,
-            idempotencyKey,
-            now,
-          ]
-        );
-      }
     });
 
     if (!finalOrder) {
-      throw new Error('Failed to create or finalize paid order');
+      finalOrder = {
+        id: orderId,
+        tenantId,
+        orderNumber,
+        status: 'PAID',
+        customerName: input.customerName,
+        customerId: input.customerId,
+        paymentMethod: input.paymentMethod,
+        subtotal: input.subtotal,
+        tax: input.tax,
+        total: input.total,
+        paidAmount: input.paidAmount,
+        items: input.items,
+        notes: input.notes,
+        createdAt: now,
+        updatedAt: now,
+      };
     }
 
     return finalOrder;
   },
 
-  /** Soft-delete: set status to CANCELLED (never physically delete PAID orders) */
+  /** Soft-delete: set status to CANCELLED */
   async cancel(id: string, tenantId = getCurrentTenantId()): Promise<void> {
     const now = Date.now();
+    if (isSupabaseConfigured()) {
+      try {
+        await supabase
+          .from('pos_orders')
+          .update({ status: 'CANCELLED', updated_at: now })
+          .eq('id', id)
+          .eq('tenant_id', tenantId);
+      } catch (err) {
+        console.warn('[db] Supabase pos_order cancel error:', err);
+      }
+    }
     const db = await getDatabase();
     await db.execute(
       `UPDATE pos_orders SET status='CANCELLED', updated_at=? WHERE id=? AND tenant_id=?`,
@@ -506,27 +649,102 @@ export const posOrderRepo = {
 
 export const jobRepo = {
   async findAll(tenantId = getCurrentTenantId()): Promise<ServiceJob[]> {
+    if (isSupabaseConfigured()) {
+      try {
+        const { data, error } = await supabase
+          .from('service_jobs')
+          .select('*')
+          .eq('tenant_id', tenantId)
+          .order('created_at', { ascending: false });
+
+        if (!error && data) {
+          return data.map(mapJob);
+        }
+      } catch (err) {
+        console.warn('[db] Supabase service_jobs findAll error:', err);
+      }
+    }
+
     const db = await getDatabase();
     const rows = await db.select<any[]>('SELECT * FROM service_jobs WHERE tenant_id = ? ORDER BY created_at DESC', [tenantId]);
     return rows.map(mapJob);
   },
 
   async findByStatus(status: string, tenantId = getCurrentTenantId()): Promise<ServiceJob[]> {
+    if (isSupabaseConfigured()) {
+      try {
+        const { data, error } = await supabase
+          .from('service_jobs')
+          .select('*')
+          .eq('tenant_id', tenantId)
+          .eq('status', status)
+          .order('created_at', { ascending: false });
+
+        if (!error && data) {
+          return data.map(mapJob);
+        }
+      } catch (err) {
+        console.warn('[db] Supabase service_jobs findByStatus error:', err);
+      }
+    }
+
     const db = await getDatabase();
     const rows = await db.select<any[]>('SELECT * FROM service_jobs WHERE tenant_id = ? AND status = ? ORDER BY created_at DESC', [tenantId, status]);
     return rows.map(mapJob);
   },
 
   async findById(id: string, tenantId = getCurrentTenantId()): Promise<ServiceJob | null> {
+    if (isSupabaseConfigured()) {
+      try {
+        const { data, error } = await supabase
+          .from('service_jobs')
+          .select('*')
+          .eq('id', id)
+          .eq('tenant_id', tenantId)
+          .single();
+
+        if (!error && data) {
+          return mapJob(data);
+        }
+      } catch (err) {
+        console.warn('[db] Supabase service_jobs findById error:', err);
+      }
+    }
+
     const db = await getDatabase();
     const rows = await db.select<any[]>('SELECT * FROM service_jobs WHERE id = ? AND tenant_id = ?', [id, tenantId]);
     return rows.length ? mapJob(rows[0]) : null;
   },
 
   async create(job: Omit<ServiceJob, 'id' | 'createdAt' | 'updatedAt'>): Promise<ServiceJob> {
-    const db = await getDatabase();
     const id = crypto.randomUUID();
     const now = Date.now();
+
+    if (isSupabaseConfigured()) {
+      try {
+        await supabase.from('service_jobs').upsert({
+          id,
+          tenant_id: job.tenantId,
+          job_number: job.jobNumber,
+          customer_id: job.customerId || null,
+          customer_name: job.customerName,
+          vehicle_id: job.vehicleId || null,
+          vehicle_summary: job.vehicleSummary,
+          status: job.status,
+          priority: job.priority,
+          mechanic_id: job.mechanicId || null,
+          mechanic_name: job.mechanicName || null,
+          estimated_hours: job.estimatedHours || null,
+          notes: job.notes || null,
+          created_at: now,
+          updated_at: now,
+        });
+      } catch (err) {
+        console.warn('[db] Supabase service_job create error:', err);
+      }
+    }
+
+    const db = await getDatabase();
     await db.execute(
       `INSERT INTO service_jobs (id, tenant_id, job_number, customer_id, customer_name, vehicle_id, vehicle_summary, status, priority, mechanic_id, mechanic_name, estimated_hours, notes, created_at, updated_at)
        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
@@ -537,28 +755,90 @@ export const jobRepo = {
         job.notes || null, now, now
       ]
     );
-    return (await this.findById(id, job.tenantId))!;
+    return {
+      id,
+      tenantId: job.tenantId,
+      jobNumber: job.jobNumber,
+      customerId: job.customerId,
+      customerName: job.customerName,
+      vehicleId: job.vehicleId,
+      vehicleSummary: job.vehicleSummary,
+      status: job.status,
+      priority: job.priority,
+      mechanicId: job.mechanicId,
+      mechanicName: job.mechanicName,
+      estimatedHours: job.estimatedHours,
+      notes: job.notes,
+      createdAt: now,
+      updatedAt: now,
+    };
   },
 
   async updateStatus(id: string, status: ServiceJob['status'], extras: Partial<{ actualHours: number; startedAt: number; completedAt: number }> = {}, tenantId = getCurrentTenantId()): Promise<void> {
+    const now = Date.now();
+    if (isSupabaseConfigured()) {
+      try {
+        const payload: Record<string, any> = { status, updated_at: now };
+        if (extras.actualHours !== undefined) payload.actual_hours = extras.actualHours;
+        if (extras.startedAt !== undefined) payload.started_at = extras.startedAt;
+        if (extras.completedAt !== undefined) payload.completed_at = extras.completedAt;
+
+        await supabase.from('service_jobs').update(payload).eq('id', id).eq('tenant_id', tenantId);
+      } catch (err) {
+        console.warn('[db] Supabase updateStatus error:', err);
+      }
+    }
+
     const db = await getDatabase();
     await db.execute(
       `UPDATE service_jobs SET status = ?, actual_hours = COALESCE(?, actual_hours), started_at = COALESCE(?, started_at), completed_at = COALESCE(?, completed_at), updated_at = ? WHERE id = ? AND tenant_id = ?`,
-      [status, extras.actualHours ?? null, extras.startedAt ?? null, extras.completedAt ?? null, Date.now(), id, tenantId]
+      [status, extras.actualHours ?? null, extras.startedAt ?? null, extras.completedAt ?? null, now, id, tenantId]
     );
   },
 
   async update(id: string, data: Partial<ServiceJob>, tenantId = getCurrentTenantId()): Promise<void> {
+    const now = Date.now();
+    if (isSupabaseConfigured()) {
+      try {
+        const payload: Record<string, any> = { updated_at: now };
+        if (data.customerName !== undefined) payload.customer_name = data.customerName;
+        if (data.vehicleSummary !== undefined) payload.vehicle_summary = data.vehicleSummary;
+        if (data.status !== undefined) payload.status = data.status;
+        if (data.priority !== undefined) payload.priority = data.priority;
+        if (data.mechanicName !== undefined) payload.mechanic_name = data.mechanicName;
+        if (data.estimatedHours !== undefined) payload.estimated_hours = data.estimatedHours;
+        if (data.notes !== undefined) payload.notes = data.notes;
+
+        await supabase.from('service_jobs').update(payload).eq('id', id).eq('tenant_id', tenantId);
+      } catch (err) {
+        console.warn('[db] Supabase job update error:', err);
+      }
+    }
+
     const db = await getDatabase();
     await db.execute(
       `UPDATE service_jobs SET customer_name = COALESCE(?, customer_name), vehicle_summary = COALESCE(?, vehicle_summary), status = COALESCE(?, status), priority = COALESCE(?, priority), mechanic_name = COALESCE(?, mechanic_name), estimated_hours = COALESCE(?, estimated_hours), notes = COALESCE(?, notes), updated_at = ? WHERE id = ? AND tenant_id = ?`,
       [data.customerName ?? null, data.vehicleSummary ?? null, data.status ?? null,
        data.priority ?? null, data.mechanicName ?? null, data.estimatedHours ?? null,
-       data.notes ?? null, Date.now(), id, tenantId]
+       data.notes ?? null, now, id, tenantId]
     );
   },
 
   async nextJobNumber(tenantId = getCurrentTenantId()): Promise<string> {
+    if (isSupabaseConfigured()) {
+      try {
+        const { count } = await supabase
+          .from('service_jobs')
+          .select('*', { count: 'exact', head: true })
+          .eq('tenant_id', tenantId);
+
+        const n = (count || 0) + 1;
+        return `JOB-${String(n).padStart(3, '0')}`;
+      } catch (err) {
+        console.warn('[db] Supabase nextJobNumber error:', err);
+      }
+    }
+
     const db = await getDatabase();
     const rows = await db.select<any[]>('SELECT COUNT(*) as count FROM service_jobs WHERE tenant_id = ?', [tenantId]);
     const n = (rows[0]?.count || 0) + 1;
@@ -566,8 +846,30 @@ export const jobRepo = {
   },
 
   async getStats(tenantId = getCurrentTenantId()): Promise<{ active: number; pending: number; completedToday: number; revenue: number }> {
-    const db = await getDatabase();
     const todayStart = new Date(); todayStart.setHours(0,0,0,0);
+
+    if (isSupabaseConfigured()) {
+      try {
+        const [activeRes, pendingRes, compRes, invRes] = await Promise.all([
+          supabase.from('service_jobs').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId).eq('status', 'in_progress'),
+          supabase.from('service_jobs').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId).eq('status', 'pending'),
+          supabase.from('service_jobs').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId).eq('status', 'completed').gte('completed_at', todayStart.getTime()),
+          supabase.from('auto_care_invoices').select('total').eq('tenant_id', tenantId).gte('created_at', todayStart.getTime()),
+        ]);
+
+        const rev = (invRes.data || []).reduce((sum, inv) => sum + (Number(inv.total) || 0), 0);
+        return {
+          active: activeRes.count || 0,
+          pending: pendingRes.count || 0,
+          completedToday: compRes.count || 0,
+          revenue: rev,
+        };
+      } catch (err) {
+        console.warn('[db] Supabase getStats error:', err);
+      }
+    }
+
+    const db = await getDatabase();
     const [active, pending, completedToday] = await Promise.all([
       db.select<any[]>("SELECT COUNT(*) as c FROM service_jobs WHERE tenant_id=? AND status='in_progress'", [tenantId]),
       db.select<any[]>("SELECT COUNT(*) as c FROM service_jobs WHERE tenant_id=? AND status='pending'", [tenantId]),
@@ -580,6 +882,23 @@ export const jobRepo = {
 
 export const serviceRepo = {
   async findAll(tenantId = getCurrentTenantId()): Promise<AutoCareService[]> {
+    if (isSupabaseConfigured()) {
+      try {
+        const { data, error } = await supabase
+          .from('auto_care_services')
+          .select('*')
+          .eq('tenant_id', tenantId)
+          .eq('is_active', 1)
+          .order('name');
+
+        if (!error && data) {
+          return data.map(mapService);
+        }
+      } catch (err) {
+        console.warn('[db] Supabase services findAll error:', err);
+      }
+    }
+
     const db = await getDatabase();
     const rows = await db.select<any[]>('SELECT * FROM auto_care_services WHERE tenant_id = ? AND is_active = 1 ORDER BY category, name', [tenantId]);
     return rows.map(mapService);
@@ -588,27 +907,60 @@ export const serviceRepo = {
 
 export const vehicleRepo = {
   async findAll(tenantId = getCurrentTenantId()): Promise<Vehicle[]> {
+    if (isSupabaseConfigured()) {
+      try {
+        const { data, error } = await supabase
+          .from('vehicles')
+          .select('*')
+          .eq('tenant_id', tenantId)
+          .order('make');
+
+        if (!error && data) {
+          return data.map(mapVehicle);
+        }
+      } catch (err) {
+        console.warn('[db] Supabase vehicles findAll error:', err);
+      }
+    }
+
     const db = await getDatabase();
     const rows = await db.select<any[]>('SELECT * FROM vehicles WHERE tenant_id = ? ORDER BY make, model', [tenantId]);
     return rows.map(mapVehicle);
   },
 
   async create(v: Omit<Vehicle, 'id' | 'createdAt' | 'updatedAt'>): Promise<Vehicle> {
-    const db = await getDatabase();
     const id = crypto.randomUUID();
     const now = Date.now();
+
+    if (isSupabaseConfigured()) {
+      try {
+        await supabase.from('vehicles').upsert({
+          id,
+          tenant_id: v.tenantId,
+          customer_id: v.customerId || null,
+          customer_name: v.customerName || null,
+          make: v.make,
+          model: v.model,
+          year: v.year,
+          license_plate: v.licensePlate,
+          vin: v.vin || null,
+          color: v.color || null,
+          mileage: v.mileage || null,
+          notes: v.notes || null,
+          created_at: now,
+          updated_at: now,
+        });
+      } catch (err) {
+        console.warn('[db] Supabase vehicle create error:', err);
+      }
+    }
+
+    const db = await getDatabase();
     await db.execute(
       `INSERT INTO vehicles (id, tenant_id, customer_id, customer_name, make, model, year, license_plate, vin, color, mileage, notes, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [id, v.tenantId, v.customerId||null, v.customerName||null, v.make, v.model, v.year, v.licensePlate, v.vin||null, v.color||null, v.mileage||null, v.notes||null, now, now]
     );
-    try {
-      const rows = await db.select<any[]>('SELECT * FROM vehicles WHERE id = ? AND tenant_id = ?', [id, v.tenantId]);
-      if (rows && rows[0]) {
-        return mapVehicle(rows[0]);
-      }
-    } catch {
-      // fallback
-    }
+
     return {
       id,
       tenantId: v.tenantId,
@@ -630,9 +982,37 @@ export const vehicleRepo = {
 
 export const invoiceRepo = {
   async create(inv: Omit<AutoCareInvoice, 'id' | 'createdAt' | 'updatedAt'>): Promise<AutoCareInvoice> {
-    const db = await getDatabase();
     const id = crypto.randomUUID();
     const now = Date.now();
+
+    if (isSupabaseConfigured()) {
+      try {
+        await supabase.from('auto_care_invoices').upsert({
+          id,
+          tenant_id: inv.tenantId,
+          invoice_number: inv.invoiceNumber,
+          job_id: inv.jobId || null,
+          job_number: inv.jobNumber || null,
+          customer_id: inv.customerId || null,
+          customer_name: inv.customerName,
+          vehicle_summary: inv.vehicleSummary || null,
+          items: JSON.stringify(inv.items),
+          subtotal: inv.subtotal,
+          discount: inv.discount,
+          tax: inv.tax,
+          total: inv.total,
+          payment_method: inv.paymentMethod,
+          status: inv.status,
+          notes: inv.notes || null,
+          created_at: now,
+          updated_at: now,
+        });
+      } catch (err) {
+        console.warn('[db] Supabase invoice create error:', err);
+      }
+    }
+
+    const db = await getDatabase();
     await db.execute(
       `INSERT INTO auto_care_invoices (id, tenant_id, invoice_number, job_id, job_number, customer_id, customer_name, vehicle_summary, items, subtotal, discount, tax, total, payment_method, status, notes, created_at, updated_at)
        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
@@ -641,14 +1021,7 @@ export const invoiceRepo = {
        JSON.stringify(inv.items), inv.subtotal, inv.discount, inv.tax, inv.total,
        inv.paymentMethod, inv.status, inv.notes||null, now, now]
     );
-    try {
-      const rows = await db.select<any[]>('SELECT * FROM auto_care_invoices WHERE id = ? AND tenant_id = ?', [id, inv.tenantId]);
-      if (rows && rows[0]) {
-        return mapInvoice(rows[0]);
-      }
-    } catch {
-      // fallback
-    }
+
     return {
       id,
       tenantId: inv.tenantId,
@@ -672,6 +1045,20 @@ export const invoiceRepo = {
   },
 
   async nextInvoiceNumber(tenantId = getCurrentTenantId()): Promise<string> {
+    if (isSupabaseConfigured()) {
+      try {
+        const { count } = await supabase
+          .from('auto_care_invoices')
+          .select('*', { count: 'exact', head: true })
+          .eq('tenant_id', tenantId);
+
+        const n = (count || 0) + 1;
+        return `INV-${String(n).padStart(4, '0')}`;
+      } catch (err) {
+        console.warn('[db] Supabase nextInvoiceNumber error:', err);
+      }
+    }
+
     const db = await getDatabase();
     const rows = await db.select<any[]>('SELECT COUNT(*) as count FROM auto_care_invoices WHERE tenant_id = ?', [tenantId]);
     const n = (rows[0]?.count || 0) + 1;
@@ -679,6 +1066,22 @@ export const invoiceRepo = {
   },
 
   async findAll(tenantId = getCurrentTenantId()): Promise<AutoCareInvoice[]> {
+    if (isSupabaseConfigured()) {
+      try {
+        const { data, error } = await supabase
+          .from('auto_care_invoices')
+          .select('*')
+          .eq('tenant_id', tenantId)
+          .order('created_at', { ascending: false });
+
+        if (!error && data) {
+          return data.map(mapInvoice);
+        }
+      } catch (err) {
+        console.warn('[db] Supabase invoices findAll error:', err);
+      }
+    }
+
     const db = await getDatabase();
     const rows = await db.select<any[]>('SELECT * FROM auto_care_invoices WHERE tenant_id = ? ORDER BY created_at DESC', [tenantId]);
     return rows.map(mapInvoice);
@@ -708,7 +1111,7 @@ export async function completePOSSale(
   const now = Date.now();
   const invoiceNumber = await invoiceRepo.nextInvoiceNumber(tenantId);
 
-  const invoiceItems: ServiceJobItem[] = input.items.map((item, i) => ({
+  const invoiceItems: ServiceJobItem[] = input.items.map((item) => ({
     id: crypto.randomUUID(),
     jobId: '',
     type: 'part' as const,

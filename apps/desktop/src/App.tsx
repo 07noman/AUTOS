@@ -27,7 +27,7 @@ import { initializeAutoCareSchema } from './lib/auto-care-db';
 import { initializeSync } from './lib/sync';
 
 function App() {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, validateSession } = useAuth();
   const [dbReady, setDbReady] = useState(false);
   const location = useLocation();
 
@@ -43,6 +43,13 @@ function App() {
       }
     })();
   }, []);
+
+  // Proactively verify session with Supabase: kicks out banned or deleted users immediately
+  useEffect(() => {
+    if (isAuthenticated) {
+      void validateSession();
+    }
+  }, [isAuthenticated, location.pathname, validateSession]);
 
   useEffect(() => {
     if (isAuthenticated && dbReady) {

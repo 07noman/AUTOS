@@ -33,8 +33,8 @@ export function LoginPage() {
 
   // Login Form State
   const [loginData, setLoginData] = useState({
-    email: 'demo@genx.com',
-    password: 'password',
+    email: '',
+    password: '',
   });
 
   // Signup Form State
