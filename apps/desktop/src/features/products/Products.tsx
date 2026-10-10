@@ -13,38 +13,45 @@ export function Products() {
 
   const loading = productsLoading || categoriesLoading;
 
-  // Build category lookup map
+  // Build category lookup map (maps both id -> name and name -> name for safety)
   const categoryMap = useMemo(() => {
     const map = new Map<string, string>();
     for (const c of categories) {
       map.set(c.id, c.name);
+      map.set(c.name, c.name);
     }
     return map;
   }, [categories]);
 
   // Map to unified display items
   const products = useMemo(() => {
-    return rawProducts.map((p) => ({
-      id: p.id,
-      name: p.name,
-      categoryId: p.categoryId || null,
-      categoryName: p.categoryId ? categoryMap.get(p.categoryId) || 'Uncategorized' : 'Uncategorized',
-      internalReference: p.sku || null,
-      barcode: p.barcode || null,
-      salesPrice: p.sellingPrice || 0,
-      cost: p.costPrice || 0,
-      quantityOnHand: p.stock || 0,
-      imageUrl: p.images && p.images.length > 0 ? p.images[0] : null,
-      variantsCount: undefined,
-    }));
+    return rawProducts.map((p) => {
+      const resolvedCat = p.categoryId ? categoryMap.get(p.categoryId) || p.categoryId : 'Uncategorized';
+      return {
+        id: p.id,
+        name: p.name,
+        categoryId: p.categoryId || null,
+        categoryName: resolvedCat,
+        internalReference: p.sku || null,
+        barcode: p.barcode || null,
+        salesPrice: p.sellingPrice || 0,
+        cost: p.costPrice || 0,
+        quantityOnHand: p.stock || 0,
+        imageUrl: p.images && p.images.length > 0 ? p.images[0] : null,
+        variantsCount: undefined,
+      };
+    });
   }, [rawProducts, categoryMap]);
+
 
   const filteredProducts = useMemo(() => {
     const term = search.trim().toLowerCase();
 
     return products.filter((product) => {
       const matchesCategory =
-        categoryId === 'all' || product.categoryId === categoryId;
+        categoryId === 'all' ||
+        product.categoryId === categoryId ||
+        product.categoryName.toLowerCase() === categoryId.toLowerCase();
 
       const matchesSearch =
         !term ||
@@ -58,6 +65,7 @@ export function Products() {
       return matchesCategory && matchesSearch;
     });
   }, [products, search, categoryId]);
+
 
   const money = (value: number) =>
     new Intl.NumberFormat('en-PK', {

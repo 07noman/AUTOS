@@ -18,6 +18,7 @@ import { NewJobForm } from './features/auto-care/NewJobForm';
 import { VehiclesView } from './features/auto-care/VehiclesView';
 import { AutoCareModuleView } from './features/auto-care/AutoCareModuleView';
 import { PartsAndProducts } from './features/auto-care/PartsAndProducts';
+import { InventoryView } from './features/inventory/InventoryView';
 import { POSOrdersPage } from './features/auto-care/POSOrdersPage';
 import { SettingsPage } from './features/settings/SettingsPage';
 import { useAuth } from './hooks/useAuth';
@@ -95,7 +96,7 @@ function App() {
         <Route path="vehicles" element={<VehiclesView />} />
         <Route path="vehicle-history" element={<AutoCareModuleView moduleId="vehicle-history" />} />
         <Route path="customers" element={<AutoCareModuleView moduleId="customers" />} />
-        <Route path="inventory" element={<AutoCareModuleView moduleId="inventory" />} />
+        <Route path="inventory" element={<InventoryView />} />
         <Route path="estimates" element={<AutoCareModuleView moduleId="estimates" />} />
         <Route path="appointments" element={<AutoCareModuleView moduleId="appointments" />} />
         <Route path="job-board" element={<AutoCareModuleView moduleId="job-board" />} />
@@ -123,6 +124,7 @@ function App() {
         <Route path="pos/advanced" element={<AdvancedPOS />} />
         <Route path="dashboard" element={<Dashboard />} />
         <Route path="products" element={<Products />} />
+        <Route path="inventory" element={<InventoryView />} />
         <Route path="customers" element={<Customers />} />
         <Route path="reports" element={<SalesReport />} />
         {/* If in auto care mode, /settings redirects to /auto-care/settings */}

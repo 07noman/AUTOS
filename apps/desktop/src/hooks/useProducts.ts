@@ -204,3 +204,118 @@ export function useCreateCategory() {
   });
 }
 
+export function useDeleteProduct() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const tenantId = getCurrentTenantId();
+      await productRepo.delete(tenantId, id);
+
+      // Record in outbox for sync
+      try {
+        await outboxRepo.insert({
+          id: crypto.randomUUID(),
+          tenantId,
+          entityType: 'product',
+          entityId: id,
+          operation: 'delete',
+          payload: { id },
+        });
+      } catch (err) {
+        console.warn('Could not record product delete outbox:', err);
+      }
+
+      void recordProductChange('delete', { id });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+    },
+  });
+}
+
+export function useAdjustStock() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      productId,
+      quantityDelta,
+      notes,
+    }: {
+      productId: string;
+      quantityDelta: number;
+      notes?: string;
+    }) => {
+      const tenantId = getCurrentTenantId();
+      const deviceId = await getDeviceId();
+      const movementId = crypto.randomUUID();
+      const now = Date.now();
+
+      // Check current product stock
+      const product = await productRepo.findById(tenantId, productId);
+      if (!product) throw new Error('Product not found');
+
+      const newStock = product.stock + quantityDelta;
+      if (newStock < 0) {
+        throw new Error(`Cannot reduce stock below 0. Current stock is ${product.stock}`);
+      }
+
+      // Update product table stock
+      await productRepo.updateStock(tenantId, productId, quantityDelta);
+
+      // Record immutable stock movement ledger
+      await stockMovementRepo.insert({
+        id: movementId,
+        tenantId,
+        productId,
+        quantityDelta,
+        movementType: 'ADJUSTMENT',
+        referenceType: 'manual',
+        referenceId: movementId,
+        deviceId,
+        notes: notes || 'Manual inventory adjustment',
+        createdAt: now,
+      });
+
+      // Mirror to outbox for cloud sync
+      try {
+        await outboxRepo.insert({
+          id: crypto.randomUUID(),
+          tenantId,
+          entityType: 'stock_movement',
+          entityId: movementId,
+          operation: 'create',
+          payload: {
+            id: movementId,
+            tenantId,
+            productId,
+            quantityDelta,
+            movementType: 'ADJUSTMENT',
+            referenceType: 'manual',
+            referenceId: movementId,
+            deviceId,
+            notes: notes || 'Manual inventory adjustment',
+            createdAt: now,
+          },
+        });
+      } catch (err) {
+        console.warn('Could not record adjustment outbox:', err);
+      }
+
+      // Update offline DB
+      try {
+        await setStock(productId, newStock, product.metadata?.trackInventory !== false);
+      } catch (e) {
+        console.warn('Could not update offline stock store:', e);
+      }
+
+      return { productId, newStock };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+    },
+  });
+}
+
+

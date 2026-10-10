@@ -136,13 +136,21 @@ export function ProductForm({ open, onOpenChange, onSaved }: ProductFormProps) {
       const price = parseFloat(salesPrice) || 0;
       const cost = parseFloat(costPrice) || 0;
 
+      // Resolve category ID if category name was provided
+      let categoryIdToSave: string | undefined = undefined;
+      if (posCategory && posCategory !== "") {
+        const found = categories.find((c) => c.name.toLowerCase() === posCategory.toLowerCase() || c.id === posCategory);
+        categoryIdToSave = found ? found.id : posCategory;
+      }
+
       await createProduct.mutateAsync({
         tenantId,
         sku,
         name: name.trim(),
         barcode: barcode.trim() || undefined,
-        categoryId: posCategory || undefined,
+        categoryId: categoryIdToSave,
         sellingPrice: price,
+
         costPrice: cost,
         stock: trackInventory ? 10 : 0,
         minimumStock: trackInventory ? 2 : 0,
