@@ -2,9 +2,9 @@
 
 import React, { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { X } from "lucide-react";
+import { X, Plus, Check } from "lucide-react";
 import "./OdooProductModal.css";
-import { useCreateProduct, useCategories } from "@/hooks/useProducts";
+import { useCreateProduct, useCategories, useCreateCategory } from "@/hooks/useProducts";
 import { getCurrentTenantId } from "@/lib/db";
 
 const COLOR_PALETTE = [
@@ -37,6 +37,7 @@ export interface ProductFormProps {
 export function ProductForm({ open, onOpenChange, onSaved }: ProductFormProps) {
   const createProduct = useCreateProduct();
   const { data: categories = [] } = useCategories();
+  const createCategory = useCreateCategory();
 
   // Form states matching screenshot
   const [name, setName] = useState("");
@@ -49,6 +50,11 @@ export function ProductForm({ open, onOpenChange, onSaved }: ProductFormProps) {
   const [color, setColor] = useState("#ffffff");
   const [imageDataUrl, setImageDataUrl] = useState<string | null>(null);
 
+  // Add new category inline state
+  const [showNewCatInput, setShowNewCatInput] = useState(false);
+  const [newCatName, setNewCatName] = useState("");
+  const [creatingCat, setCreatingCat] = useState(false);
+
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [errors, setErrors] = useState<{ name?: string; barcode?: string; salesPrice?: string }>({});
   const [saving, setSaving] = useState(false);
@@ -60,6 +66,8 @@ export function ProductForm({ open, onOpenChange, onSaved }: ProductFormProps) {
     if (open) {
       setTimeout(() => nameInputRef.current?.focus(), 80);
       setErrors({});
+      setShowNewCatInput(false);
+      setNewCatName("");
     }
   }, [open]);
 
@@ -76,6 +84,8 @@ export function ProductForm({ open, onOpenChange, onSaved }: ProductFormProps) {
     setColor("#ffffff");
     setImageDataUrl(null);
     setErrors({});
+    setShowNewCatInput(false);
+    setNewCatName("");
   };
 
   const handleImageFile = (file: File) => {
@@ -91,6 +101,21 @@ export function ProductForm({ open, onOpenChange, onSaved }: ProductFormProps) {
     // Generate standard EAN-13 style random barcode
     const randomBarcode = "2" + Math.floor(10000000000 + Math.random() * 90000000000).toString();
     setBarcode(randomBarcode);
+  };
+
+  const handleCreateNewCategory = async () => {
+    if (!newCatName.trim()) return;
+    setCreatingCat(true);
+    try {
+      const created = await createCategory.mutateAsync(newCatName.trim());
+      setPosCategory(created.name);
+      setNewCatName("");
+      setShowNewCatInput(false);
+    } catch (err) {
+      console.error("Failed to create category:", err);
+    } finally {
+      setCreatingCat(false);
+    }
   };
 
   const validate = () => {
@@ -270,6 +295,24 @@ export function ProductForm({ open, onOpenChange, onSaved }: ProductFormProps) {
               </div>
             </div>
 
+            {/* Cost Price (directly below Sales Price) */}
+            <div className="odoo-prod-row">
+              <span className="odoo-prod-label">
+                Cost Price <span className="odoo-prod-help" title="Purchase/Cost price of product">?</span>
+              </span>
+              <div className="odoo-prod-control" style={{ flexDirection: "column", alignItems: "stretch" }}>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  className="odoo-prod-input"
+                  placeholder="0.00"
+                  value={costPrice}
+                  onChange={(e) => setCostPrice(e.target.value)}
+                />
+              </div>
+            </div>
+
             {/* Sales Taxes */}
             <div className="odoo-prod-row">
               <span className="odoo-prod-label">
@@ -291,24 +334,91 @@ export function ProductForm({ open, onOpenChange, onSaved }: ProductFormProps) {
               </div>
             </div>
 
-            {/* POS Category */}
+            {/* POS Category with + Add New Category option */}
             <div className="odoo-prod-row">
               <span className="odoo-prod-label">
                 POS Category <span className="odoo-prod-help" title="Assign category to display in POS screen">?</span>
               </span>
-              <div className="odoo-prod-control">
-                <select
-                  className="odoo-prod-select category-select"
-                  value={posCategory}
-                  onChange={(e) => setPosCategory(e.target.value)}
-                >
-                  <option value="">Select category...</option>
-                  {categories.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
+              <div className="odoo-prod-control" style={{ flexDirection: "column", alignItems: "stretch" }}>
+                {showNewCatInput ? (
+                  <div style={{ display: "flex", gap: "6px", alignItems: "center", width: "100%" }}>
+                    <input
+                      type="text"
+                      className="odoo-prod-input"
+                      placeholder="Enter new category name..."
+                      value={newCatName}
+                      autoFocus
+                      onChange={(e) => setNewCatName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          handleCreateNewCategory();
+                        }
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={handleCreateNewCategory}
+                      disabled={creatingCat || !newCatName.trim()}
+                      className="odoo-prod-btn-primary"
+                      style={{ padding: "4px 10px", fontSize: "12px", height: "30px", flexShrink: 0 }}
+                    >
+                      <Check size={14} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowNewCatInput(false)}
+                      className="odoo-prod-btn-discard"
+                      style={{ padding: "4px 8px", fontSize: "12px", height: "30px", flexShrink: 0 }}
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", gap: "8px", alignItems: "center", width: "100%" }}>
+                    <select
+                      className="odoo-prod-select category-select"
+                      value={posCategory}
+                      onChange={(e) => {
+                        if (e.target.value === "__add_new__") {
+                          setShowNewCatInput(true);
+                        } else {
+                          setPosCategory(e.target.value);
+                        }
+                      }}
+                    >
+                      <option value="">Select category...</option>
+                      {categories.map((c) => (
+                        <option key={c.id} value={c.name}>
+                          {c.name}
+                        </option>
+                      ))}
+                      <option value="__add_new__">+ Add New Category...</option>
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => setShowNewCatInput(true)}
+                      title="Add New Category"
+                      style={{
+                        background: "none",
+                        border: "1px dashed #cbd5e1",
+                        borderRadius: "6px",
+                        cursor: "pointer",
+                        color: "#79556f",
+                        padding: "4px 8px",
+                        fontSize: "12px",
+                        fontWeight: 600,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "2px",
+                        whiteSpace: "nowrap",
+                        flexShrink: 0,
+                      }}
+                    >
+                      <Plus size={13} /> New
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
 

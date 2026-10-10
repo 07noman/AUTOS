@@ -29,8 +29,9 @@ import PaymentPage, { type PaymentData, type POSCustomer, type POSCartItem } fro
 import PaymentSuccessScreen from "./PaymentSuccessScreen";
 import { completePOSSale, posOrderRepo } from "../../lib/auto-care-db";
 import { useAuth } from "../../hooks/useAuth";
-import { useProducts } from "../../hooks/useProducts";
+import { useProducts, useCategories } from "../../hooks/useProducts";
 import { productRepo, getCurrentTenantId } from "../../lib/db";
+
 import { isOnline } from "../../services/connectionManager";
 import { saveOfflineOrder } from "../../services/offlineOrders";
 import { reduceStock } from "../../services/offlineInventory";
@@ -270,6 +271,7 @@ export function AutoCarePOS() {
   const { user, logout } = useAuth();
   const queryClient = useQueryClient();
   const { data: dbProducts = [] } = useProducts();
+  const { data: dbCategories = [] } = useCategories();
 
   const [activeCategory, setActiveCategory] = useState("all");
   const [search, setSearch] = useState("");
@@ -279,7 +281,29 @@ export function AutoCarePOS() {
   const [showMenuDropdown, setShowMenuDropdown] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
 
-  // ── Persistent Order state ────────────────────────────────────────────────
+  // Dynamic POS categories built purely from real database categories (plus "All")
+  const posCategories = useMemo<Category[]>(() => {
+    const list: Category[] = [{ id: "all", name: "All", color: "bg-slate-100" }];
+    const swatches = [
+      "bg-orange-100",
+      "bg-emerald-100",
+      "bg-blue-100",
+      "bg-purple-100",
+      "bg-yellow-100",
+      "bg-pink-100",
+      "bg-cyan-100",
+    ];
+    dbCategories.forEach((c, idx) => {
+      list.push({
+        id: c.name,
+        name: c.name,
+        color: swatches[idx % swatches.length],
+      });
+    });
+    return list;
+  }, [dbCategories]);
+
+  // Persistent Order state
   const [currentOrderId, setCurrentOrderId] = useState<string | null>(null);
   const [currentOrderNumber, setCurrentOrderNumber] = useState<number | null>(null);
 
@@ -308,7 +332,7 @@ export function AutoCarePOS() {
     }
   }, [searchParams]);
 
-  // ── Payment page state ────────────────────────────────────────────────────
+  // Payment page state
   const [showPayment, setShowPayment] = useState(false);
   const lastInvoiceNumberRef = useRef<string | undefined>(undefined);
 
@@ -329,34 +353,14 @@ export function AutoCarePOS() {
   const [selectedPOSCustomer, setSelectedPOSCustomer] =
     useState<POSCustomer | null>(null);
 
-  // Combine workshop services with products from database (Parts & Products)
+  // Products from database only (NO mock products)
   const allPosProducts = useMemo<Product[]>(() => {
-    const baseServices: Product[] = [
-      { id: "svc-1", name: "Oil Change", price: 2500, category: "services", type: "service" },
-      { id: "svc-2", name: "Full Car Service", price: 6500, category: "services", type: "service" },
-      { id: "svc-3", name: "Brake Service", price: 4500, category: "services", type: "service" },
-      { id: "svc-4", name: "Battery Check", price: 500, category: "services", type: "service" },
-      { id: "svc-5", name: "Wheel Alignment", price: 2500, category: "services", type: "service" },
-      { id: "svc-6", name: "Wheel Balancing", price: 1800, category: "services", type: "service" },
-      { id: "svc-7", name: "Car Polish", price: 3000, category: "services", type: "service" },
-      { id: "svc-8", name: "Car Wash", price: 1200, category: "services", type: "service" },
-    ];
-
-    const mappedDbProducts: Product[] = dbProducts.map((p) => {
-      const catLower = (p.categoryId || "").toLowerCase();
-      let cat = "parts";
-      if (catLower.includes("oil") || catLower.includes("fluid")) cat = "oil";
-      else if (catLower.includes("brake")) cat = "brakes";
-      else if (catLower.includes("tyre") || catLower.includes("wheel")) cat = "tyres";
-      else if (catLower.includes("battery") || catLower.includes("electr")) cat = "battery";
-      else if (catLower.includes("access")) cat = "accessories";
-      else if (catLower.includes("service")) cat = "services";
-
+    return dbProducts.map((p) => {
       return {
         id: p.id,
         name: p.name,
         price: p.sellingPrice,
-        category: p.categoryId ? p.categoryId : cat,
+        category: p.categoryId || "General",
         image: p.images?.[0],
         type: "product" as const,
         stock: p.stock,
@@ -365,9 +369,8 @@ export function AutoCarePOS() {
         sku: p.sku,
       };
     });
-
-    return [...baseServices, ...mappedDbProducts];
   }, [dbProducts]);
+
 
   const filteredProducts = useMemo(() => {
     return allPosProducts.filter((product) => {
@@ -1107,7 +1110,7 @@ export function AutoCarePOS() {
           {/* Category Bar */}
           <div className="shrink-0 overflow-x-auto border-b border-[#e0e0e0] bg-[#f8fafc] px-3 py-2">
             <div className="flex min-w-max gap-1.5">
-              {CATEGORIES.map((category) => (
+              {posCategories.map((category) => (
                 <button
                   key={category.id}
                   onClick={() => setActiveCategory(category.id)}
@@ -1127,6 +1130,7 @@ export function AutoCarePOS() {
                   {category.name}
                 </button>
               ))}
+
             </div>
           </div>
 
