@@ -8,10 +8,10 @@ import { putItem, putMany, getAllItems, OFFLINE_STORES } from '@/services/offlin
 import { setStock } from '@/services/offlineInventory';
 
 export function useProducts() {
+  const tenantId = getCurrentTenantId();
   return useQuery({
-    queryKey: ['products'],
+    queryKey: ['products', tenantId],
     queryFn: async (): Promise<Product[]> => {
-      const tenantId = getCurrentTenantId();
       try {
         const products = await productRepo.findAll(tenantId);
         if (products && products.length > 0) {
@@ -164,10 +164,10 @@ export function useUpdateProduct() {
 }
 
 export function useCategories() {
+  const tenantId = getCurrentTenantId();
   return useQuery({
-    queryKey: ['categories'],
+    queryKey: ['categories', tenantId],
     queryFn: async () => {
-      const tenantId = getCurrentTenantId();
       try {
         const { categoryRepo } = await import('@/lib/db');
         return await categoryRepo.findAll(tenantId);
