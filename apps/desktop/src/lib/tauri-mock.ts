@@ -108,17 +108,8 @@ export function setupTauriBrowserMock(): void {
             reference_type, reference_id, device_id, notes, created_at
           ] = values;
 
-          // Enforce unique (tenant_id, reference_type, reference_id, product_id)
-          const dup = movements.find(
-            (m) =>
-              m.tenant_id === tenant_id &&
-              m.reference_type === reference_type &&
-              m.reference_id === reference_id &&
-              m.product_id === product_id
-          );
-          if (dup) {
-            throw new Error(`UNIQUE constraint failed: stock_movements (${reference_type}:${reference_id}:${product_id})`);
-          }
+          // In the real SQLite schema, there is no UNIQUE constraint on reference_id/product_id
+          // so we shouldn't throw an error here.
 
           movements.push({
             id, tenant_id, product_id, quantity_delta, movement_type,
