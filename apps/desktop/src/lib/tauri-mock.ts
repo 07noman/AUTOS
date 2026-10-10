@@ -431,6 +431,51 @@ export function setupTauriBrowserMock(): void {
           return [1, 1];
         }
 
+        // ── categories INSERT ──────────────────────────────────────
+        if (query.startsWith('INSERT INTO categories')) {
+          const categories = getStorage<any[]>('categories', []);
+          const [id, tenant_id, name, parent_id, created_at, updated_at] = values;
+          const existingIdx = categories.findIndex((c) => c.id === id);
+          const item = {
+            id,
+            tenant_id,
+            name,
+            parent_id: parent_id || null,
+            created_at: created_at || Date.now(),
+            updated_at: updated_at || Date.now(),
+          };
+          if (existingIdx >= 0) {
+            categories[existingIdx] = item;
+          } else {
+            categories.push(item);
+          }
+          setStorage('categories', categories);
+          return [1, 1];
+        }
+
+        // ── categories UPDATE ──────────────────────────────────────
+        if (query.startsWith('UPDATE categories')) {
+          const [name, parent_id, updated_at, id, tenantId] = values;
+          const categories = getStorage<any[]>('categories', []);
+          const cat = categories.find((c) => c.id === id && c.tenant_id === tenantId);
+          if (cat) {
+            if (name) cat.name = name;
+            cat.parent_id = parent_id || null;
+            cat.updated_at = updated_at || Date.now();
+            setStorage('categories', categories);
+          }
+          return [1, 1];
+        }
+
+        // ── categories DELETE ──────────────────────────────────────
+        if (query.startsWith('DELETE FROM categories')) {
+          const [id, tenantId] = values;
+          let categories = getStorage<any[]>('categories', []);
+          categories = categories.filter((c) => !(c.id === id && c.tenant_id === tenantId));
+          setStorage('categories', categories);
+          return [1, 1];
+        }
+
         return [0, 0];
       }
 
@@ -501,6 +546,20 @@ export function setupTauriBrowserMock(): void {
             .filter((m) => !tenantId || m.tenant_id === tenantId)
             .sort((a, b) => b.created_at - a.created_at)
             .slice(0, limit);
+        }
+
+        // ── categories SELECT ─────────────────────────────────────────────
+        if (query.includes('FROM categories')) {
+          const categories = getStorage<any[]>('categories', []);
+          if (query.includes('WHERE id = ? AND tenant_id = ?')) {
+            const [id, tenantId] = values;
+            const item = categories.find((c) => c.id === id && (!tenantId || c.tenant_id === tenantId));
+            return item ? [item] : [];
+          }
+          const tenantId = values[0];
+          return categories
+            .filter((c) => !tenantId || c.tenant_id === tenantId)
+            .sort((a, b) => a.name.localeCompare(b.name));
         }
 
         if (query.includes('FROM products')) {

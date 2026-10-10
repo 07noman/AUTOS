@@ -1,56 +1,171 @@
-import { useMemo } from 'react';
-import { Download, Filter, TrendingUp, DollarSign, CreditCard, ShoppingBag } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { Download, TrendingUp, DollarSign, CreditCard, ShoppingBag, Calendar } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { Button } from '@genx/ui/Button';
 import { Card, CardHeader, CardTitle, CardContent } from '@genx/ui/Card';
 import { Table, TableHeader, TableRow, TableHead, TableCell, TableBody } from '@genx/ui/Table';
-import { orderRepo, getCurrentTenantId } from '@/lib/db';
+import { salesReportRepo, getCurrentTenantId, SaleRecord } from '@/lib/db';
+
+type DateFilter = 'all' | 'today' | '7days' | '30days';
 
 export function SalesReport() {
   const currentTenant = getCurrentTenantId();
-  const { data: orders = [], isLoading } = useQuery({
-    queryKey: ['orders-report', currentTenant],
-    queryFn: () => orderRepo.findAll(currentTenant),
+  const [dateFilter, setDateFilter] = useState<DateFilter>('all');
+
+  const { data: sales = [], isLoading } = useQuery<SaleRecord[]>({
+    queryKey: ['sales-report-unified', currentTenant],
+    queryFn: () => salesReportRepo.getCompletedSales(currentTenant),
+    staleTime: 1000 * 30,
   });
 
-  const { totalOrders, totalRevenue, cashRevenue, creditRevenue, dailySummary } = useMemo(() => {
-    const totalOrders = orders.length;
-    const totalRevenue = orders.reduce((s, o) => s + (Number(o.total) || 0), 0);
-    const cashRevenue = orders
+  const filteredSales = useMemo(() => {
+    if (dateFilter === 'all') return sales;
+
+    const now = Date.now();
+    let cutoff = 0;
+    if (dateFilter === 'today') {
+      const d = new Date();
+      d.setHours(0, 0, 0, 0);
+      cutoff = d.getTime();
+    } else if (dateFilter === '7days') {
+      cutoff = now - 7 * 24 * 60 * 60 * 1000;
+    } else if (dateFilter === '30days') {
+      cutoff = now - 30 * 24 * 60 * 60 * 1000;
+    }
+
+    return sales.filter((s) => s.createdAt >= cutoff);
+  }, [sales, dateFilter]);
+
+  const money = (val: number) =>
+    new Intl.NumberFormat('en-PK', {
+      style: 'currency',
+      currency: 'PKR',
+      maximumFractionDigits: 2,
+    }).format(val || 0);
+
+  const {
+    totalOrders,
+    totalRevenue,
+    cashRevenue,
+    creditRevenue,
+    avgOrderValue,
+    dailySummary,
+  } = useMemo(() => {
+    const totalOrders = filteredSales.length;
+    const totalRevenue = filteredSales.reduce((s, o) => s + (Number(o.total) || 0), 0);
+    const cashRevenue = filteredSales
       .filter((o) => o.paymentMethod === 'cash')
       .reduce((s, o) => s + (Number(o.total) || 0), 0);
-    const creditRevenue = orders
-      .filter((o) => o.paymentMethod === 'credit')
+    const creditRevenue = filteredSales
+      .filter((o) => o.paymentMethod.includes('credit') || o.paymentMethod.includes('account'))
       .reduce((s, o) => s + (Number(o.total) || 0), 0);
 
-    const groups = orders.reduce<Record<string, { date: string; orders: number; cash: number; credit: number; total: number }>>((acc, o) => {
+    const avgOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0;
+
+    const groups = filteredSales.reduce<
+      Record<string, { date: string; orders: number; cash: number; credit: number; other: number; total: number }>
+    >((acc, o) => {
       const d = new Date(o.createdAt).toISOString().split('T')[0];
-      if (!acc[d]) acc[d] = { date: d, orders: 0, cash: 0, credit: 0, total: 0 };
+      if (!acc[d]) acc[d] = { date: d, orders: 0, cash: 0, credit: 0, other: 0, total: 0 };
       acc[d].orders += 1;
-      if (o.paymentMethod === 'cash') acc[d].cash += Number(o.total) || 0;
-      if (o.paymentMethod === 'credit') acc[d].credit += Number(o.total) || 0;
-      acc[d].total += Number(o.total) || 0;
+      const amt = Number(o.total) || 0;
+      if (o.paymentMethod === 'cash') {
+        acc[d].cash += amt;
+      } else if (o.paymentMethod.includes('credit') || o.paymentMethod.includes('account')) {
+        acc[d].credit += amt;
+      } else {
+        acc[d].other += amt;
+      }
+      acc[d].total += amt;
       return acc;
     }, {});
 
     const dailySummary = Object.values(groups).sort((a, b) => b.date.localeCompare(a.date));
 
-    return { totalOrders, totalRevenue, cashRevenue, creditRevenue, dailySummary };
-  }, [orders]);
+    return { totalOrders, totalRevenue, cashRevenue, creditRevenue, avgOrderValue, dailySummary };
+  }, [filteredSales]);
+
+  const exportCSV = () => {
+    if (filteredSales.length === 0) return;
+    const headers = ['Order Number', 'Date', 'Source', 'Payment Method', 'Customer', 'Subtotal', 'Tax', 'Total'];
+    const rows = filteredSales.map((s) => [
+      s.orderNumber,
+      new Date(s.createdAt).toLocaleString(),
+      s.source,
+      s.paymentMethod,
+      s.customerName || 'N/A',
+      s.subtotal,
+      s.tax,
+      s.total,
+    ]);
+    const csvContent =
+      'data:text/csv;charset=utf-8,' +
+      [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `sales_report_${dateFilter}_${Date.now()}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-wrap justify-between items-center gap-3">
         <div>
           <h1 className="text-2xl font-bold">Sales Report</h1>
-          <p className="text-sm text-text-secondary">Real-time SQLite sales and revenue performance</p>
+          <p className="text-sm text-text-secondary">
+            Unified completed sales from POS and Invoices (PKR)
+          </p>
         </div>
-        <Button variant="outline">
-          <Download className="h-4 w-4 mr-2" />
-          Export CSV
-        </Button>
+
+        <div className="flex items-center gap-3">
+          {/* Date range filter */}
+          <div className="flex items-center bg-bg-elevated border border-border rounded-lg p-1 text-sm">
+            <Calendar className="h-4 w-4 mx-2 text-text-muted" />
+            <button
+              onClick={() => setDateFilter('all')}
+              className={`px-3 py-1 rounded-md transition ${
+                dateFilter === 'all' ? 'bg-primary text-white font-medium' : 'text-text-secondary hover:text-text'
+              }`}
+            >
+              All Time
+            </button>
+            <button
+              onClick={() => setDateFilter('today')}
+              className={`px-3 py-1 rounded-md transition ${
+                dateFilter === 'today' ? 'bg-primary text-white font-medium' : 'text-text-secondary hover:text-text'
+              }`}
+            >
+              Today
+            </button>
+            <button
+              onClick={() => setDateFilter('7days')}
+              className={`px-3 py-1 rounded-md transition ${
+                dateFilter === '7days' ? 'bg-primary text-white font-medium' : 'text-text-secondary hover:text-text'
+              }`}
+            >
+              7 Days
+            </button>
+            <button
+              onClick={() => setDateFilter('30days')}
+              className={`px-3 py-1 rounded-md transition ${
+                dateFilter === '30days' ? 'bg-primary text-white font-medium' : 'text-text-secondary hover:text-text'
+              }`}
+            >
+              30 Days
+            </button>
+          </div>
+
+          <Button variant="outline" onClick={exportCSV} disabled={filteredSales.length === 0}>
+            <Download className="h-4 w-4 mr-2" />
+            Export CSV
+          </Button>
+        </div>
       </div>
 
+      {/* Metric Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -59,41 +174,45 @@ export function SalesReport() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{totalOrders}</div>
-            <p className="text-xs text-text-muted mt-1">Tenant orders</p>
+            <p className="text-xs text-text-muted mt-1">Completed transactions</p>
           </CardContent>
         </Card>
+
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-text-secondary">Total Sales</CardTitle>
+            <CardTitle className="text-sm font-medium text-text-secondary">Total Revenue</CardTitle>
             <TrendingUp className="h-4 w-4 text-success" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-success">${totalRevenue.toFixed(2)}</div>
-            <p className="text-xs text-text-muted mt-1">Cash + Credit combined</p>
+            <div className="text-2xl font-bold text-success">{money(totalRevenue)}</div>
+            <p className="text-xs text-text-muted mt-1">Avg: {money(avgOrderValue)} / order</p>
           </CardContent>
         </Card>
+
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-text-secondary">Cash Revenue</CardTitle>
             <DollarSign className="h-4 w-4 text-primary" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">${cashRevenue.toFixed(2)}</div>
-            <p className="text-xs text-text-muted mt-1">Collected in cash</p>
+            <div className="text-2xl font-bold">{money(cashRevenue)}</div>
+            <p className="text-xs text-text-muted mt-1">Direct cash received</p>
           </CardContent>
         </Card>
+
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-text-secondary">Credit Sales</CardTitle>
+            <CardTitle className="text-sm font-medium text-text-secondary">Credit / On Account</CardTitle>
             <CreditCard className="h-4 w-4 text-warning" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-warning">${creditRevenue.toFixed(2)}</div>
-            <p className="text-xs text-text-muted mt-1">On customer accounts</p>
+            <div className="text-2xl font-bold text-warning">{money(creditRevenue)}</div>
+            <p className="text-xs text-text-muted mt-1">Customer credit sales</p>
           </CardContent>
         </Card>
       </div>
 
+      {/* Daily Summary Table */}
       <Card>
         <CardHeader>
           <CardTitle>Daily Summary</CardTitle>
@@ -119,17 +238,74 @@ export function SalesReport() {
               ) : dailySummary.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={5} className="text-center py-8 text-text-muted">
-                    No sales recorded yet
+                    No completed sales found in this period
                   </TableCell>
                 </TableRow>
               ) : (
                 dailySummary.map((row) => (
                   <TableRow key={row.date}>
                     <TableCell className="font-mono text-sm">{row.date}</TableCell>
-                    <TableCell className="text-right">{row.orders}</TableCell>
-                    <TableCell className="text-right text-text-secondary">${row.cash.toFixed(2)}</TableCell>
-                    <TableCell className="text-right text-warning">${row.credit.toFixed(2)}</TableCell>
-                    <TableCell className="text-right font-bold text-success">${row.total.toFixed(2)}</TableCell>
+                    <TableCell className="text-right font-medium">{row.orders}</TableCell>
+                    <TableCell className="text-right text-text-secondary">{money(row.cash)}</TableCell>
+                    <TableCell className="text-right text-warning">{money(row.credit)}</TableCell>
+                    <TableCell className="text-right font-bold text-success">{money(row.total)}</TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      {/* Transaction Details Table */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Recent Completed Transactions</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Order #</TableHead>
+                <TableHead>Source</TableHead>
+                <TableHead>Customer</TableHead>
+                <TableHead>Method</TableHead>
+                <TableHead className="text-right">Amount</TableHead>
+                <TableHead className="text-right">Time</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {isLoading ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center py-8 text-text-muted">
+                    Loading transactions...
+                  </TableCell>
+                </TableRow>
+              ) : filteredSales.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center py-8 text-text-muted">
+                    No transactions recorded
+                  </TableCell>
+                </TableRow>
+              ) : (
+                filteredSales.slice(0, 25).map((sale) => (
+                  <TableRow key={sale.id}>
+                    <TableCell className="font-mono text-xs font-semibold">{sale.orderNumber}</TableCell>
+                    <TableCell className="text-xs">
+                      <span className="capitalize px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
+                        {sale.source.replace(/_/g, ' ')}
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-sm">{sale.customerName || 'Walk-in Customer'}</TableCell>
+                    <TableCell className="text-xs uppercase font-medium text-text-muted">
+                      {sale.paymentMethod}
+                    </TableCell>
+                    <TableCell className="text-right font-bold text-success">
+                      {money(sale.total)}
+                    </TableCell>
+                    <TableCell className="text-right text-xs text-text-muted">
+                      {new Date(sale.createdAt).toLocaleString()}
+                    </TableCell>
                   </TableRow>
                 ))
               )}

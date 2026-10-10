@@ -304,6 +304,23 @@ export const migrations: Migration[] = [
       await db.execute(`CREATE INDEX IF NOT EXISTS idx_outbox_device ON outbox(tenant_id, device_id)`);
     },
   },
+  {
+    version: 3,
+    name: 'add_categories_table',
+    up: async (db: Database) => {
+      await db.execute(`
+        CREATE TABLE IF NOT EXISTS categories (
+          id TEXT PRIMARY KEY,
+          tenant_id TEXT NOT NULL,
+          name TEXT NOT NULL,
+          parent_id TEXT,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL
+        )
+      `);
+      await db.execute(`CREATE INDEX IF NOT EXISTS idx_categories_tenant ON categories(tenant_id)`);
+    },
+  },
 ];
 
 export async function runMigrations(db: Database): Promise<{ appliedCount: number; currentVersion: number }> {

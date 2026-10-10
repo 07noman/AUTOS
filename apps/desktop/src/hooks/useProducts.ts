@@ -162,3 +162,45 @@ export function useUpdateProduct() {
     },
   });
 }
+
+export function useCategories() {
+  return useQuery({
+    queryKey: ['categories'],
+    queryFn: async () => {
+      const tenantId = getCurrentTenantId();
+      try {
+        const { categoryRepo } = await import('@/lib/db');
+        return await categoryRepo.findAll(tenantId);
+      } catch (err) {
+        console.warn('Failed to fetch categories:', err);
+        return [];
+      }
+    },
+    staleTime: 1000 * 60,
+  });
+}
+
+export function useCreateCategory() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (name: string) => {
+      const tenantId = getCurrentTenantId();
+      const now = Date.now();
+      const newCategory = {
+        id: crypto.randomUUID(),
+        tenantId,
+        name: name.trim(),
+        createdAt: now,
+        updatedAt: now,
+      };
+      const { categoryRepo } = await import('@/lib/db');
+      await categoryRepo.create(newCategory);
+      return newCategory;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['categories'] });
+    },
+  });
+}
+

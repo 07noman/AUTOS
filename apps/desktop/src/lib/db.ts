@@ -1,5 +1,5 @@
 import Database from '@tauri-apps/plugin-sql';
-import { Product } from '@genx/types/domain/product';
+import { Product, Category } from '@genx/types/domain/product';
 import { Order } from '@genx/types/domain/order';
 import { Customer } from '@genx/types/domain/customer';
 import { db as legacyDb } from './db-legacy';
@@ -662,6 +662,205 @@ function mapToCustomer(row: any): Customer {
     updatedAt: Number(row.updated_at),
   };
 }
+
+// Category Repository
+export const categoryRepo = {
+  async findAll(tenantId: string = getCurrentTenantId()): Promise<Category[]> {
+    const db = await getDatabase();
+    const rows = await db.select<any[]>(
+      'SELECT * FROM categories WHERE tenant_id = ? ORDER BY name ASC',
+      [tenantId]
+    );
+    return rows.map((r) => ({
+      id: r.id,
+      tenantId: r.tenant_id,
+      name: r.name,
+      parentId: r.parent_id || undefined,
+      createdAt: Number(r.created_at),
+      updatedAt: Number(r.updated_at),
+    }));
+  },
+
+  async findById(tenantId: string = getCurrentTenantId(), id: string): Promise<Category | null> {
+    const db = await getDatabase();
+    const rows = await db.select<any[]>(
+      'SELECT * FROM categories WHERE id = ? AND tenant_id = ?',
+      [id, tenantId]
+    );
+    if (!rows.length) return null;
+    const r = rows[0];
+    return {
+      id: r.id,
+      tenantId: r.tenant_id,
+      name: r.name,
+      parentId: r.parent_id || undefined,
+      createdAt: Number(r.created_at),
+      updatedAt: Number(r.updated_at),
+    };
+  },
+
+  async create(category: Category): Promise<void> {
+    const db = await getDatabase();
+    await db.execute(
+      `INSERT INTO categories (id, tenant_id, name, parent_id, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [
+        category.id,
+        category.tenantId,
+        category.name,
+        category.parentId || null,
+        category.createdAt,
+        category.updatedAt,
+      ]
+    );
+  },
+
+  async update(category: Partial<Category> & { id: string; tenantId: string }): Promise<void> {
+    const db = await getDatabase();
+    await db.execute(
+      `UPDATE categories SET name = COALESCE(?, name), parent_id = ?, updated_at = ?
+       WHERE id = ? AND tenant_id = ?`,
+      [
+        category.name ?? null,
+        category.parentId ?? null,
+        Date.now(),
+        category.id,
+        category.tenantId,
+      ]
+    );
+  },
+
+  async delete(tenantId: string = getCurrentTenantId(), id: string): Promise<void> {
+    const db = await getDatabase();
+    await db.execute('DELETE FROM categories WHERE id = ? AND tenant_id = ?', [id, tenantId]);
+  },
+};
+
+// Unified Sales Report Record
+export interface SaleRecord {
+  id: string;
+  source: 'retail_pos' | 'auto_care_pos' | 'auto_care_invoice';
+  orderNumber: string;
+  customerName?: string;
+  customerId?: string;
+  subtotal: number;
+  discount: number;
+  tax: number;
+  total: number;
+  paymentMethod: string;
+  status: string;
+  createdAt: number;
+}
+
+// Sales Report Repository (queries actual completed transactions with tenant isolation)
+export const salesReportRepo = {
+  async getCompletedSales(
+    tenantId: string = getCurrentTenantId(),
+    startDate?: number,
+    endDate?: number
+  ): Promise<SaleRecord[]> {
+    const db = await getDatabase();
+    const sales: SaleRecord[] = [];
+
+    // 1. Fetch completed/paid retail POS orders from `orders`
+    try {
+      const orderRows = await db.select<any[]>(
+        `SELECT * FROM orders 
+         WHERE tenant_id = ? 
+           AND LOWER(status) IN ('completed', 'paid')
+         ORDER BY created_at DESC`,
+        [tenantId]
+      );
+      for (const r of orderRows) {
+        const time = typeof r.created_at === 'number' ? r.created_at : new Date(r.created_at).getTime();
+        if (startDate && time < startDate) continue;
+        if (endDate && time > endDate) continue;
+        sales.push({
+          id: r.id,
+          source: 'retail_pos',
+          orderNumber: r.order_number || r.id.slice(0, 8),
+          customerName: r.customer_name || undefined,
+          customerId: r.customer_id || undefined,
+          subtotal: Number(r.subtotal) || 0,
+          discount: Number(r.discount) || 0,
+          tax: Number(r.tax) || 0,
+          total: Number(r.total) || 0,
+          paymentMethod: (r.payment_method || 'cash').toLowerCase(),
+          status: r.status,
+          createdAt: time,
+        });
+      }
+    } catch (err) {
+      console.warn('Could not query orders for sales report:', err);
+    }
+
+    // 2. Fetch completed/paid orders from `pos_orders` (Auto Care POS)
+    try {
+      const posRows = await db.select<any[]>(
+        `SELECT * FROM pos_orders 
+         WHERE tenant_id = ? 
+           AND status = 'PAID'
+         ORDER BY created_at DESC`,
+        [tenantId]
+      );
+      for (const r of posRows) {
+        const time = typeof r.created_at === 'number' ? r.created_at : new Date(r.created_at).getTime();
+        if (startDate && time < startDate) continue;
+        if (endDate && time > endDate) continue;
+        sales.push({
+          id: r.id,
+          source: 'auto_care_pos',
+          orderNumber: String(r.order_number || r.id.slice(0, 8)),
+          customerName: r.customer_name || undefined,
+          customerId: r.customer_id || undefined,
+          subtotal: Number(r.subtotal) || 0,
+          discount: 0,
+          tax: Number(r.tax) || 0,
+          total: Number(r.total) || 0,
+          paymentMethod: (r.payment_method || 'cash').toLowerCase(),
+          status: r.status,
+          createdAt: time,
+        });
+      }
+    } catch (err) {
+      console.warn('Could not query pos_orders for sales report:', err);
+    }
+
+    // 3. Fetch completed/paid invoices from `auto_care_invoices` (if present)
+    try {
+      const invRows = await db.select<any[]>(
+        `SELECT * FROM auto_care_invoices 
+         WHERE tenant_id = ? 
+           AND LOWER(status) = 'paid'
+         ORDER BY created_at DESC`,
+        [tenantId]
+      );
+      for (const r of invRows) {
+        const time = typeof r.created_at === 'number' ? r.created_at : new Date(r.created_at).getTime();
+        if (startDate && time < startDate) continue;
+        if (endDate && time > endDate) continue;
+        sales.push({
+          id: r.id,
+          source: 'auto_care_invoice',
+          orderNumber: r.invoice_number || r.id.slice(0, 8),
+          customerName: r.customer_name || undefined,
+          customerId: r.customer_id || undefined,
+          subtotal: Number(r.subtotal) || 0,
+          discount: Number(r.discount) || 0,
+          tax: Number(r.tax) || 0,
+          total: Number(r.total) || 0,
+          paymentMethod: (r.payment_method || 'cash').toLowerCase(),
+          status: r.status,
+          createdAt: time,
+        });
+      }
+    } catch {
+      // Table may not have rows or exist in this context
+    }
+
+    return sales.sort((a, b) => b.createdAt - a.createdAt);
+  },
+};
 
 export const db = legacyDb;
 
