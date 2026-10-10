@@ -342,10 +342,6 @@ export function AutoCarePOS() {
       { id: "svc-8", name: "Car Wash", price: 1200, category: "services", type: "service" },
     ];
 
-    if (!dbProducts || dbProducts.length === 0) {
-      return [...baseServices, ...DEFAULT_PRODUCTS];
-    }
-
     const mappedDbProducts: Product[] = dbProducts.map((p) => {
       const catLower = (p.categoryId || "").toLowerCase();
       let cat = "parts";

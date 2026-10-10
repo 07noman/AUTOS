@@ -60,10 +60,19 @@ export function AutoCareDashboard() {
             {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
           </p>
         </div>
-        <Button onClick={() => navigate('/auto-care/jobs/new')} className="flex items-center gap-2">
-          <Plus className="h-4 w-4" /> New Job
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            onClick={() => navigate('/auto-care/parts')}
+            className="bg-[#79556f] text-white hover:bg-[#63435a] flex items-center gap-1.5"
+          >
+            <Plus className="h-4 w-4" /> Add Product
+          </Button>
+          <Button onClick={() => navigate('/auto-care/jobs/new')} className="flex items-center gap-1.5">
+            <Plus className="h-4 w-4" /> New Job
+          </Button>
+        </div>
       </div>
+
 
       {/* Stats cards */}
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">

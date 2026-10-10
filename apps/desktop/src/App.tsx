@@ -101,7 +101,7 @@ function App() {
         <Route path="job-board" element={<AutoCareModuleView moduleId="job-board" />} />
         <Route path="payments" element={<AutoCareModuleView moduleId="payments" />} />
         <Route path="staff" element={<AutoCareModuleView moduleId="staff" />} />
-        <Route path="parts" element={<PartsAndProducts />} />
+        <Route path="parts" element={<Products />} />
         <Route path="orders" element={<POSOrdersPage />} />
         <Route path="reports" element={<AutoCareModuleView moduleId="reports" />} />
         <Route path="settings" element={<SettingsPage />} />
