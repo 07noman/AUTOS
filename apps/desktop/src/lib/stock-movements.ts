@@ -1,5 +1,6 @@
 import { getDatabase, getCurrentTenantId } from './db';
 import type { StockMovement, MovementType, ReferenceType } from '@genx/types/domain/inventory';
+import { supabase, isSupabaseConfigured } from './supabase';
 
 export const stockMovementRepo = {
   /**
@@ -25,6 +26,25 @@ export const stockMovementRepo = {
     const id = movement.id ?? crypto.randomUUID();
     const tenantId = movement.tenantId ?? getCurrentTenantId();
     const now = movement.createdAt ?? Date.now();
+
+    // Dual write to Supabase if configured
+    if (isSupabaseConfigured()) {
+      try {
+        await supabase.from('stock_movements').insert({
+          id,
+          tenant_id: tenantId,
+          product_id: movement.productId,
+          type: movement.movementType,
+          quantity: movement.quantityDelta,
+          reference_id: movement.referenceId,
+          reference_type: movement.referenceType,
+          notes: movement.notes ?? null,
+          created_at: now,
+        });
+      } catch (err) {
+        console.warn('[stockMovementRepo] Supabase insert error:', err);
+      }
+    }
 
     await db.execute(
       `INSERT INTO stock_movements (id, tenant_id, product_id, quantity_delta, movement_type, reference_type, reference_id, device_id, notes, created_at)
@@ -64,6 +84,34 @@ export const stockMovementRepo = {
     productId: string,
     tenantId: string = getCurrentTenantId()
   ): Promise<StockMovement[]> {
+    if (isSupabaseConfigured()) {
+      try {
+        const { data, error } = await supabase
+          .from('stock_movements')
+          .select('*')
+          .eq('tenant_id', tenantId)
+          .eq('product_id', productId)
+          .order('created_at', { ascending: false });
+
+        if (!error && data && data.length > 0) {
+          return data.map((r: any) => ({
+            id: String(r.id),
+            tenantId: String(r.tenant_id),
+            productId: String(r.product_id),
+            quantityDelta: Number(r.quantity || 0),
+            movementType: r.type,
+            referenceType: r.reference_type,
+            referenceId: r.reference_id,
+            deviceId: '',
+            notes: r.notes || undefined,
+            createdAt: Number(r.created_at),
+          }));
+        }
+      } catch (err) {
+        console.warn('[stockMovementRepo] Supabase findByProduct error:', err);
+      }
+    }
+
     const db = await getDatabase();
     const rows = await db.select<any[]>(
       `SELECT * FROM stock_movements WHERE tenant_id = ? AND product_id = ? ORDER BY created_at DESC`,
@@ -107,6 +155,34 @@ export const stockMovementRepo = {
    * Retrieves all stock movements for tenant.
    */
   async findAll(tenantId: string = getCurrentTenantId(), limit: number = 100): Promise<StockMovement[]> {
+    if (isSupabaseConfigured()) {
+      try {
+        const { data, error } = await supabase
+          .from('stock_movements')
+          .select('*')
+          .eq('tenant_id', tenantId)
+          .order('created_at', { ascending: false })
+          .limit(limit);
+
+        if (!error && data && data.length > 0) {
+          return data.map((r: any) => ({
+            id: String(r.id),
+            tenantId: String(r.tenant_id),
+            productId: String(r.product_id),
+            quantityDelta: Number(r.quantity || 0),
+            movementType: r.type,
+            referenceType: r.reference_type,
+            referenceId: r.reference_id,
+            deviceId: '',
+            notes: r.notes || undefined,
+            createdAt: Number(r.created_at),
+          }));
+        }
+      } catch (err) {
+        console.warn('[stockMovementRepo] Supabase findAll error:', err);
+      }
+    }
+
     const db = await getDatabase();
     const rows = await db.select<any[]>(
       `SELECT * FROM stock_movements WHERE tenant_id = ? ORDER BY created_at DESC LIMIT ?`,
