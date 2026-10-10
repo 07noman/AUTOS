@@ -8,6 +8,15 @@ export default defineConfig({
   plugins: [react()],
   // Read VITE_* vars from the root .env (shared with desktop)
   envDir: '../../',
+  define: {
+    'import.meta.env.VITE_SUPABASE_URL': JSON.stringify(
+      process.env.VITE_SUPABASE_URL || 'https://zqngkqsdpgtoytuleogn.supabase.co'
+    ),
+    'import.meta.env.VITE_SUPABASE_ANON_KEY': JSON.stringify(
+      process.env.VITE_SUPABASE_ANON_KEY ||
+        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpxbmdrcXNkcGd0b3l0dWxlb2duIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTExMzI5NjgsImV4cCI6MjEwNjcwODk2OH0.zEP2fNgSNLQ-vnNDwfdYm6jsGyH2KomgMYku-okXhLY'
+    ),
+  },
   resolve: {
     alias: {
       // Allow the web app to import everything from apps/desktop/src
