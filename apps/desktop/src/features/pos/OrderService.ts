@@ -96,16 +96,42 @@ export async function completeSale(input: {
 
 export async function printOrderReceipt(order: Order): Promise<void> {
   try {
-    const { PrinterService } = await import('@genx/hardware');
-    const printer = new PrinterService();
-    await printer.printReceipt({
-      businessName: 'GENX POS',
+    const { receiptSettingsRepo } = await import('@/lib/receipt-settings-repo');
+    const { printThermalReceipt } = await import('@/features/receipt/print-service');
+    const { customerRepo } = await import('@/lib/db');
+
+    const tenantId = order.tenantId || getCurrentTenantId();
+    const settings = await receiptSettingsRepo.getSettings(tenantId);
+
+    let customerData;
+    if (order.customerId) {
+      try {
+        const cust = await customerRepo.findById(tenantId, order.customerId);
+        if (cust) {
+          customerData = {
+            name: cust.name,
+            phone: cust.phone || undefined,
+            address: cust.address || undefined,
+            remainingBalance: cust.balance,
+          };
+        }
+      } catch {
+        // customer load optional
+      }
+    }
+
+    const receiptData = {
       orderNumber: order.orderNumber,
-      date: new Date(order.createdAt).toLocaleString(),
+      date: order.createdAt,
+      cashierName: (typeof window !== 'undefined' && localStorage.getItem('genx:cashierName')) || undefined,
+      terminalName: 'POS-01',
+      customer: customerData,
       items: (order.items || []).map((i) => ({
         name: i.name,
+        sku: i.sku,
         quantity: i.quantity,
         price: i.price,
+        discount: i.discount,
         total: i.total,
       })),
       subtotal: order.subtotal,
@@ -113,8 +139,14 @@ export async function printOrderReceipt(order: Order): Promise<void> {
       tax: order.tax,
       total: order.total,
       paymentMethod: order.paymentMethod,
-    });
+      amountPaid: order.total,
+      change: 0,
+      notes: order.notes,
+      currency: 'PKR',
+    };
+
+    await printThermalReceipt(receiptData, settings);
   } catch (err) {
-    console.warn('Printer error:', err);
+    console.warn('[printOrderReceipt] Printer error:', err);
   }
 }

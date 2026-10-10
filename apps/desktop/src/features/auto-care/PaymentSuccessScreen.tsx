@@ -225,11 +225,45 @@ export default function PaymentSuccessScreen({
       if (onPrint) {
         await onPrint(order, payment);
       } else {
-        window.print();
+        const { receiptSettingsRepo } = await import('@/lib/receipt-settings-repo');
+        const { printThermalReceipt } = await import('@/features/receipt/print-service');
+        const settings = await receiptSettingsRepo.getSettings();
+        await printThermalReceipt(
+          {
+            orderNumber:
+              order?.orderNumber ||
+              order?.invoiceNumber ||
+              order?.ticketNumber ||
+              `AC-${Date.now()}`,
+            date: order?.createdAt || Date.now(),
+            cashierName: order?.cashierName || 'Cashier',
+            terminalName: 'POS-01',
+            customer: order?.customer,
+            items: (order?.items || []).map((it) => ({
+              name: it.name || it.product_name || 'Item',
+              quantity: Number(it.quantity || 1),
+              price: Number(it.price || it.unitPrice || 0),
+              total: Number(
+                it.total ||
+                  it.lineTotal ||
+                  Number(it.price || 0) * Number(it.quantity || 1)
+              ),
+            })),
+            subtotal: Number(order?.subtotal || paidAmount),
+            discount: 0,
+            tax: Number(order?.tax || 0),
+            total: paidAmount,
+            paymentMethod: payment?.method || order?.paymentMethod || 'cash',
+            amountPaid: paidAmount,
+            change: payment?.change || 0,
+            currency: 'PKR',
+          },
+          settings
+        );
       }
     } catch (err) {
-      console.error("Receipt print failed:", err);
-      alert("Unable to print receipt.");
+      console.error('Receipt print failed, falling back to window.print():', err);
+      window.print();
     } finally {
       setPrinting(false);
     }

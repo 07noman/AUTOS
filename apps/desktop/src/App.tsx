@@ -21,6 +21,7 @@ import { PartsAndProducts } from './features/auto-care/PartsAndProducts';
 import { InventoryView } from './features/inventory/InventoryView';
 import { POSOrdersPage } from './features/auto-care/POSOrdersPage';
 import { SettingsPage } from './features/settings/SettingsPage';
+import { ReceiptBrandingPage } from './features/settings/ReceiptBrandingPage';
 import { useAuth } from './hooks/useAuth';
 import { initializeDatabase } from './lib/db';
 import { initializeAutoCareSchema } from './lib/auto-care-db';
@@ -113,6 +114,8 @@ function App() {
         <Route path="orders" element={<POSOrdersPage />} />
         <Route path="reports" element={<AutoCareModuleView moduleId="reports" />} />
         <Route path="settings" element={<SettingsPage />} />
+        <Route path="settings/receipt-branding" element={<ReceiptBrandingPage />} />
+        <Route path="settings/receipt" element={<ReceiptBrandingPage />} />
       </Route>
 
       {/* Standard / Retail / Restaurant / Mart / Bakery POS shell routes */}
@@ -145,6 +148,8 @@ function App() {
             )
           }
         />
+        <Route path="settings/receipt-branding" element={<ReceiptBrandingPage />} />
+        <Route path="settings/receipt" element={<ReceiptBrandingPage />} />
       </Route>
 
       {/* Catch-all fallback */}

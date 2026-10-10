@@ -219,6 +219,35 @@ export function SettingsPage() {
               </Badge>
             </div>
 
+            {/* Receipt & Printer Branding Card */}
+            <div className="p-4 bg-primary/5 border border-primary/20 rounded-xl space-y-2.5">
+              <div className="flex items-start gap-3">
+                <div className="p-2 bg-primary/10 rounded-lg text-primary shrink-0 mt-0.5">
+                  <Printer className="h-5 w-5" />
+                </div>
+                <div>
+                  <div className="text-sm font-bold text-text">Receipt & Printer Settings</div>
+                  <div className="text-xs text-text-secondary mt-0.5">
+                    Customize store logo, 58mm/80mm paper, brand title, return policies, and printed fields.
+                  </div>
+                </div>
+              </div>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() =>
+                  navigate(
+                    selectedModule === 'auto_care' || selectedModule === 'auto-parts'
+                      ? '/auto-care/settings/receipt-branding'
+                      : '/settings/receipt-branding'
+                  )
+                }
+                className="w-full flex items-center justify-center gap-2 mt-1 shadow-sm"
+              >
+                <Sparkles className="h-4 w-4" /> Open Receipt Branding
+              </Button>
+            </div>
+
             <Button
               variant="outline"
               size="sm"

@@ -1,10 +1,12 @@
 import { useMemo, useState } from 'react';
-import { Download, TrendingUp, DollarSign, CreditCard, ShoppingBag, Calendar } from 'lucide-react';
+import { Download, TrendingUp, DollarSign, CreditCard, ShoppingBag, Calendar, Printer } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { Button } from '@genx/ui/Button';
 import { Card, CardHeader, CardTitle, CardContent } from '@genx/ui/Card';
 import { Table, TableHeader, TableRow, TableHead, TableCell, TableBody } from '@genx/ui/Table';
-import { salesReportRepo, getCurrentTenantId, SaleRecord } from '@/lib/db';
+import { salesReportRepo, orderRepo, getCurrentTenantId, SaleRecord } from '@/lib/db';
+import { receiptSettingsRepo } from '@/lib/receipt-settings-repo';
+import { printThermalReceipt } from '@/features/receipt/print-service';
 
 type DateFilter = 'all' | 'today' | '7days' | '30days';
 
@@ -108,6 +110,55 @@ export function SalesReport() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+  };
+
+  const handleReprint = async (sale: SaleRecord) => {
+    try {
+      const settings = await receiptSettingsRepo.getSettings(currentTenant);
+      let items = [
+        {
+          name: `Sale Transaction (${sale.source.replace(/_/g, ' ')})`,
+          quantity: 1,
+          price: sale.subtotal,
+          total: sale.subtotal,
+        },
+      ];
+
+      if (sale.source === 'retail_pos') {
+        const order = await orderRepo.findById(currentTenant, sale.id);
+        if (order && order.items && order.items.length > 0) {
+          items = order.items.map((i) => ({
+            name: i.name,
+            sku: i.sku,
+            quantity: i.quantity,
+            price: i.price,
+            discount: i.discount,
+            total: i.total,
+          }));
+        }
+      }
+
+      await printThermalReceipt(
+        {
+          orderNumber: sale.orderNumber,
+          date: sale.createdAt,
+          terminalName: 'POS-01',
+          customer: { name: sale.customerName },
+          items,
+          subtotal: sale.subtotal,
+          discount: sale.discount,
+          tax: sale.tax,
+          total: sale.total,
+          paymentMethod: sale.paymentMethod,
+          amountPaid: sale.total,
+          change: 0,
+          currency: 'PKR',
+        },
+        settings
+      );
+    } catch (err) {
+      console.error('Reprint receipt error:', err);
+    }
   };
 
   return (
@@ -272,23 +323,24 @@ export function SalesReport() {
                 <TableHead>Method</TableHead>
                 <TableHead className="text-right">Amount</TableHead>
                 <TableHead className="text-right">Time</TableHead>
+                <TableHead className="text-right">Receipt</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center py-8 text-text-muted">
+                  <TableCell colSpan={7} className="text-center py-8 text-text-muted">
                     Loading transactions...
                   </TableCell>
                 </TableRow>
               ) : filteredSales.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center py-8 text-text-muted">
+                  <TableCell colSpan={7} className="text-center py-8 text-text-muted">
                     No transactions recorded
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredSales.slice(0, 25).map((sale) => (
+                filteredSales.slice(0, 50).map((sale) => (
                   <TableRow key={sale.id}>
                     <TableCell className="font-mono text-xs font-semibold">{sale.orderNumber}</TableCell>
                     <TableCell className="text-xs">
@@ -305,6 +357,17 @@ export function SalesReport() {
                     </TableCell>
                     <TableCell className="text-right text-xs text-text-muted">
                       {new Date(sale.createdAt).toLocaleString()}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => void handleReprint(sale)}
+                        title="Reprint Thermal Receipt"
+                        className="h-8 px-2 text-primary hover:text-primary hover:bg-primary/10 inline-flex items-center gap-1"
+                      >
+                        <Printer className="h-3.5 w-3.5" /> Reprint
+                      </Button>
                     </TableCell>
                   </TableRow>
                 ))

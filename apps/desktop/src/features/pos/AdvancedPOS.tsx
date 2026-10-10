@@ -8,7 +8,7 @@ import { Badge } from '@genx/ui/Badge';
 import { Dialog, DialogHeader, DialogTitle, DialogContent } from '@genx/ui/Dialog';
 import { useProducts } from '@/hooks/useProducts';
 import { useCustomers } from '@/hooks/useCustomers';
-import { createOrder } from './OrderService';
+import { createOrder, printOrderReceipt } from './OrderService';
 import { getCurrentTenantId } from '@/lib/db';
 import type { Product } from '@genx/types/domain/product';
 
@@ -128,8 +128,11 @@ export function AdvancedPOS() {
       // Invalidate products query to reflect updated stock immediately
       await queryClient.invalidateQueries({ queryKey: ['products'] });
 
+      // Trigger thermal receipt printing
+      void printOrderReceipt(order).catch(() => undefined);
+
       // Show success
-      alert(`Sale completed!\nOrder: ${order.orderNumber}\nTotal: $${order.total.toFixed(2)}`);
+      alert(`Sale completed!\nOrder: ${order.orderNumber}\nTotal: PKR ${order.total.toFixed(2)}`);
       
       // Clear cart
       setCart([]);

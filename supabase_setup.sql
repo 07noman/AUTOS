@@ -13,6 +13,7 @@
 
 -- ── STEP 1: DROP everything (in reverse-dependency order) ─────────────────────
 DROP TABLE IF EXISTS stock_movements       CASCADE;
+DROP TABLE IF EXISTS receipt_settings      CASCADE;
 DROP TABLE IF EXISTS service_job_items     CASCADE;
 DROP TABLE IF EXISTS service_jobs          CASCADE;
 DROP TABLE IF EXISTS auto_care_invoices    CASCADE;
@@ -253,6 +254,73 @@ CREATE TABLE stock_movements (
 CREATE INDEX idx_stock_movements_tenant  ON stock_movements (tenant_id);
 CREATE INDEX idx_stock_movements_product ON stock_movements (product_id);
 
+CREATE TABLE IF NOT EXISTS receipt_settings (
+  id                          TEXT PRIMARY KEY,
+  tenant_id                   TEXT NOT NULL UNIQUE,
+  business_name               VARCHAR(255) NOT NULL DEFAULT 'Auto Care Store',
+  brand_title                 VARCHAR(255) DEFAULT 'PARTS & ACCESSORIES',
+  tagline                     VARCHAR(255) DEFAULT 'BETTER PARTS . SMOOTHER DRIVES',
+  business_type               VARCHAR(50) DEFAULT 'auto_care',
+  logo_url                    TEXT,
+  logo_width                  INTEGER DEFAULT 180,
+  logo_alignment              VARCHAR(20) DEFAULT 'center',
+  address                     TEXT DEFAULT 'Shop # 12, Main Auto Market',
+  city                        VARCHAR(100) DEFAULT 'Karachi',
+  country                     VARCHAR(100) DEFAULT 'Sindh, Pakistan',
+  phone                       VARCHAR(50) DEFAULT '021-34567890',
+  whatsapp                    VARCHAR(50),
+  email                       VARCHAR(255),
+  website                     VARCHAR(255),
+  tax_id                      VARCHAR(100),
+  business_reg_no             VARCHAR(100),
+  receipt_title               VARCHAR(100) DEFAULT 'SALES RECEIPT',
+  subtitle                    VARCHAR(255),
+  footer_thank_you            TEXT DEFAULT 'Thank You For Choosing Auto Care!',
+  footer_message              TEXT DEFAULT 'Keep Your Engine Happy',
+  return_policy               TEXT,
+  warranty_disclaimer         TEXT,
+  announcement                TEXT,
+  social_media                TEXT,
+  paper_width                 VARCHAR(20) DEFAULT '80mm',
+  font_size                   VARCHAR(20) DEFAULT 'standard',
+  font_family                 VARCHAR(50) DEFAULT 'monospace',
+  line_spacing                VARCHAR(20) DEFAULT 'normal',
+  margin_top                  INTEGER DEFAULT 0,
+  margin_bottom               INTEGER DEFAULT 0,
+  feed_lines                  INTEGER DEFAULT 2,
+  cut_paper                   BOOLEAN DEFAULT true,
+  open_cash_drawer            BOOLEAN DEFAULT false,
+  show_barcode                BOOLEAN DEFAULT true,
+  show_qr_code                BOOLEAN DEFAULT false,
+  show_invoice_number         BOOLEAN DEFAULT true,
+  show_date_time              BOOLEAN DEFAULT true,
+  show_cashier                BOOLEAN DEFAULT true,
+  show_branch                 BOOLEAN DEFAULT true,
+  show_terminal               BOOLEAN DEFAULT true,
+  show_customer_name          BOOLEAN DEFAULT true,
+  show_customer_phone         BOOLEAN DEFAULT true,
+  show_customer_address       BOOLEAN DEFAULT false,
+  show_customer_tax           BOOLEAN DEFAULT false,
+  show_payment_method         BOOLEAN DEFAULT true,
+  show_cash_details           BOOLEAN DEFAULT true,
+  show_change                 BOOLEAN DEFAULT true,
+  show_credit_balance         BOOLEAN DEFAULT true,
+  show_order_notes            BOOLEAN DEFAULT true,
+  show_vehicle_info           BOOLEAN DEFAULT true,
+  show_vehicle_make_model     BOOLEAN DEFAULT true,
+  show_vehicle_plate          BOOLEAN DEFAULT true,
+  show_vehicle_mileage        BOOLEAN DEFAULT true,
+  show_mechanic               BOOLEAN DEFAULT true,
+  show_job_number             BOOLEAN DEFAULT true,
+  show_part_number            BOOLEAN DEFAULT true,
+  show_product_brand          BOOLEAN DEFAULT true,
+  show_vehicle_compatibility  BOOLEAN DEFAULT true,
+  show_warranty_details       BOOLEAN DEFAULT true,
+  created_at                  BIGINT NOT NULL DEFAULT (extract(epoch from now()) * 1000)::bigint,
+  updated_at                  BIGINT NOT NULL DEFAULT (extract(epoch from now()) * 1000)::bigint
+);
+CREATE INDEX idx_receipt_settings_tenant ON receipt_settings (tenant_id);
+
 -- ── STEP 3: Enable Row Level Security ─────────────────────────────────────────
 ALTER TABLE tenants            ENABLE ROW LEVEL SECURITY;
 ALTER TABLE categories         ENABLE ROW LEVEL SECURITY;
@@ -267,6 +335,7 @@ ALTER TABLE service_jobs       ENABLE ROW LEVEL SECURITY;
 ALTER TABLE service_job_items  ENABLE ROW LEVEL SECURITY;
 ALTER TABLE auto_care_invoices ENABLE ROW LEVEL SECURITY;
 ALTER TABLE stock_movements    ENABLE ROW LEVEL SECURITY;
+ALTER TABLE receipt_settings   ENABLE ROW LEVEL SECURITY;
 
 -- ── STEP 4: Open RLS Policies (allow all authenticated + anon operations) ──────
 CREATE POLICY "tenants_open"            ON tenants            FOR ALL TO public USING (true) WITH CHECK (true);
@@ -282,6 +351,7 @@ CREATE POLICY "service_jobs_open"       ON service_jobs       FOR ALL TO public 
 CREATE POLICY "service_job_items_open"  ON service_job_items  FOR ALL TO public USING (true) WITH CHECK (true);
 CREATE POLICY "auto_care_invoices_open" ON auto_care_invoices FOR ALL TO public USING (true) WITH CHECK (true);
 CREATE POLICY "stock_movements_open"    ON stock_movements    FOR ALL TO public USING (true) WITH CHECK (true);
+CREATE POLICY "receipt_settings_open"   ON receipt_settings   FOR ALL TO public USING (true) WITH CHECK (true);
 
 -- ==============================================================================
 -- DONE! All 13 tables created fresh with TEXT IDs and open RLS policies.
