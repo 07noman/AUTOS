@@ -329,98 +329,78 @@ async function tryTauriPrint(html: string): Promise<boolean> {
 function printInBrowser(html: string): void {
   if (typeof window === 'undefined' || typeof document === 'undefined') return;
 
-  // Clean up any existing print elements
+  // Open a dedicated print window — most reliable approach in a React SPA.
+  // Avoids CSS-injection timing issues on the main page.
+  const printWindow = window.open('', '_blank', 'width=420,height=700,scrollbars=yes,menubar=no,toolbar=no,location=no,status=no');
+
+  if (printWindow) {
+    printWindow.document.open();
+    printWindow.document.write(html);
+    printWindow.document.close();
+    printWindow.focus();
+
+    // Use onload so styles are fully parsed before printing
+    printWindow.onload = () => {
+      try {
+        printWindow.print();
+      } catch {
+        // ignore — user may have cancelled
+      }
+      // Close print window after dialog is dismissed
+      window.setTimeout(() => {
+        try { printWindow.close(); } catch {}
+      }, 1000);
+    };
+
+    // Fallback: if onload doesn't fire within 800ms, print anyway
+    window.setTimeout(() => {
+      if (printWindow.closed) return;
+      try { printWindow.print(); } catch {}
+      window.setTimeout(() => {
+        try { printWindow.close(); } catch {}
+      }, 1000);
+    }, 800);
+
+    return;
+  }
+
+  // Popup was blocked — fall back to same-page print with CSS injection
+  console.warn('[printInBrowser] Popup blocked, falling back to same-page print.');
+
   const oldContainer = document.getElementById('genx-thermal-print-container');
   if (oldContainer) oldContainer.remove();
   const oldStyle = document.getElementById('genx-thermal-print-style');
   if (oldStyle) oldStyle.remove();
 
-  // 1. Inject high-priority @media print stylesheet
   const styleEl = document.createElement('style');
   styleEl.id = 'genx-thermal-print-style';
   styleEl.textContent = `
     @media screen {
-      #genx-thermal-print-container {
-        display: none !important;
-        visibility: hidden !important;
-        opacity: 0 !important;
-        pointer-events: none !important;
-        position: fixed !important;
-        left: -9999px !important;
-      }
+      #genx-thermal-print-container { display: none !important; visibility: hidden !important; opacity: 0 !important; pointer-events: none !important; position: fixed !important; left: -9999px !important; }
     }
     @media print {
-      html, body {
-        margin: 0 !important;
-        padding: 0 !important;
-        background: #ffffff !important;
-        -webkit-print-color-adjust: exact !important;
-        print-color-adjust: exact !important;
-      }
-      body > *:not(#genx-thermal-print-container) {
-        display: none !important;
-      }
-      #genx-thermal-print-container {
-        display: block !important;
-        visibility: visible !important;
-        opacity: 1 !important;
-        position: absolute !important;
-        left: 0 !important;
-        top: 0 !important;
-        width: 100% !important;
-        margin: 0 !important;
-        padding: 0 !important;
-        background: #ffffff !important;
-        color: #000000 !important;
-        z-index: 99999999 !important;
-      }
+      html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+      body > *:not(#genx-thermal-print-container) { display: none !important; }
+      #genx-thermal-print-container { display: block !important; visibility: visible !important; opacity: 1 !important; position: absolute !important; left: 0 !important; top: 0 !important; width: 100% !important; margin: 0 !important; padding: 0 !important; background: #fff !important; color: #000 !important; z-index: 99999999 !important; }
     }
   `;
   document.head.appendChild(styleEl);
 
-  // 2. Parse HTML and extract styles and body content
   const container = document.createElement('div');
   container.id = 'genx-thermal-print-container';
-
   try {
     const parser = new DOMParser();
     const doc = parser.parseFromString(html, 'text/html');
-
-    // Clone all style elements from template
-    doc.querySelectorAll('style').forEach((st) => {
-      container.appendChild(st.cloneNode(true));
-    });
-
-    // Append thermal receipt body content
+    doc.querySelectorAll('style').forEach((st) => container.appendChild(st.cloneNode(true)));
     container.innerHTML += doc.body.innerHTML;
   } catch {
     container.innerHTML = html;
   }
-
   document.body.appendChild(container);
 
-  const cleanup = () => {
-    window.setTimeout(() => {
-      try {
-        container.remove();
-        styleEl.remove();
-      } catch {}
-    }, 1000);
-  };
-
+  const cleanup = () => window.setTimeout(() => { try { container.remove(); styleEl.remove(); } catch {} }, 1000);
   window.addEventListener('afterprint', cleanup, { once: true });
-
-  // 3. Trigger native browser print dialog
-  try {
-    window.focus();
-    window.print();
-  } catch (e) {
-    console.warn('Native window.print() failed, retrying:', e);
-    window.print();
-  } finally {
-    // Safety fallback cleanup in case afterprint does not fire
-    cleanup();
-  }
+  try { window.focus(); window.print(); } catch { window.print(); } finally { cleanup(); }
 }
 
 function escapeHtml(str: string): string {
