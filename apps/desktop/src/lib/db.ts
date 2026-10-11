@@ -535,6 +535,7 @@ export const orderRepo = {
           const itemRows = items.map((i) => ({
             id: crypto.randomUUID(),
             order_id: order.id,
+            tenant_id: order.tenantId,
             product_id: i.productId,
             name: i.name,
             sku: i.sku,
@@ -637,6 +638,7 @@ export const orderRepo = {
           const itemRows = items.map((item) => ({
             id: crypto.randomUUID(),
             order_id: order.id,
+            tenant_id: order.tenantId,
             product_id: item.productId,
             name: item.name,
             sku: item.sku,
@@ -647,7 +649,10 @@ export const orderRepo = {
             total: item.total,
             created_at: now,
           }));
-          await supabase.from('order_items').insert(itemRows);
+          const { error: itemsError } = await supabase.from('order_items').insert(itemRows);
+          if (itemsError) {
+            console.warn('[db] Supabase order_items insert warning:', itemsError.message);
+          }
 
           // Deduct stock in Supabase for each item
           for (const item of items) {
