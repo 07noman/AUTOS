@@ -98,6 +98,7 @@ function App() {
       {/* Auto Care Point of Sale — Full Screen POS-only (NO sidebar, NO dashboard) */}
       <Route path="/auto-care/pos" element={<AutoCarePOS />} />
       <Route path="/auto-care/orders" element={<POSOrdersPage />} />
+      <Route path="/orders" element={<POSOrdersPage />} />
 
       {/* Auto Care Sub-Modules — Clean view with Odoo-style top bar & [Apps] launcher button */}
       <Route path="/auto-care" element={<AutoCareShell />}>
@@ -142,6 +143,7 @@ function App() {
         <Route path="inventory" element={<InventoryView />} />
         <Route path="customers" element={<Customers />} />
         <Route path="reports" element={<SalesReport />} />
+        <Route path="orders" element={<POSOrdersPage />} />
         {/* If in auto care mode, /settings redirects to /auto-care/settings */}
         <Route
           path="settings"

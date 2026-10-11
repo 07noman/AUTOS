@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Search,
   Trash2,
@@ -7,13 +7,14 @@ import {
   X,
   ShoppingCart,
   AlertTriangle,
+  RotateCw,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { posOrderRepo, type POSOrder, type POSOrderItem } from '../../lib/auto-care-db';
 import { getCurrentTenantId } from '../../lib/db';
 import './POSOrdersPage.css';
 
-type FilterType = 'all' | 'active' | 'ONGOING' | 'PAID' | 'CANCELLED';
+type FilterType = 'all' | 'COMPLETED' | 'ONGOING' | 'CANCELLED';
 
 interface DeleteConfirmProps {
   order: POSOrder;
@@ -58,13 +59,15 @@ export function POSOrdersPage() {
   const navigate = useNavigate();
   const [orders, setOrders] = useState<POSOrder[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState('');
-  const [filter, setFilter] = useState<FilterType>('active');
+  const [filter, setFilter] = useState<FilterType>('all');
   const [selected, setSelected] = useState<POSOrder | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<POSOrder | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
 
-  const loadOrders = async () => {
+  const loadOrders = useCallback(async (isManual = false) => {
+    if (isManual) setRefreshing(true);
     try {
       const all = await posOrderRepo.findAll(getCurrentTenantId());
       setOrders(all);
@@ -77,21 +80,42 @@ export function POSOrdersPage() {
       console.error('Failed to load POS orders:', e);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     void loadOrders();
-  }, []);
+    const onFocus = () => void loadOrders();
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [loadOrders]);
+
+  const isCompleted = (status: string) => {
+    const s = String(status || '').toUpperCase();
+    return s === 'PAID' || s === 'COMPLETED';
+  };
+
+  const isOngoing = (status: string) => {
+    const s = String(status || '').toUpperCase();
+    return s === 'ONGOING' || s === 'PENDING';
+  };
+
+  const isCancelled = (status: string) => {
+    const s = String(status || '').toUpperCase();
+    return s === 'CANCELLED';
+  };
 
   const filtered = useMemo(() => {
     let list = orders;
 
-    // Filter by status
-    if (filter === 'active') {
-      list = list.filter((o) => o.status === 'ONGOING' || o.status === 'PAID');
-    } else if (filter !== 'all') {
-      list = list.filter((o) => o.status === filter);
+    // Filter by status tab
+    if (filter === 'COMPLETED') {
+      list = list.filter((o) => isCompleted(o.status));
+    } else if (filter === 'ONGOING') {
+      list = list.filter((o) => isOngoing(o.status));
+    } else if (filter === 'CANCELLED') {
+      list = list.filter((o) => isCancelled(o.status));
     }
 
     // Search query
@@ -147,9 +171,10 @@ export function POSOrdersPage() {
     })}`;
 
   const statusLabel = (s: string) => {
-    if (s === 'ONGOING') return 'Ongoing';
-    if (s === 'PAID') return 'Paid';
-    if (s === 'CANCELLED') return 'Cancelled';
+    const upper = String(s || '').toUpperCase();
+    if (upper === 'ONGOING' || upper === 'PENDING') return 'Ongoing';
+    if (upper === 'PAID' || upper === 'COMPLETED') return 'Completed';
+    if (upper === 'CANCELLED') return 'Cancelled';
     return s;
   };
 
@@ -160,10 +185,17 @@ export function POSOrdersPage() {
     return (
       <div className="pos-orders-loading">
         <div className="pos-orders-spinner" />
-        <span>Loading orders...</span>
+        <span>Loading orders from database...</span>
       </div>
     );
   }
+
+  const filterTabs: { id: FilterType; label: string }[] = [
+    { id: 'all', label: `All (${orders.length})` },
+    { id: 'COMPLETED', label: `Completed (${orders.filter((o) => isCompleted(o.status)).length})` },
+    { id: 'ONGOING', label: `Ongoing (${orders.filter((o) => isOngoing(o.status)).length})` },
+    { id: 'CANCELLED', label: `Cancelled (${orders.filter((o) => isCancelled(o.status)).length})` },
+  ];
 
   return (
     <div className="pos-orders-root">
@@ -176,8 +208,16 @@ export function POSOrdersPage() {
           <ChevronLeft size={18} />
           Back to POS
         </button>
-        <h1 className="pos-orders-title">Orders</h1>
-        <div className="pos-orders-header-spacer" />
+        <h1 className="pos-orders-title">Orders History</h1>
+        <button
+          className="pos-orders-back-btn"
+          onClick={() => void loadOrders(true)}
+          title="Refresh orders from database"
+          disabled={refreshing}
+        >
+          <RotateCw size={16} className={refreshing ? 'animate-spin' : ''} />
+          <span>Refresh</span>
+        </button>
       </div>
 
       {/* ── Body: list + detail ─────────────────────────────────────────── */}
@@ -189,7 +229,7 @@ export function POSOrdersPage() {
             <Search size={16} className="pos-orders-search-icon" />
             <input
               className="pos-orders-search-input"
-              placeholder="Search orders..."
+              placeholder="Search orders by number, customer, payment..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -205,13 +245,13 @@ export function POSOrdersPage() {
 
           {/* Filter tabs */}
           <div className="pos-orders-filter-bar">
-            {(['active', 'all', 'ONGOING', 'PAID', 'CANCELLED'] as FilterType[]).map((f) => (
+            {filterTabs.map((tab) => (
               <button
-                key={f}
-                className={`pos-orders-filter-btn${filter === f ? ' active' : ''}`}
-                onClick={() => setFilter(f)}
+                key={tab.id}
+                className={`pos-orders-filter-btn${filter === tab.id ? ' active' : ''}`}
+                onClick={() => setFilter(tab.id)}
               >
-                {f === 'active' ? 'Active' : f === 'all' ? 'All' : statusLabel(f)}
+                {tab.label}
               </button>
             ))}
           </div>

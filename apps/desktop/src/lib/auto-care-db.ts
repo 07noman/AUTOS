@@ -249,20 +249,47 @@ function mapPOSOrder(r: any): POSOrder {
   } catch {
     items = [];
   }
+
+  // Fallback: If items is empty, check if notes contains JSON with items
+  let notesStr = r.notes ?? undefined;
+  if ((!items || items.length === 0) && r.notes) {
+    try {
+      const parsedNotes = JSON.parse(r.notes);
+      if (Array.isArray(parsedNotes?.items)) {
+        items = parsedNotes.items;
+        notesStr = parsedNotes.notes || undefined;
+      }
+    } catch {
+      // notes is plain text, keep as is
+    }
+  }
+
+  // Normalize status so COMPLETED, completed, PAID, and paid are all treated uniformly
+  const rawStatus = String(r.status || 'ONGOING').toUpperCase();
+  const normalizedStatus: POSOrder['status'] =
+    (rawStatus === 'COMPLETED' || rawStatus === 'PAID')
+      ? 'PAID'
+      : (rawStatus === 'CANCELLED' ? 'CANCELLED' : 'ONGOING');
+
+  const total = Number(r.total || 0);
+  const paidAmount = (r.paid_amount != null || r.paidAmount != null)
+    ? Number(r.paid_amount ?? r.paidAmount)
+    : (normalizedStatus === 'PAID' ? total : undefined);
+
   return {
     id: String(r.id),
     tenantId: String(r.tenant_id ?? r.tenantId),
-    orderNumber: Number(r.order_number ?? r.orderNumber),
-    status: (r.status || 'ONGOING') as POSOrder['status'],
+    orderNumber: Number(r.order_number ?? r.orderNumber) || 1,
+    status: normalizedStatus,
     customerName: r.customer_name ?? r.customerName ?? undefined,
     customerId: r.customer_id ?? r.customerId ?? undefined,
     paymentMethod: r.payment_method ?? r.paymentMethod ?? undefined,
     subtotal: Number(r.subtotal || 0),
     tax: Number(r.tax || 0),
-    total: Number(r.total || 0),
-    paidAmount: (r.paid_amount != null || r.paidAmount != null) ? Number(r.paid_amount ?? r.paidAmount) : undefined,
+    total,
+    paidAmount,
     items,
-    notes: r.notes ?? undefined,
+    notes: notesStr,
     createdAt: Number(r.created_at ?? r.createdAt ?? Date.now()),
     updatedAt: Number(r.updated_at ?? r.updatedAt ?? Date.now()),
   };
@@ -298,19 +325,59 @@ export const posOrderRepo = {
 
   /** Find all POS orders for tenant */
   async findAll(tenantId = getCurrentTenantId()): Promise<POSOrder[]> {
+    const results: POSOrder[] = [];
     if (isSupabaseConfigured()) {
       try {
         const { data, error } = await supabase
           .from('pos_orders')
           .select('*')
           .eq('tenant_id', tenantId)
-          .order('order_number', { ascending: false });
+          .order('created_at', { ascending: false });
 
-        if (!error && data) {
-          return data.map(mapPOSOrder);
+        if (!error && data && data.length > 0) {
+          results.push(...data.map(mapPOSOrder));
         }
       } catch (err) {
         console.warn('[db] Supabase pos_orders findAll error:', err);
+      }
+
+      // Also merge any completed orders from standard `orders` table (retail POS)
+      try {
+        const { data: stdOrders } = await supabase
+          .from('orders')
+          .select('*')
+          .eq('tenant_id', tenantId)
+          .order('created_at', { ascending: false });
+
+        if (stdOrders && stdOrders.length > 0) {
+          const existingIds = new Set(results.map((o) => o.id));
+          for (const so of stdOrders) {
+            if (!existingIds.has(String(so.id))) {
+              results.push({
+                id: String(so.id),
+                tenantId: String(so.tenant_id),
+                orderNumber: Number(String(so.order_number).replace(/\D/g, '')) || 1,
+                status: 'PAID',
+                customerName: so.customer_id ? `Customer (${so.customer_id})` : undefined,
+                paymentMethod: so.payment_method || 'cash',
+                subtotal: Number(so.subtotal || 0),
+                tax: Number(so.tax || 0),
+                total: Number(so.total || 0),
+                paidAmount: Number(so.total || 0),
+                items: [],
+                notes: so.notes || undefined,
+                createdAt: Number(so.created_at || Date.now()),
+                updatedAt: Number(so.updated_at || Date.now()),
+              });
+            }
+          }
+        }
+      } catch (ordErr) {
+        console.warn('[db] Supabase orders fallback error:', ordErr);
+      }
+
+      if (results.length > 0) {
+        return results.sort((a, b) => b.createdAt - a.createdAt);
       }
     }
 
@@ -410,7 +477,7 @@ export const posOrderRepo = {
 
     if (isSupabaseConfigured()) {
       try {
-        await supabase.from('pos_orders').upsert({
+        const fullPayload = {
           id: order.id,
           tenant_id: order.tenantId,
           order_number: order.orderNumber,
@@ -424,7 +491,25 @@ export const posOrderRepo = {
           notes: order.notes || null,
           created_at: order.createdAt,
           updated_at: order.updatedAt,
-        });
+        };
+        const { error: ongoingErr } = await supabase.from('pos_orders').upsert(fullPayload);
+        if (ongoingErr) {
+          console.warn('[db] pos_orders createOngoing retry with safe payload:', ongoingErr.message);
+          // Fallback payload without columns that might not exist yet
+          await supabase.from('pos_orders').upsert({
+            id: order.id,
+            tenant_id: order.tenantId,
+            order_number: String(order.orderNumber),
+            status: order.status,
+            customer_name: order.customerName || null,
+            subtotal: order.subtotal,
+            tax: order.tax,
+            total: order.total,
+            notes: JSON.stringify({ items: order.items, notes: order.notes }),
+            created_at: order.createdAt,
+            updated_at: order.updatedAt,
+          });
+        }
       } catch (err) {
         console.warn('[db] Supabase createOngoing error:', err);
       }
@@ -472,8 +557,8 @@ export const posOrderRepo = {
     // 1. Direct Supabase Cloud Persistence
     if (isSupabaseConfigured()) {
       try {
-        // Upsert into pos_orders
-        await supabase.from('pos_orders').upsert({
+        // Attempt full schema upsert into pos_orders
+        const fullPayload: Record<string, any> = {
           id: orderId,
           tenant_id: tenantId,
           order_number: orderNumber,
@@ -489,7 +574,70 @@ export const posOrderRepo = {
           notes: input.notes || null,
           created_at: now,
           updated_at: now,
-        });
+        };
+
+        const { error: upsertErr } = await supabase.from('pos_orders').upsert(fullPayload);
+        if (upsertErr) {
+          console.warn('[db] pos_orders full upsert warning, retrying with fallback payload:', upsertErr.message);
+          // Fallback payload: safe columns only, items encoded in notes
+          const safePayload = {
+            id: orderId,
+            tenant_id: tenantId,
+            order_number: String(orderNumber),
+            status: 'PAID',
+            customer_name: input.customerName || null,
+            payment_method: input.paymentMethod,
+            subtotal: input.subtotal,
+            discount: 0,
+            tax: input.tax,
+            total: input.total,
+            notes: JSON.stringify({ items: input.items, notes: input.notes, paidAmount: input.paidAmount }),
+            created_at: now,
+            updated_at: now,
+          };
+          const { error: safeErr } = await supabase.from('pos_orders').upsert(safePayload);
+          if (safeErr) {
+            console.error('[db] pos_orders safe upsert error:', safeErr.message);
+          }
+        }
+
+        // Also mirror to standard `orders` and `order_items` tables so dashboard & reports see it
+        try {
+          await supabase.from('orders').upsert({
+            id: orderId,
+            tenant_id: tenantId,
+            order_number: `ORD-${orderNumber}`,
+            customer_id: input.customerId || null,
+            subtotal: input.subtotal,
+            discount: 0,
+            tax: input.tax,
+            total: input.total,
+            payment_method: input.paymentMethod,
+            status: 'completed',
+            notes: input.notes || null,
+            created_at: now,
+            updated_at: now,
+          });
+
+          if (input.items && input.items.length > 0) {
+            const itemRows = input.items.map((it) => ({
+              id: crypto.randomUUID(),
+              order_id: orderId,
+              tenant_id: tenantId,
+              product_id: String(it.id),
+              name: it.name,
+              sku: String(it.id),
+              quantity: it.quantity,
+              price: it.price,
+              discount: 0,
+              tax: 0,
+              total: it.price * it.quantity,
+            }));
+            await supabase.from('order_items').insert(itemRows);
+          }
+        } catch (stdErr) {
+          console.warn('[db] standard orders mirror error:', stdErr);
+        }
 
         // Deduct inventory in Supabase products
         for (const item of input.items) {

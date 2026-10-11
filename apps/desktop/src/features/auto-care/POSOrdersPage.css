@@ -265,7 +265,8 @@
   border: 1px solid #bae6fd;
 }
 
-.pos-orders-status-badge.paid {
+.pos-orders-status-badge.paid,
+.pos-orders-status-badge.completed {
   background: #ccfbf1;
   color: #0f766e;
   border: 1px solid #99f6e4;
