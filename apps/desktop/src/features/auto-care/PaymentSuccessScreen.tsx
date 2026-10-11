@@ -274,14 +274,8 @@ export default function PaymentSuccessScreen({
 
   return (
     <>
-      {createPortal(
-        <div id="genx-receipt-portal">
-          <GenXReceipt order={order} payment={payment} />
-        </div>,
-        document.body
-      )}
-
       <div className="pss-root">
+
       {/* ── Receipt modal ── */}
       {showReceiptModal && (
         <ReceiptModal

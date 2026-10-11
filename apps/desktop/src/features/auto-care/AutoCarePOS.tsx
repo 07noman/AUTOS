@@ -703,7 +703,41 @@ export function AutoCarePOS() {
               setSuccessData(null);
               setShowPayment(false);
             }}
-            onPrint={() => window.print()}
+            onPrint={async () => {
+              try {
+                const { receiptSettingsRepo } = await import('@/lib/receipt-settings-repo');
+                const { printThermalReceipt } = await import('@/features/receipt/print-service');
+                const currentTenant = getCurrentTenantId();
+                const settings = await receiptSettingsRepo.getSettings(currentTenant);
+                await printThermalReceipt(
+                  {
+                    orderNumber: successData.invoiceNumber || `AC-${Date.now()}`,
+                    date: Date.now(),
+                    cashierName: user?.name || user?.email || 'Cashier',
+                    terminalName: 'POS-01',
+                    customer: successData.customerName ? { name: successData.customerName } : undefined,
+                    items: (successData.items || []).map((it: any) => ({
+                      name: it.name || 'Item',
+                      quantity: Number(it.quantity || 1),
+                      price: Number(it.price || it.unitPrice || 0),
+                      total: Number(it.total || Number(it.price || 0) * Number(it.quantity || 1)),
+                    })),
+                    subtotal: Number(successData.subtotal ?? subtotal),
+                    discount: 0,
+                    tax: Number(successData.tax ?? tax),
+                    total: Number(successData.total ?? total),
+                    paymentMethod: successData.method || 'cash',
+                    amountPaid: Number(successData.paidAmount ?? successData.amount),
+                    change: Number(successData.change || 0),
+                    currency: 'PKR',
+                  },
+                  settings
+                );
+              } catch (err) {
+                console.error('Thermal receipt print failed, fallback to window.print():', err);
+                window.print();
+              }
+            }}
           />
         )}
       </>
