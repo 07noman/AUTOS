@@ -502,32 +502,45 @@ export function AutoCarePOS() {
               setSuccessData(null);
               setShowPayment(false);
             }}
-            onPrint={async () => {
+            onPrint={async (orderArg, paymentArg) => {
               try {
                 const { receiptSettingsRepo } = await import('@/lib/receipt-settings-repo');
                 const { printThermalReceipt } = await import('@/features/receipt/print-service');
                 const currentTenant = getCurrentTenantId();
                 const settings = await receiptSettingsRepo.getSettings(currentTenant);
+
+                const rawItems = orderArg?.items || successData?.items || [];
+                const printItems = rawItems.map((it: any) => ({
+                  name: it.name || it.product_name || 'Item',
+                  quantity: Number(it.quantity || 1),
+                  price: Number(it.price || it.unitPrice || 0),
+                  total: Number(it.total || it.lineTotal || (Number(it.price || it.unitPrice || 0) * Number(it.quantity || 1))),
+                }));
+
+                const orderNum = orderArg?.invoiceNumber || orderArg?.orderNumber || successData?.invoiceNumber || `AC-${Date.now()}`;
+                const custName = orderArg?.customer?.name || successData?.customerName;
+                const payMethod = paymentArg?.method || successData?.method || 'cash';
+                const paidAmt = Number(orderArg?.amountPaid ?? successData?.paidAmount ?? successData?.amount ?? 0);
+                const subTot = Number(orderArg?.subtotal ?? successData?.subtotal ?? subtotal);
+                const taxAmt = Number(orderArg?.tax ?? successData?.tax ?? tax);
+                const totAmt = Number(orderArg?.total ?? successData?.total ?? total);
+                const chgAmt = Number(paymentArg?.change ?? successData?.change ?? 0);
+
                 await printThermalReceipt(
                   {
-                    orderNumber: successData.invoiceNumber || `AC-${Date.now()}`,
+                    orderNumber: String(orderNum),
                     date: Date.now(),
                     cashierName: user?.name || user?.email || 'Cashier',
                     terminalName: 'POS-01',
-                    customer: successData.customerName ? { name: successData.customerName } : undefined,
-                    items: (successData.items || []).map((it: any) => ({
-                      name: it.name || 'Item',
-                      quantity: Number(it.quantity || 1),
-                      price: Number(it.price || it.unitPrice || 0),
-                      total: Number(it.total || Number(it.price || 0) * Number(it.quantity || 1)),
-                    })),
-                    subtotal: Number(successData.subtotal ?? subtotal),
+                    customer: custName ? { name: custName } : undefined,
+                    items: printItems,
+                    subtotal: subTot,
                     discount: 0,
-                    tax: Number(successData.tax ?? tax),
-                    total: Number(successData.total ?? total),
-                    paymentMethod: successData.method || 'cash',
-                    amountPaid: Number(successData.paidAmount ?? successData.amount),
-                    change: Number(successData.change || 0),
+                    tax: taxAmt,
+                    total: totAmt,
+                    paymentMethod: payMethod,
+                    amountPaid: paidAmt,
+                    change: chgAmt,
                     currency: 'PKR',
                   },
                   settings

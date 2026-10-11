@@ -300,7 +300,7 @@ export function generateThermalReceiptHtml(data: ReceiptData, settings: ReceiptS
  */
 export async function printThermalReceipt(data: ReceiptData, settings: ReceiptSettings): Promise<void> {
   if (isPrintLocked) {
-    console.warn('[printThermalReceipt] Print call ignored — already processing a print job.');
+    console.warn('[printThermalReceipt] Print call ignored — debouncing previous click.');
     return;
   }
 
@@ -314,13 +314,13 @@ export async function printThermalReceipt(data: ReceiptData, settings: ReceiptSe
       return;
     }
 
-    // 2. Otherwise print in browser via isolated iframe
+    // 2. Otherwise trigger native browser print dialog
     printInBrowser(html);
   } finally {
-    // Release lock after small debounce
+    // Release debounce lock quickly
     window.setTimeout(() => {
       isPrintLocked = false;
-    }, 1500);
+    }, 400);
   }
 }
 
@@ -341,48 +341,99 @@ async function tryTauriPrint(html: string): Promise<boolean> {
 }
 
 function printInBrowser(html: string): void {
-  const iframe = document.createElement('iframe');
-  iframe.setAttribute('aria-hidden', 'true');
-  iframe.style.position = 'fixed';
-  iframe.style.right = '0';
-  iframe.style.bottom = '0';
-  iframe.style.width = '0';
-  iframe.style.height = '0';
-  iframe.style.border = '0';
-  document.body.appendChild(iframe);
+  if (typeof window === 'undefined' || typeof document === 'undefined') return;
 
-  const doc = iframe.contentDocument;
-  if (!doc) {
-    iframe.remove();
-    return;
+  // Clean up any existing print elements
+  const oldContainer = document.getElementById('genx-thermal-print-container');
+  if (oldContainer) oldContainer.remove();
+  const oldStyle = document.getElementById('genx-thermal-print-style');
+  if (oldStyle) oldStyle.remove();
+
+  // 1. Inject high-priority @media print stylesheet
+  const styleEl = document.createElement('style');
+  styleEl.id = 'genx-thermal-print-style';
+  styleEl.textContent = `
+    @media screen {
+      #genx-thermal-print-container {
+        display: none !important;
+        visibility: hidden !important;
+        opacity: 0 !important;
+        pointer-events: none !important;
+        position: fixed !important;
+        left: -9999px !important;
+      }
+    }
+    @media print {
+      html, body {
+        margin: 0 !important;
+        padding: 0 !important;
+        background: #ffffff !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+      body > *:not(#genx-thermal-print-container) {
+        display: none !important;
+      }
+      #genx-thermal-print-container {
+        display: block !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        position: absolute !important;
+        left: 0 !important;
+        top: 0 !important;
+        width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        background: #ffffff !important;
+        color: #000000 !important;
+        z-index: 99999999 !important;
+      }
+    }
+  `;
+  document.head.appendChild(styleEl);
+
+  // 2. Parse HTML and extract styles and body content
+  const container = document.createElement('div');
+  container.id = 'genx-thermal-print-container';
+
+  try {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+
+    // Clone all style elements from template
+    doc.querySelectorAll('style').forEach((st) => {
+      container.appendChild(st.cloneNode(true));
+    });
+
+    // Append thermal receipt body content
+    container.innerHTML += doc.body.innerHTML;
+  } catch {
+    container.innerHTML = html;
   }
 
-  doc.open();
-  doc.write(html);
-  doc.close();
+  document.body.appendChild(container);
 
   const cleanup = () => {
     window.setTimeout(() => {
       try {
-        iframe.remove();
+        container.remove();
+        styleEl.remove();
       } catch {}
     }, 1000);
   };
 
-  iframe.contentWindow?.addEventListener('afterprint', cleanup);
-  iframe.contentWindow?.focus();
-
-  // Short timeout to allow CSS and images/SVG to layout before print dialog opens
+  // 3. Trigger native browser print dialog
   window.setTimeout(() => {
     try {
-      iframe.contentWindow?.print();
+      window.focus();
+      window.print();
     } catch (e) {
-      console.warn('Browser print failed:', e);
+      console.warn('window.print() error, retrying:', e);
+      window.print();
+    } finally {
+      cleanup();
     }
-  }, 250);
-
-  // Safety fallback cleanup
-  window.setTimeout(cleanup, 5000);
+  }, 100);
 }
 
 function escapeHtml(str: string): string {
