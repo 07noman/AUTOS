@@ -5,7 +5,7 @@ import { productRepo, outboxRepo, getCurrentTenantId } from '@/lib/db';
 import { stockMovementRepo } from '@/lib/stock-movements';
 import { getDeviceId } from '@/lib/device';
 import { recordProductChange } from '@/lib/sync';
-import { putItem, putMany, getAllItems, OFFLINE_STORES } from '@/services/offlineDB';
+import { putItem, putMany, OFFLINE_STORES } from '@/services/offlineDB';
 import { setStock } from '@/services/offlineInventory';
 import { supabase } from '@/lib/supabase';
 
@@ -56,42 +56,25 @@ export function useProducts() {
   return useQuery({
     queryKey: ['products', tenantId],
     queryFn: async (): Promise<Product[]> => {
-      try {
-        const products = await productRepo.findAll(tenantId);
-        if (products && products.length > 0) {
-          // Cache to IndexedDB for offline use
-          void putMany(OFFLINE_STORES.products, products).catch(() => {});
-          // Sync inventory store
-          for (const p of products) {
-            void setStock(p.id, p.stock, p.metadata?.trackInventory !== false).catch(() => {});
-          }
-          return products;
+      // ONLY load from Supabase — no local/mock/cached fallback.
+      // This guarantees every device sees the same live database data.
+      const products = await productRepo.findAll(tenantId);
+      if (products && products.length > 0) {
+        // Background: keep IndexedDB in sync for offline reads (non-blocking)
+        void putMany(OFFLINE_STORES.products, products).catch(() => {});
+        for (const p of products) {
+          void setStock(p.id, p.stock, p.metadata?.trackInventory !== false).catch(() => {});
         }
-      } catch (err) {
-        console.warn('Failed to load products from repo, checking offline DB:', err);
       }
-
-      // Offline fallback: load from IndexedDB (same tenant, cached earlier)
-      try {
-        const offlineProducts = await getAllItems(OFFLINE_STORES.products);
-        if (offlineProducts && offlineProducts.length > 0) {
-          return offlineProducts;
-        }
-      } catch (idbErr) {
-        console.warn('IndexedDB fallback error:', idbErr);
-      }
-
-      return [];
+      return products ?? [];
     },
-    // 0 staleTime = always fetch fresh from Supabase on mount.
-    // Data comes from cloud so it's always in sync across all devices.
+    // Always fetch fresh from Supabase on mount — data must match live DB
     staleTime: 0,
-    // Refetch when the window regains focus (user switches tabs/opens laptop)
     refetchOnWindowFocus: true,
-    // Refetch when network reconnects
     refetchOnReconnect: true,
   });
 }
+
 
 export function useCreateProduct() {
   const queryClient = useQueryClient();
