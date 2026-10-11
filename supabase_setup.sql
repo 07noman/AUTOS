@@ -6,9 +6,10 @@
 -- no real cloud data exists yet.
 --
 -- Steps:
--- 1. Open https://supabase.com/dashboard/project/zqngkqsdpgtoytuleogn/sql/new
+-- 1. Open https://supabase.com/dashboard/project/tstuqwqktkjgxnopytmz/sql/new
 -- 2. Paste this entire script
 -- 3. Click "RUN"
+
 -- ==============================================================================
 
 -- ── STEP 1: DROP everything (in reverse-dependency order) ─────────────────────
