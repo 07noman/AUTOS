@@ -1135,7 +1135,7 @@ export const invoiceRepo = {
 
     if (isSupabaseConfigured()) {
       try {
-        await supabase.from('auto_care_invoices').upsert({
+        const fullPayload: Record<string, any> = {
           id,
           tenant_id: inv.tenantId,
           invoice_number: inv.invoiceNumber,
@@ -1154,7 +1154,29 @@ export const invoiceRepo = {
           notes: inv.notes || null,
           created_at: now,
           updated_at: now,
-        });
+        };
+
+        const { error: invErr } = await supabase.from('auto_care_invoices').upsert(fullPayload);
+        if (invErr) {
+          // Fallback payload without columns that may not exist in live database
+          const safePayload = {
+            id,
+            tenant_id: inv.tenantId,
+            invoice_number: inv.invoiceNumber,
+            job_id: inv.jobId || null,
+            customer_name: inv.customerName,
+            items: JSON.stringify(inv.items),
+            subtotal: inv.subtotal,
+            discount: inv.discount,
+            tax: inv.tax,
+            total: inv.total,
+            payment_method: inv.paymentMethod,
+            notes: inv.notes || null,
+            created_at: now,
+            updated_at: now,
+          };
+          await supabase.from('auto_care_invoices').upsert(safePayload);
+        }
       } catch (err) {
         console.warn('[db] Supabase invoice create error:', err);
       }

@@ -1,7 +1,6 @@
 import { ReceiptData, ReceiptSettings } from './types';
 import { generateBarcodeSvg } from './utils/barcode';
 
-let isPrintLocked = false;
 
 /**
  * Generates self-contained, print-ready HTML for thermal receipt printing.
@@ -299,29 +298,16 @@ export function generateThermalReceiptHtml(data: ReceiptData, settings: ReceiptS
  * Dispatches thermal print to browser or desktop without blocking UI.
  */
 export async function printThermalReceipt(data: ReceiptData, settings: ReceiptSettings): Promise<void> {
-  if (isPrintLocked) {
-    console.warn('[printThermalReceipt] Print call ignored — debouncing previous click.');
+  const html = generateThermalReceiptHtml(data, settings);
+
+  // 1. Try Tauri native print command if available
+  const printedViaTauri = await tryTauriPrint(html);
+  if (printedViaTauri) {
     return;
   }
 
-  isPrintLocked = true;
-  try {
-    const html = generateThermalReceiptHtml(data, settings);
-
-    // 1. Try Tauri native print command if available
-    const printedViaTauri = await tryTauriPrint(html);
-    if (printedViaTauri) {
-      return;
-    }
-
-    // 2. Otherwise trigger native browser print dialog
-    printInBrowser(html);
-  } finally {
-    // Release debounce lock quickly
-    window.setTimeout(() => {
-      isPrintLocked = false;
-    }, 400);
-  }
+  // 2. Otherwise trigger native browser print dialog
+  printInBrowser(html);
 }
 
 async function tryTauriPrint(html: string): Promise<boolean> {
@@ -422,18 +408,19 @@ function printInBrowser(html: string): void {
     }, 1000);
   };
 
+  window.addEventListener('afterprint', cleanup, { once: true });
+
   // 3. Trigger native browser print dialog
-  window.setTimeout(() => {
-    try {
-      window.focus();
-      window.print();
-    } catch (e) {
-      console.warn('window.print() error, retrying:', e);
-      window.print();
-    } finally {
-      cleanup();
-    }
-  }, 100);
+  try {
+    window.focus();
+    window.print();
+  } catch (e) {
+    console.warn('Native window.print() failed, retrying:', e);
+    window.print();
+  } finally {
+    // Safety fallback cleanup in case afterprint does not fire
+    cleanup();
+  }
 }
 
 function escapeHtml(str: string): string {

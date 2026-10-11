@@ -219,8 +219,8 @@ export default function PaymentSuccessScreen({
         );
 
   const handlePrint = async () => {
-    if (printing) return;
     setPrinting(true);
+    const safetyTimer = window.setTimeout(() => setPrinting(false), 2000);
     try {
       if (onPrint) {
         await onPrint(order, payment);
@@ -265,6 +265,7 @@ export default function PaymentSuccessScreen({
       console.error('Receipt print failed, falling back to window.print():', err);
       window.print();
     } finally {
+      window.clearTimeout(safetyTimer);
       setPrinting(false);
     }
   };
