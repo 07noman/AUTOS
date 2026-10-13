@@ -323,17 +323,35 @@ export function setupTauriBrowserMock(): void {
         // ── pos_orders INSERT ──────────────────────────────────────────────
         if (query.startsWith('INSERT INTO pos_orders')) {
           const pos_orders = getStorage<any[]>('pos_orders', []);
-          const [
-            id, tenant_id, order_number, status, customer_name, customer_id,
-            payment_method, subtotal, tax, total, paid_amount, items, notes,
-            created_at, updated_at
-          ] = values;
-          pos_orders.push({
-            id, tenant_id, order_number, status, customer_name, customer_id,
-            payment_method, subtotal, tax, total, paid_amount,
-            items: typeof items === 'string' ? items : JSON.stringify(items),
-            notes, created_at, updated_at,
-          });
+          let rec: any;
+          if (query.includes('vehicle_plate_number')) {
+            const [
+              id, tenant_id, order_number, status, customer_name, customer_id,
+              vehicle_plate_number, vehicle_make_model, vehicle_mileage,
+              payment_method, subtotal, tax, total, paid_amount, items, notes,
+              created_at, updated_at
+            ] = values;
+            rec = {
+              id, tenant_id, order_number, status, customer_name, customer_id,
+              vehicle_plate_number, vehicle_make_model, vehicle_mileage,
+              payment_method, subtotal, tax, total, paid_amount,
+              items: typeof items === 'string' ? items : JSON.stringify(items),
+              notes, created_at, updated_at,
+            };
+          } else {
+            const [
+              id, tenant_id, order_number, status, customer_name, customer_id,
+              payment_method, subtotal, tax, total, paid_amount, items, notes,
+              created_at, updated_at
+            ] = values;
+            rec = {
+              id, tenant_id, order_number, status, customer_name, customer_id,
+              payment_method, subtotal, tax, total, paid_amount,
+              items: typeof items === 'string' ? items : JSON.stringify(items),
+              notes, created_at, updated_at,
+            };
+          }
+          pos_orders.push(rec);
           setStorage('pos_orders', pos_orders);
           return [1, 1];
         }
@@ -364,6 +382,102 @@ export function setupTauriBrowserMock(): void {
               pos_orders[idx] = { ...pos_orders[idx], status: 'CANCELLED', updated_at };
               setStorage('pos_orders', pos_orders);
             }
+          }
+          return [1, 1];
+        }
+
+        // ── pos_orders DELETE ──────────────────────────────────────────────
+        if (query.startsWith('DELETE FROM pos_orders')) {
+          const pos_orders = getStorage<any[]>('pos_orders', []);
+          let filtered: any[];
+          if (!query.includes('WHERE')) {
+            filtered = [];
+          } else if (query.includes('WHERE tenant_id = ?') && values.length === 1) {
+            filtered = pos_orders.filter((o) => o.tenant_id !== values[0]);
+          } else if (query.includes('WHERE id = ? AND tenant_id = ?')) {
+            const [id, tenant_id] = values;
+            filtered = pos_orders.filter((o) => !(o.id === id && o.tenant_id === tenant_id));
+          } else if (query.includes('WHERE id = ?')) {
+            const [id] = values;
+            filtered = pos_orders.filter((o) => o.id !== id);
+          } else {
+            const [id, tenant_id] = values;
+            filtered = pos_orders.filter((o) => !(o.id === id && (!tenant_id || o.tenant_id === tenant_id)));
+          }
+          setStorage('pos_orders', filtered);
+          return [1, 1];
+        }
+
+        // ── orders DELETE ──────────────────────────────────────────────────
+        if (query.startsWith('DELETE FROM orders')) {
+          const orders = getStorage<any[]>('orders', []);
+          let filtered: any[];
+          if (!query.includes('WHERE')) {
+            filtered = [];
+          } else if (query.includes('WHERE tenant_id = ?')) {
+            filtered = orders.filter((o) => o.tenant_id !== values[0]);
+          } else if (query.includes('WHERE id = ?')) {
+            filtered = orders.filter((o) => o.id !== values[0]);
+          } else {
+            filtered = [];
+          }
+          setStorage('orders', filtered);
+          return [1, 1];
+        }
+
+        // ── vehicles INSERT / UPDATE ───────────────────────────────────────
+        if (query.startsWith('INSERT INTO vehicles')) {
+          const vehicles = getStorage<any[]>('vehicles', []);
+          const [
+            id, tenant_id, customer_id, customer_name, make, model, year, license_plate,
+            vin, color, mileage, notes, created_at, updated_at
+          ] = values;
+          const cleanPlate = String(license_plate || '').trim().toUpperCase();
+          const existingIdx = vehicles.findIndex(
+            (v) =>
+              (cleanPlate && String(v.license_plate || '').trim().toUpperCase() === cleanPlate && (!tenant_id || v.tenant_id === tenant_id)) ||
+              (id && v.id === id)
+          );
+          const item = {
+            id: id || crypto.randomUUID(),
+            tenant_id,
+            customer_id: customer_id || null,
+            customer_name: customer_name || null,
+            make: make || '',
+            model: model || '',
+            year: Number(year) || 2024,
+            license_plate: license_plate || '',
+            vin: vin || null,
+            color: color || null,
+            mileage: mileage ? Number(mileage) : null,
+            notes: notes || null,
+            created_at: created_at || Date.now(),
+            updated_at: updated_at || Date.now(),
+          };
+          if (existingIdx >= 0) {
+            vehicles[existingIdx] = {
+              ...vehicles[existingIdx],
+              ...item,
+              id: vehicles[existingIdx].id || item.id,
+              created_at: vehicles[existingIdx].created_at || item.created_at,
+              updated_at: Date.now(),
+            };
+          } else {
+            vehicles.push(item);
+          }
+          setStorage('vehicles', vehicles);
+          return [1, 1];
+        }
+
+        // ── vehicles UPDATE ────────────────────────────────────────────────
+        if (query.startsWith('UPDATE vehicles SET')) {
+          const vehicles = getStorage<any[]>('vehicles', []);
+          const id = values[values.length - 2];
+          const tenant_id = values[values.length - 1];
+          const idx = vehicles.findIndex((v) => v.id === id && (!tenant_id || v.tenant_id === tenant_id));
+          if (idx >= 0) {
+            vehicles[idx] = { ...vehicles[idx], updated_at: Date.now() };
+            setStorage('vehicles', vehicles);
           }
           return [1, 1];
         }
@@ -668,6 +782,28 @@ export function setupTauriBrowserMock(): void {
           return customers
             .filter((c) => !tenantId || c.tenant_id === tenantId)
             .sort((a, b) => a.name.localeCompare(b.name));
+        }
+
+        // ── vehicles SELECT ───────────────────────────────────────────────
+        if (query.includes('FROM vehicles')) {
+          const vehicles = getStorage<any[]>('vehicles', []);
+          if (query.includes('WHERE id = ?')) {
+            const [id, tenantId] = values;
+            const item = vehicles.find((v) => v.id === id && (!tenantId || v.tenant_id === tenantId));
+            return item ? [item] : [];
+          }
+          if (query.includes('license_plate = ?') || query.includes('license_plate LIKE ?')) {
+            const plate = String(values[0] || '').trim().toUpperCase();
+            const tenantId = values[1];
+            const item = vehicles.find(
+              (v) => String(v.license_plate || '').trim().toUpperCase() === plate && (!tenantId || v.tenant_id === tenantId)
+            );
+            return item ? [item] : [];
+          }
+          const tenantId = values[0];
+          return vehicles
+            .filter((v) => !tenantId || v.tenant_id === tenantId)
+            .sort((a, b) => (b.updated_at || 0) - (a.updated_at || 0));
         }
 
         // ── auto_care_invoices SELECT ──────────────────────────────────────

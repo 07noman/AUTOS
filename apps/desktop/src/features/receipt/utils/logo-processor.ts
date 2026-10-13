@@ -108,7 +108,7 @@ export function sanitizeSvg(svgContent: string): string {
   const forbiddenPatterns = [
     /<script[\s\S]*?>[\s\S]*?<\/script>/gi,
     /<script[\s\S]*?>/gi,
-    /\bon[a-z]+\s*=/gi,             // onload=, onclick=, onerror=, etc.
+    /\bon[a-z]+\s*=\s*(?:'[^']*'|"[^"]*"|[^\s>]+)/gi, // onload=..., onclick=..., etc.
     /javascript:/gi,
     /data:\s*text\/html/gi,
     /<foreignObject[\s\S]*?>[\s\S]*?<\/foreignObject>/gi,

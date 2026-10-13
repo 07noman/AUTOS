@@ -63,6 +63,11 @@ export interface GenXReceiptOrder {
     email?: string;
     phone?: string;
   };
+  vehicle?: {
+    makeModel?: string;
+    plateNumber?: string;
+    mileage?: string | number;
+  };
 }
 
 export interface GenXReceiptPayment {
@@ -292,6 +297,15 @@ export default function GenXReceipt({ order, payment }: GenXReceiptProps) {
         </div>
         <div className="ticket-date">{formatDateTime(saleDate)}</div>
         <div className="ticket-cashier">Served by: {cashierName}</div>
+        {order?.customer?.name && (
+          <div className="ticket-cashier">Customer: {order.customer.name}</div>
+        )}
+        {order?.vehicle && (order.vehicle.plateNumber || order.vehicle.makeModel) && (
+          <div className="ticket-cashier" style={{ fontWeight: 600 }}>
+            Vehicle: {[order.vehicle.plateNumber, order.vehicle.makeModel].filter(Boolean).join(" - ")}
+            {order.vehicle.mileage ? ` | ${order.vehicle.mileage} km` : ""}
+          </div>
+        )}
       </div>
 
       {/* PRODUCTS */}

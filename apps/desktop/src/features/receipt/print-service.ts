@@ -24,6 +24,9 @@ export function generateThermalReceiptHtml(data: ReceiptData, settings: ReceiptS
     ? `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
     : '';
 
+  const items = Array.isArray(data.items) ? data.items : [];
+  const paymentMethod = (data.paymentMethod || 'cash').toLowerCase();
+
   const barcodeValue = data.barcodeValue || data.orderNumber || 'AC202610110008';
   const barcodeSvg = settings.showBarcode
     ? generateBarcodeSvg(barcodeValue, {
@@ -229,7 +232,7 @@ export function generateThermalReceiptHtml(data: ReceiptData, settings: ReceiptS
         </tr>
       </thead>
       <tbody>
-        ${data.items.map((it, idx) => {
+        ${items.map((it, idx) => {
           const sub = [
             settings.showProductBrand && it.brand ? it.brand : null,
             settings.showPartNumber && it.sku ? `SKU: ${it.sku}` : null,
@@ -251,7 +254,7 @@ export function generateThermalReceiptHtml(data: ReceiptData, settings: ReceiptS
     </table>
   ` : `
     <div>
-      ${data.items.map((it, idx) => `
+      ${items.map((it, idx) => `
         <div style="padding: 2.5px 0;">
           <div style="font-weight:bold;">${idx + 1}. ${escapeHtml(it.name)}</div>
           ${it.brand || it.sku ? `<div class="subtext">${escapeHtml([it.brand, it.sku].filter(Boolean).join(' · '))}</div>` : ''}
@@ -273,9 +276,9 @@ export function generateThermalReceiptHtml(data: ReceiptData, settings: ReceiptS
     <div class="double-dashed"></div>
     <div class="total-row grand-total"><span>Total</span><span>${currency} ${fmtMoney(data.total)}</span></div>
     <div class="dashed"></div>
-    ${settings.showPaymentMethod ? `<div class="total-row"><span>Payment Method : <strong style="text-transform:capitalize;">${escapeHtml(data.paymentMethod)}</strong></span><span>${data.paymentMethod.toLowerCase() === 'credit' ? 'Credit' : fmtMoney(data.amountPaid ?? data.total)}</span></div>` : ''}
-    ${settings.showChange && data.paymentMethod.toLowerCase() === 'cash' ? `<div class="total-row"><span>Change</span><span>${fmtMoney(data.change ?? 0)}</span></div>` : ''}
-    ${settings.showCreditBalance && data.paymentMethod.toLowerCase() === 'credit' && data.customer?.remainingBalance !== undefined ? `
+    ${settings.showPaymentMethod ? `<div class="total-row"><span>Payment Method : <strong style="text-transform:capitalize;">${escapeHtml(paymentMethod)}</strong></span><span>${paymentMethod === 'credit' ? 'Credit' : fmtMoney(data.amountPaid ?? data.total)}</span></div>` : ''}
+    ${settings.showChange && paymentMethod === 'cash' ? `<div class="total-row"><span>Change</span><span>${fmtMoney(data.change ?? 0)}</span></div>` : ''}
+    ${settings.showCreditBalance && paymentMethod === 'credit' && data.customer?.remainingBalance !== undefined ? `
       <div class="total-row" style="font-weight:bold;"><span>Remaining Balance</span><span>${fmtMoney(data.customer.remainingBalance)}</span></div>
     ` : ''}
   </div>
@@ -295,116 +298,153 @@ export function generateThermalReceiptHtml(data: ReceiptData, settings: ReceiptS
 }
 
 /**
- * Dispatches thermal print to browser or desktop without blocking UI.
+ * Dispatches thermal print to browser or desktop webview without blocking UI.
  */
 export async function printThermalReceipt(data: ReceiptData, settings: ReceiptSettings): Promise<void> {
   const html = generateThermalReceiptHtml(data, settings);
-
-  // 1. Try Tauri native print command if available
-  const printedViaTauri = await tryTauriPrint(html);
-  if (printedViaTauri) {
-    return;
-  }
-
-  // 2. Otherwise trigger native browser print dialog
   printInBrowser(html);
-}
-
-async function tryTauriPrint(html: string): Promise<boolean> {
-  if (typeof window === 'undefined') return false;
-  const w = window as unknown as {
-    __TAURI__?: { invoke: (cmd: string, args: Record<string, unknown>) => Promise<unknown> };
-    __TAURI_INTERNALS__?: { invoke: (cmd: string, args: Record<string, unknown>) => Promise<unknown> };
-  };
-  const invoke = w.__TAURI__?.invoke ?? w.__TAURI_INTERNALS__?.invoke;
-  if (!invoke) return false;
-  try {
-    await invoke('print_receipt', { html });
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 function printInBrowser(html: string): void {
   if (typeof window === 'undefined' || typeof document === 'undefined') return;
 
-  // Open a dedicated print window — most reliable approach in a React SPA.
-  // Avoids CSS-injection timing issues on the main page.
-  const printWindow = window.open('', '_blank', 'width=420,height=700,scrollbars=yes,menubar=no,toolbar=no,location=no,status=no');
-
-  if (printWindow) {
-    printWindow.document.open();
-    printWindow.document.write(html);
-    printWindow.document.close();
-    printWindow.focus();
-
-    // Use onload so styles are fully parsed before printing
-    printWindow.onload = () => {
-      try {
-        printWindow.print();
-      } catch {
-        // ignore — user may have cancelled
-      }
-      // Close print window after dialog is dismissed
-      window.setTimeout(() => {
-        try { printWindow.close(); } catch {}
-      }, 1000);
-    };
-
-    // Fallback: if onload doesn't fire within 800ms, print anyway
-    window.setTimeout(() => {
-      if (printWindow.closed) return;
-      try { printWindow.print(); } catch {}
-      window.setTimeout(() => {
-        try { printWindow.close(); } catch {}
-      }, 1000);
-    }, 800);
-
-    return;
+  // 1. Clean up any previous print elements
+  const oldIframe = document.getElementById('genx-receipt-print-frame');
+  if (oldIframe) {
+    try { oldIframe.remove(); } catch {}
+  }
+  const oldPortal = document.getElementById('genx-receipt-portal');
+  if (oldPortal) {
+    try { oldPortal.remove(); } catch {}
   }
 
-  // Popup was blocked — fall back to same-page print with CSS injection
-  console.warn('[printInBrowser] Popup blocked, falling back to same-page print.');
+  // 2. Prepare invisible iframe with layout dimensions so Chromium computes styles and opens print dialog
+  const iframe = document.createElement('iframe');
+  iframe.id = 'genx-receipt-print-frame';
+  iframe.setAttribute('title', 'Receipt Print');
+  iframe.style.position = 'fixed';
+  iframe.style.right = '0';
+  iframe.style.bottom = '0';
+  iframe.style.width = '100vw';
+  iframe.style.height = '100vh';
+  iframe.style.border = 'none';
+  iframe.style.opacity = '0';
+  iframe.style.pointerEvents = 'none';
+  iframe.style.zIndex = '-99999';
 
-  const oldContainer = document.getElementById('genx-thermal-print-container');
-  if (oldContainer) oldContainer.remove();
-  const oldStyle = document.getElementById('genx-thermal-print-style');
-  if (oldStyle) oldStyle.remove();
+  document.body.appendChild(iframe);
 
-  const styleEl = document.createElement('style');
-  styleEl.id = 'genx-thermal-print-style';
-  styleEl.textContent = `
-    @media screen {
-      #genx-thermal-print-container { display: none !important; visibility: hidden !important; opacity: 0 !important; pointer-events: none !important; position: fixed !important; left: -9999px !important; }
+  let hasPrinted = false;
+  const executePrint = () => {
+    if (hasPrinted) return;
+    hasPrinted = true;
+
+    try {
+      const frameWin = iframe.contentWindow;
+      if (!frameWin) {
+        fallbackDirectPrint(html);
+        return;
+      }
+      frameWin.focus();
+      frameWin.print();
+    } catch (err) {
+      console.warn('[printInBrowser] Iframe print failed, falling back to direct page print:', err);
+      fallbackDirectPrint(html);
     }
-    @media print {
-      html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-      body > *:not(#genx-thermal-print-container) { display: none !important; }
-      #genx-thermal-print-container { display: block !important; visibility: visible !important; opacity: 1 !important; position: absolute !important; left: 0 !important; top: 0 !important; width: 100% !important; margin: 0 !important; padding: 0 !important; background: #fff !important; color: #000 !important; z-index: 99999999 !important; }
-    }
-  `;
-  document.head.appendChild(styleEl);
+  };
 
-  const container = document.createElement('div');
-  container.id = 'genx-thermal-print-container';
+  try {
+    const doc = iframe.contentWindow?.document || iframe.contentDocument;
+    if (!doc) {
+      fallbackDirectPrint(html);
+      return;
+    }
+
+    doc.open();
+    doc.write(html);
+    doc.close();
+
+    // Check if there are images in the receipt that need loading before printing (e.g. store logo)
+    const images = doc.images;
+    if (images && images.length > 0) {
+      let loaded = 0;
+      const onImageLoaded = () => {
+        loaded++;
+        if (loaded >= images.length) {
+          window.setTimeout(executePrint, 60);
+        }
+      };
+
+      for (let i = 0; i < images.length; i++) {
+        if (images[i].complete) {
+          loaded++;
+        } else {
+          images[i].onload = onImageLoaded;
+          images[i].onerror = onImageLoaded;
+        }
+      }
+
+      if (loaded >= images.length) {
+        window.setTimeout(executePrint, 60);
+      } else {
+        window.setTimeout(executePrint, 400);
+      }
+    } else {
+      window.setTimeout(executePrint, 60);
+    }
+  } catch (err) {
+    console.warn('[printInBrowser] Failed to write into iframe:', err);
+    fallbackDirectPrint(html);
+  }
+
+  // Cleanup iframe safely after print completes
+  window.setTimeout(() => {
+    try { iframe.remove(); } catch {}
+  }, 45000);
+}
+
+function fallbackDirectPrint(html: string): void {
+  const oldPortal = document.getElementById('genx-receipt-portal');
+  if (oldPortal) {
+    try { oldPortal.remove(); } catch {}
+  }
+
+  const portal = document.createElement('div');
+  portal.id = 'genx-receipt-portal';
+
   try {
     const parser = new DOMParser();
     const doc = parser.parseFromString(html, 'text/html');
-    doc.querySelectorAll('style').forEach((st) => container.appendChild(st.cloneNode(true)));
-    container.innerHTML += doc.body.innerHTML;
+    doc.querySelectorAll('style').forEach((st) => portal.appendChild(st.cloneNode(true)));
+    portal.innerHTML += doc.body.innerHTML;
   } catch {
-    container.innerHTML = html;
+    portal.innerHTML = html;
   }
-  document.body.appendChild(container);
 
-  const cleanup = () => window.setTimeout(() => { try { container.remove(); styleEl.remove(); } catch {} }, 1000);
+  document.body.appendChild(portal);
+
+  const cleanup = () => {
+    window.setTimeout(() => {
+      try {
+        portal.remove();
+      } catch {}
+    }, 1500);
+  };
+
   window.addEventListener('afterprint', cleanup, { once: true });
-  try { window.focus(); window.print(); } catch { window.print(); } finally { cleanup(); }
+  try {
+    window.focus();
+    window.print();
+  } catch {
+    window.print();
+  } finally {
+    cleanup();
+  }
 }
 
-function escapeHtml(str: string): string {
-  return str
+function escapeHtml(str: string | undefined | null): string {
+  if (str == null) return '';
+  return String(str)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')

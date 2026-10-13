@@ -105,6 +105,9 @@ export async function initializeAutoCareSchema(): Promise<void> {
     status TEXT NOT NULL DEFAULT 'ONGOING',
     customer_name TEXT,
     customer_id TEXT,
+    vehicle_plate_number TEXT,
+    vehicle_make_model TEXT,
+    vehicle_mileage TEXT,
     payment_method TEXT,
     subtotal REAL NOT NULL DEFAULT 0,
     tax REAL NOT NULL DEFAULT 0,
@@ -115,6 +118,16 @@ export async function initializeAutoCareSchema(): Promise<void> {
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL
   )`);
+
+  try {
+    await db.execute(`ALTER TABLE pos_orders ADD COLUMN vehicle_plate_number TEXT`);
+  } catch {}
+  try {
+    await db.execute(`ALTER TABLE pos_orders ADD COLUMN vehicle_make_model TEXT`);
+  } catch {}
+  try {
+    await db.execute(`ALTER TABLE pos_orders ADD COLUMN vehicle_mileage TEXT`);
+  } catch {}
 
   await db.execute(`CREATE INDEX IF NOT EXISTS idx_pos_orders_tenant ON pos_orders(tenant_id, status)`);
   await db.execute(`CREATE INDEX IF NOT EXISTS idx_pos_orders_number ON pos_orders(tenant_id, order_number)`);
@@ -165,19 +178,36 @@ function mapService(r: any): AutoCareService {
 }
 
 function mapVehicle(r: any): Vehicle {
+  let customerName = r.customer_name ?? r.customerName ?? undefined;
+  let mileage = (r.mileage != null && r.mileage !== '') ? Number(r.mileage) : undefined;
+  let notesStr = r.notes || undefined;
+
+  if (r.notes) {
+    try {
+      const parsed = typeof r.notes === 'string' ? JSON.parse(r.notes) : r.notes;
+      if (parsed && typeof parsed === 'object') {
+        if (!customerName && parsed.customerName) customerName = parsed.customerName;
+        if (mileage == null && parsed.mileage != null) mileage = Number(parsed.mileage);
+        if (parsed.notes !== undefined) notesStr = parsed.notes || undefined;
+      }
+    } catch {
+      // notes is plain text
+    }
+  }
+
   return {
     id: String(r.id || ''),
     tenantId: String(r.tenant_id ?? r.tenantId ?? ''),
     customerId: r.customer_id ?? r.customerId ?? undefined,
-    customerName: r.customer_name ?? r.customerName ?? undefined,
+    customerName,
     make: String(r.make || ''),
     model: String(r.model || ''),
     year: Number(r.year || 0),
     licensePlate: String(r.license_plate ?? r.licensePlate ?? ''),
     vin: r.vin || undefined,
     color: r.color || undefined,
-    mileage: (r.mileage != null) ? Number(r.mileage) : undefined,
-    notes: r.notes || undefined,
+    mileage,
+    notes: notesStr,
     createdAt: Number(r.created_at ?? r.createdAt ?? Date.now()),
     updatedAt: Number(r.updated_at ?? r.updatedAt ?? Date.now()),
   };
@@ -231,6 +261,9 @@ export interface POSOrder {
   status: 'ONGOING' | 'PAID' | 'CANCELLED';
   customerName?: string;
   customerId?: string;
+  vehiclePlateNumber?: string;
+  vehicleMakeModel?: string;
+  vehicleMileage?: string | number;
   paymentMethod?: string;
   subtotal: number;
   tax: number;
@@ -250,13 +283,19 @@ function mapPOSOrder(r: any): POSOrder {
     items = [];
   }
 
-  // Fallback: If items is empty, check if notes contains JSON with items
+  // Fallback: If items is empty or vehicle info is stored in notes JSON
   let notesStr = r.notes ?? undefined;
-  if ((!items || items.length === 0) && r.notes) {
+  let vehicleFromNotes: any = null;
+  if (r.notes) {
     try {
       const parsedNotes = JSON.parse(r.notes);
-      if (Array.isArray(parsedNotes?.items)) {
+      if (Array.isArray(parsedNotes?.items) && (!items || items.length === 0)) {
         items = parsedNotes.items;
+      }
+      if (parsedNotes?.vehicle) {
+        vehicleFromNotes = parsedNotes.vehicle;
+      }
+      if (parsedNotes?.notes !== undefined) {
         notesStr = parsedNotes.notes || undefined;
       }
     } catch {
@@ -276,6 +315,26 @@ function mapPOSOrder(r: any): POSOrder {
     ? Number(r.paid_amount ?? r.paidAmount)
     : (normalizedStatus === 'PAID' ? total : undefined);
 
+  const vehiclePlateNumber =
+    r.vehicle_plate_number ??
+    r.vehiclePlateNumber ??
+    vehicleFromNotes?.plateNumber ??
+    vehicleFromNotes?.regNo ??
+    undefined;
+
+  const vehicleMakeModel =
+    r.vehicle_make_model ??
+    r.vehicleMakeModel ??
+    vehicleFromNotes?.makeModel ??
+    (vehicleFromNotes ? `${vehicleFromNotes.make || ''} ${vehicleFromNotes.model || ''}`.trim() : undefined) ??
+    undefined;
+
+  const vehicleMileage =
+    r.vehicle_mileage ??
+    r.vehicleMileage ??
+    vehicleFromNotes?.mileage ??
+    undefined;
+
   return {
     id: String(r.id),
     tenantId: String(r.tenant_id ?? r.tenantId),
@@ -283,6 +342,9 @@ function mapPOSOrder(r: any): POSOrder {
     status: normalizedStatus,
     customerName: r.customer_name ?? r.customerName ?? undefined,
     customerId: r.customer_id ?? r.customerId ?? undefined,
+    vehiclePlateNumber,
+    vehicleMakeModel,
+    vehicleMileage,
     paymentMethod: r.payment_method ?? r.paymentMethod ?? undefined,
     subtotal: Number(r.subtotal || 0),
     tax: Number(r.tax || 0),
@@ -295,98 +357,262 @@ function mapPOSOrder(r: any): POSOrder {
   };
 }
 
+/**
+ * Auto-correct duplicate or corrupted order numbers:
+ * Sorts distinct orders chronologically by createdAt and guarantees
+ * each order has a strictly unique, sequential orderNumber.
+ */
+function deduplicateAndSequenceOrderNumbers(orders: POSOrder[], tenantId: string): POSOrder[] {
+  if (!orders || orders.length === 0) return [];
+
+  // Sort chronologically ascending
+  const chronological = [...orders].sort((a, b) => a.createdAt - b.createdAt);
+
+  const usedNumbers = new Set<number>();
+  let hasChanges = false;
+  let currentMax = 0;
+
+  // Scan existing unique numbers to preserve where possible
+  for (const o of chronological) {
+    if (o.orderNumber > currentMax) {
+      currentMax = o.orderNumber;
+    }
+  }
+
+  // Second pass: ensure uniqueness and positive sequential integers
+  for (const o of chronological) {
+    if (!o.orderNumber || o.orderNumber <= 0 || usedNumbers.has(o.orderNumber)) {
+      currentMax += 1;
+      o.orderNumber = currentMax;
+      hasChanges = true;
+    }
+    usedNumbers.add(o.orderNumber);
+  }
+
+  if (hasChanges) {
+    try {
+      if (typeof window !== 'undefined') {
+        const sortedDesc = [...chronological].sort((a, b) => b.createdAt - a.createdAt);
+        localStorage.setItem(`genx:pos_orders_cache:${tenantId}`, JSON.stringify(sortedDesc.slice(0, 150)));
+      }
+    } catch {}
+
+    void (async () => {
+      try {
+        const db = await getDatabase();
+        for (const o of chronological) {
+          await db.execute(
+            'UPDATE pos_orders SET order_number = ? WHERE id = ? AND tenant_id = ?',
+            [o.orderNumber, o.id, tenantId]
+          ).catch(() => {});
+
+          if (isSupabaseConfigured()) {
+            try {
+              await supabase
+                .from('pos_orders')
+                .update({ order_number: o.orderNumber })
+                .eq('id', o.id)
+                .eq('tenant_id', tenantId);
+            } catch {}
+          }
+        }
+      } catch (err) {
+        console.warn('[db] Error syncing re-sequenced order numbers:', err);
+      }
+    })();
+  }
+
+  return chronological.sort((a, b) => b.createdAt - a.createdAt);
+}
+
 export const posOrderRepo = {
   /** Get next sequential order number for tenant */
   async nextOrderNumber(tenantId = getCurrentTenantId()): Promise<number> {
+    let maxNum = 0;
+
+    // 1. From localStorage cache
+    try {
+      if (typeof window !== 'undefined') {
+        const raw = localStorage.getItem(`genx:pos_orders_cache:${tenantId}`);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            for (const o of parsed) {
+              const n = Number(o.orderNumber ?? o.order_number) || 0;
+              if (n > maxNum) maxNum = n;
+            }
+          }
+        }
+      }
+    } catch {}
+
+    // 2. From local SQLite
+    try {
+      const db = await getDatabase();
+      const rows = await db.select<any[]>(
+        'SELECT order_number FROM pos_orders WHERE tenant_id = ?',
+        [tenantId]
+      );
+      if (rows && rows.length > 0) {
+        for (const r of rows) {
+          const n = Number(r.order_number ?? r.orderNumber) || 0;
+          if (n > maxNum) maxNum = n;
+        }
+      }
+    } catch {}
+
+    // 3. From Supabase (fetch all order_numbers for tenant to avoid string sorting bug)
     if (isSupabaseConfigured()) {
       try {
         const { data } = await supabase
           .from('pos_orders')
           .select('order_number')
-          .eq('tenant_id', tenantId)
-          .order('order_number', { ascending: false })
-          .limit(1);
+          .eq('tenant_id', tenantId);
 
         if (data && data.length > 0) {
-          return (Number(data[0].order_number) || 0) + 1;
+          for (const r of data) {
+            const n = Number(r.order_number) || 0;
+            if (n > maxNum) maxNum = n;
+          }
         }
       } catch (err) {
         console.warn('[db] Supabase nextOrderNumber error:', err);
       }
     }
 
-    const db = await getDatabase();
-    const rows = await db.select<any[]>(
-      'SELECT COALESCE(MAX(order_number), 0) as max_num FROM pos_orders WHERE tenant_id = ?',
-      [tenantId]
-    );
-    return (Number(rows[0]?.max_num) || 0) + 1;
+    return maxNum + 1;
   },
 
-  /** Find all POS orders for tenant */
-  async findAll(tenantId = getCurrentTenantId()): Promise<POSOrder[]> {
+  /**
+   * Instant local-first query from memory cache, local SQLite, and IndexedDB (< 5ms).
+   * Never waits for internet or Supabase.
+   */
+  async findLocal(tenantId = getCurrentTenantId()): Promise<POSOrder[]> {
     const results: POSOrder[] = [];
-    if (isSupabaseConfigured()) {
-      try {
-        const { data, error } = await supabase
-          .from('pos_orders')
-          .select('*')
-          .eq('tenant_id', tenantId)
-          .order('created_at', { ascending: false });
+    const seen = new Set<string>();
 
-        if (!error && data && data.length > 0) {
-          results.push(...data.map(mapPOSOrder));
-        }
-      } catch (err) {
-        console.warn('[db] Supabase pos_orders findAll error:', err);
-      }
-
-      // Also merge any completed orders from standard `orders` table (retail POS)
-      try {
-        const { data: stdOrders } = await supabase
-          .from('orders')
-          .select('*')
-          .eq('tenant_id', tenantId)
-          .order('created_at', { ascending: false });
-
-        if (stdOrders && stdOrders.length > 0) {
-          const existingIds = new Set(results.map((o) => o.id));
-          for (const so of stdOrders) {
-            if (!existingIds.has(String(so.id))) {
-              results.push({
-                id: String(so.id),
-                tenantId: String(so.tenant_id),
-                orderNumber: Number(String(so.order_number).replace(/\D/g, '')) || 1,
-                status: 'PAID',
-                customerName: so.customer_id ? `Customer (${so.customer_id})` : undefined,
-                paymentMethod: so.payment_method || 'cash',
-                subtotal: Number(so.subtotal || 0),
-                tax: Number(so.tax || 0),
-                total: Number(so.total || 0),
-                paidAmount: Number(so.total || 0),
-                items: [],
-                notes: so.notes || undefined,
-                createdAt: Number(so.created_at || Date.now()),
-                updatedAt: Number(so.updated_at || Date.now()),
-              });
+    // 1. From localStorage cache (instant synchronous retrieval)
+    try {
+      if (typeof window !== 'undefined') {
+        const raw = localStorage.getItem(`genx:pos_orders_cache:${tenantId}`);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            for (const o of parsed) {
+              if (o && o.id && !seen.has(String(o.id))) {
+                seen.add(String(o.id));
+                results.push(o);
+              }
             }
           }
         }
-      } catch (ordErr) {
-        console.warn('[db] Supabase orders fallback error:', ordErr);
       }
+    } catch {}
 
-      if (results.length > 0) {
-        return results.sort((a, b) => b.createdAt - a.createdAt);
+    // 2. From local SQLite table
+    try {
+      const db = await getDatabase();
+      const rows = await db.select<any[]>(
+        'SELECT * FROM pos_orders WHERE tenant_id = ? ORDER BY order_number DESC',
+        [tenantId]
+      );
+      if (rows && rows.length > 0) {
+        for (const r of rows) {
+          const mapped = mapPOSOrder(r);
+          if (!seen.has(mapped.id)) {
+            seen.add(mapped.id);
+            results.push(mapped);
+          }
+        }
+      }
+    } catch {}
+
+    // 3. From IndexedDB offline_orders
+    try {
+      const { getAllItems, OFFLINE_STORES } = await import('@/services/offlineDB');
+      const offItems = await getAllItems(OFFLINE_STORES.orders);
+      if (Array.isArray(offItems)) {
+        for (const item of offItems) {
+          const id = String(item.clientOrderId || item.id || '');
+          if (id && !seen.has(id)) {
+            seen.add(id);
+            const rawNum = Number(item.orderNumber ?? item.order_number);
+            const orderNumber = Number.isFinite(rawNum) && rawNum > 0 ? rawNum : 0;
+            results.push({
+              id,
+              tenantId: item.tenantId || tenantId,
+              orderNumber,
+              status: 'PAID',
+              customerName: item.customer?.name || item.customerName,
+              paymentMethod: item.paymentMethod || 'cash',
+              subtotal: Number(item.subtotal || 0),
+              tax: Number(item.tax || 0),
+              total: Number(item.total || 0),
+              paidAmount: Number(item.paidAmount ?? item.total ?? 0),
+              items: item.items || [],
+              notes: item.notes || undefined,
+              createdAt: item.completedAt ? new Date(item.completedAt).getTime() : Date.now(),
+              updatedAt: item.completedAt ? new Date(item.completedAt).getTime() : Date.now(),
+            });
+          }
+        }
+      }
+    } catch {}
+
+    const sorted = results.sort((a, b) => b.createdAt - a.createdAt);
+    return deduplicateAndSequenceOrderNumbers(sorted, tenantId);
+  },
+
+  /**
+   * Find all POS orders for tenant.
+   * Local first -> Parallel cloud queries with timeout -> Combined deduplicated output.
+   */
+  async findAll(tenantId = getCurrentTenantId()): Promise<POSOrder[]> {
+    const local = await this.findLocal(tenantId);
+    const results: POSOrder[] = [...local];
+    const seen = new Set<string>(results.map((o) => o.id));
+
+    if (isSupabaseConfigured()) {
+      try {
+        const timeoutPromise = new Promise<void>((_, reject) =>
+          setTimeout(() => reject(new Error('Supabase timeout')), 2200)
+        );
+
+        // Fetch only POS orders from Supabase to avoid duplicate entries caused by mirrored 'orders' table.
+        const fetchPromise = Promise.allSettled([
+          supabase
+            .from('pos_orders')
+            .select('*')
+            .eq('tenant_id', tenantId)
+            .order('created_at', { ascending: false })
+        ]).then(([posRes]) => {
+          if (posRes.status === 'fulfilled' && !posRes.value.error && posRes.value.data) {
+            for (const po of posRes.value.data) {
+              const mapped = mapPOSOrder(po);
+              if (!seen.has(mapped.id)) {
+                seen.add(mapped.id);
+                results.push(mapped);
+              }
+            }
+          }
+        });
+
+        await Promise.race([fetchPromise, timeoutPromise]);
+      } catch (err) {
+        console.warn('[db] Supabase orders fetch error or timeout:', err);
       }
     }
 
-    const db = await getDatabase();
-    const rows = await db.select<any[]>(
-      'SELECT * FROM pos_orders WHERE tenant_id = ? ORDER BY order_number DESC',
-      [tenantId]
-    );
-    return rows.map(mapPOSOrder);
+    const sorted = results.sort((a, b) => b.createdAt - a.createdAt);
+    const normalized = deduplicateAndSequenceOrderNumbers(sorted, tenantId);
+
+    try {
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(`genx:pos_orders_cache:${tenantId}`, JSON.stringify(normalized.slice(0, 150)));
+      }
+    } catch {}
+
+    return normalized;
   },
 
   /** Find by status: ONGOING or PAID or CANCELLED */
@@ -528,6 +754,16 @@ export const posOrderRepo = {
       ]
     );
 
+    try {
+      if (typeof window !== 'undefined' && order) {
+        const cacheKey = `genx:pos_orders_cache:${tenantId}`;
+        const raw = localStorage.getItem(cacheKey);
+        const prev: POSOrder[] = raw ? JSON.parse(raw) : [];
+        const next = [order, ...prev.filter((o) => o.id !== order.id)];
+        localStorage.setItem(cacheKey, JSON.stringify(next.slice(0, 150)));
+      }
+    } catch {}
+
     return order;
   },
 
@@ -541,6 +777,9 @@ export const posOrderRepo = {
     paymentMethod: string;
     customerName?: string;
     customerId?: string;
+    vehiclePlateNumber?: string;
+    vehicleMakeModel?: string;
+    vehicleMileage?: string | number;
     notes?: string;
     tenantId?: string;
     existingOrderId?: string;
@@ -552,7 +791,13 @@ export const posOrderRepo = {
 
     let finalOrder: POSOrder | null = null;
     const orderId = input.existingOrderId ?? crypto.randomUUID();
-    const orderNumber = await this.nextOrderNumber(tenantId);
+    let orderNumber: number;
+    if (input.existingOrderId) {
+      const existing = await this.findById(input.existingOrderId, tenantId);
+      orderNumber = existing?.orderNumber || (await this.nextOrderNumber(tenantId));
+    } else {
+      orderNumber = await this.nextOrderNumber(tenantId);
+    }
 
     // 1. Direct Supabase Cloud Persistence
     if (isSupabaseConfigured()) {
@@ -565,6 +810,9 @@ export const posOrderRepo = {
           status: 'PAID',
           customer_name: input.customerName || null,
           customer_id: input.customerId || null,
+          vehicle_plate_number: input.vehiclePlateNumber || null,
+          vehicle_make_model: input.vehicleMakeModel || null,
+          vehicle_mileage: input.vehicleMileage != null ? String(input.vehicleMileage) : null,
           payment_method: input.paymentMethod,
           subtotal: input.subtotal,
           tax: input.tax,
@@ -579,7 +827,7 @@ export const posOrderRepo = {
         const { error: upsertErr } = await supabase.from('pos_orders').upsert(fullPayload);
         if (upsertErr) {
           console.warn('[db] pos_orders full upsert warning, retrying with fallback payload:', upsertErr.message);
-          // Fallback payload: safe columns only, items encoded in notes
+          // Fallback payload: safe columns only, items and vehicle encoded in notes
           const safePayload = {
             id: orderId,
             tenant_id: tenantId,
@@ -591,7 +839,16 @@ export const posOrderRepo = {
             discount: 0,
             tax: input.tax,
             total: input.total,
-            notes: JSON.stringify({ items: input.items, notes: input.notes, paidAmount: input.paidAmount }),
+            notes: JSON.stringify({
+              items: input.items,
+              notes: input.notes,
+              paidAmount: input.paidAmount,
+              vehicle: input.vehiclePlateNumber ? {
+                plateNumber: input.vehiclePlateNumber,
+                makeModel: input.vehicleMakeModel,
+                mileage: input.vehicleMileage,
+              } : undefined,
+            }),
             created_at: now,
             updated_at: now,
           };
@@ -614,7 +871,14 @@ export const posOrderRepo = {
             total: input.total,
             payment_method: input.paymentMethod,
             status: 'completed',
-            notes: input.notes || null,
+            notes: JSON.stringify({
+              notes: input.notes || null,
+              vehicle: input.vehiclePlateNumber ? {
+                plateNumber: input.vehiclePlateNumber,
+                makeModel: input.vehicleMakeModel,
+                mileage: input.vehicleMileage,
+              } : undefined,
+            }),
             created_at: now,
             updated_at: now,
           });
@@ -696,16 +960,30 @@ export const posOrderRepo = {
       }
 
       if (input.existingOrderId) {
-        await tx.execute(
-          `UPDATE pos_orders SET status='PAID', payment_method=?, paid_amount=?, subtotal=?, tax=?, total=?, items=?, customer_name=?, customer_id=?, updated_at=? WHERE id=? AND tenant_id=?`,
-          [
-            input.paymentMethod, input.paidAmount,
-            input.subtotal, input.tax, input.total,
-            JSON.stringify(input.items),
-            input.customerName ?? null, input.customerId ?? null,
-            now, input.existingOrderId, tenantId,
-          ]
-        );
+        try {
+          await tx.execute(
+            `UPDATE pos_orders SET status='PAID', payment_method=?, paid_amount=?, subtotal=?, tax=?, total=?, items=?, customer_name=?, customer_id=?, vehicle_plate_number=?, vehicle_make_model=?, vehicle_mileage=?, updated_at=? WHERE id=? AND tenant_id=?`,
+            [
+              input.paymentMethod, input.paidAmount,
+              input.subtotal, input.tax, input.total,
+              JSON.stringify(input.items),
+              input.customerName ?? null, input.customerId ?? null,
+              input.vehiclePlateNumber ?? null, input.vehicleMakeModel ?? null, input.vehicleMileage != null ? String(input.vehicleMileage) : null,
+              now, input.existingOrderId, tenantId,
+            ]
+          );
+        } catch {
+          await tx.execute(
+            `UPDATE pos_orders SET status='PAID', payment_method=?, paid_amount=?, subtotal=?, tax=?, total=?, items=?, customer_name=?, customer_id=?, updated_at=? WHERE id=? AND tenant_id=?`,
+            [
+              input.paymentMethod, input.paidAmount,
+              input.subtotal, input.tax, input.total,
+              JSON.stringify(input.items),
+              input.customerName ?? null, input.customerId ?? null,
+              now, input.existingOrderId, tenantId,
+            ]
+          );
+        }
         const rows = await tx.select<any[]>(
           'SELECT * FROM pos_orders WHERE id = ? AND tenant_id = ?',
           [input.existingOrderId, tenantId]
@@ -723,6 +1001,9 @@ export const posOrderRepo = {
           status: 'PAID',
           customerName: input.customerName,
           customerId: input.customerId,
+          vehiclePlateNumber: input.vehiclePlateNumber,
+          vehicleMakeModel: input.vehicleMakeModel,
+          vehicleMileage: input.vehicleMileage,
           paymentMethod: input.paymentMethod,
           subtotal: input.subtotal,
           tax: input.tax,
@@ -734,17 +1015,33 @@ export const posOrderRepo = {
           updatedAt: now,
         };
 
-        await tx.execute(
-          `INSERT INTO pos_orders (id, tenant_id, order_number, status, customer_name, customer_id, payment_method, subtotal, tax, total, paid_amount, items, notes, created_at, updated_at)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-          [
-            finalOrder.id, finalOrder.tenantId, finalOrder.orderNumber, finalOrder.status,
-            finalOrder.customerName ?? null, finalOrder.customerId ?? null, finalOrder.paymentMethod,
-            finalOrder.subtotal, finalOrder.tax, finalOrder.total, finalOrder.paidAmount,
-            JSON.stringify(finalOrder.items), finalOrder.notes ?? null,
-            finalOrder.createdAt, finalOrder.updatedAt,
-          ]
-        );
+        try {
+          await tx.execute(
+            `INSERT INTO pos_orders (id, tenant_id, order_number, status, customer_name, customer_id, vehicle_plate_number, vehicle_make_model, vehicle_mileage, payment_method, subtotal, tax, total, paid_amount, items, notes, created_at, updated_at)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+            [
+              finalOrder.id, finalOrder.tenantId, finalOrder.orderNumber, finalOrder.status,
+              finalOrder.customerName ?? null, finalOrder.customerId ?? null,
+              input.vehiclePlateNumber ?? null, input.vehicleMakeModel ?? null, input.vehicleMileage != null ? String(input.vehicleMileage) : null,
+              finalOrder.paymentMethod,
+              finalOrder.subtotal, finalOrder.tax, finalOrder.total, finalOrder.paidAmount,
+              JSON.stringify(finalOrder.items), finalOrder.notes ?? null,
+              finalOrder.createdAt, finalOrder.updatedAt,
+            ]
+          );
+        } catch {
+          await tx.execute(
+            `INSERT INTO pos_orders (id, tenant_id, order_number, status, customer_name, customer_id, payment_method, subtotal, tax, total, paid_amount, items, notes, created_at, updated_at)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+            [
+              finalOrder.id, finalOrder.tenantId, finalOrder.orderNumber, finalOrder.status,
+              finalOrder.customerName ?? null, finalOrder.customerId ?? null, finalOrder.paymentMethod,
+              finalOrder.subtotal, finalOrder.tax, finalOrder.total, finalOrder.paidAmount,
+              JSON.stringify(finalOrder.items), finalOrder.notes ?? null,
+              finalOrder.createdAt, finalOrder.updatedAt,
+            ]
+          );
+        }
       }
     });
 
@@ -756,6 +1053,9 @@ export const posOrderRepo = {
         status: 'PAID',
         customerName: input.customerName,
         customerId: input.customerId,
+        vehiclePlateNumber: input.vehiclePlateNumber,
+        vehicleMakeModel: input.vehicleMakeModel,
+        vehicleMileage: input.vehicleMileage,
         paymentMethod: input.paymentMethod,
         subtotal: input.subtotal,
         tax: input.tax,
@@ -767,6 +1067,16 @@ export const posOrderRepo = {
         updatedAt: now,
       };
     }
+
+    try {
+      if (typeof window !== 'undefined' && finalOrder) {
+        const cacheKey = `genx:pos_orders_cache:${tenantId}`;
+        const raw = localStorage.getItem(cacheKey);
+        const prev: POSOrder[] = raw ? JSON.parse(raw) : [];
+        const next = [finalOrder, ...prev.filter((o) => o.id !== finalOrder!.id)];
+        localStorage.setItem(cacheKey, JSON.stringify(next.slice(0, 150)));
+      }
+    } catch {}
 
     return finalOrder;
   },
@@ -790,6 +1100,233 @@ export const posOrderRepo = {
       `UPDATE pos_orders SET status='CANCELLED', updated_at=? WHERE id=? AND tenant_id=?`,
       [now, id, tenantId]
     );
+
+    try {
+      if (typeof window !== 'undefined') {
+        const cacheKey = `genx:pos_orders_cache:${tenantId}`;
+        const raw = localStorage.getItem(cacheKey);
+        if (raw) {
+          const prev: POSOrder[] = JSON.parse(raw);
+          const next = prev.map((o) => (o.id === id ? { ...o, status: 'CANCELLED' as const, updatedAt: now } : o));
+          localStorage.setItem(cacheKey, JSON.stringify(next));
+        }
+      }
+    } catch {}
+  },
+
+  /**
+   * Delete all orders for a specific day and reset order number sequence
+   * to the last order number of the previous day.
+   */
+  async clearDayOrders(
+    targetDate: Date = new Date(),
+    tenantId = getCurrentTenantId()
+  ): Promise<{ deletedCount: number; lastOrderNumber: number }> {
+    const startOfDay = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate()).getTime();
+    const endOfDay = startOfDay + 24 * 60 * 60 * 1000 - 1;
+
+    // 1. Find all orders first
+    const allOrders = await this.findAll(tenantId);
+    const dayOrders = allOrders.filter((o) => o.createdAt >= startOfDay && o.createdAt <= endOfDay);
+    const remainingOrders = allOrders.filter((o) => o.createdAt < startOfDay || o.createdAt > endOfDay);
+
+    // 2. Determine previous day's last order number (orders created before startOfDay)
+    const priorOrders = allOrders.filter((o) => o.createdAt < startOfDay);
+    const lastOrderNumber = priorOrders.reduce((max, o) => Math.max(max, Number(o.orderNumber) || 0), 0);
+
+    const deletedIds = dayOrders.map((o) => o.id);
+
+    if (deletedIds.length > 0) {
+      // 3. Delete from Supabase
+      if (isSupabaseConfigured()) {
+        try {
+          await supabase
+            .from('pos_orders')
+            .delete()
+            .eq('tenant_id', tenantId)
+            .in('id', deletedIds);
+
+          await supabase
+            .from('orders')
+            .delete()
+            .eq('tenant_id', tenantId)
+            .in('id', deletedIds);
+        } catch (err) {
+          console.warn('[db] Supabase clearDayOrders error:', err);
+        }
+      }
+
+      // 4. Delete from SQLite
+      try {
+        const db = await getDatabase();
+        for (const id of deletedIds) {
+          await db.execute(
+            'DELETE FROM pos_orders WHERE id = ? AND tenant_id = ?',
+            [id, tenantId]
+          );
+        }
+      } catch (err) {
+        console.warn('[db] SQLite clearDayOrders error:', err);
+      }
+
+      // 5. Delete from IndexedDB offline_orders
+      try {
+        const { deleteItem, getAllItems, OFFLINE_STORES } = await import('@/services/offlineDB');
+        const offItems = await getAllItems(OFFLINE_STORES.orders);
+        if (Array.isArray(offItems)) {
+          for (const item of offItems) {
+            const time = item.completedAt ? new Date(item.completedAt).getTime() : 0;
+            if (time >= startOfDay && time <= endOfDay) {
+              await deleteItem(OFFLINE_STORES.orders, item.clientOrderId);
+            }
+          }
+        }
+      } catch {}
+
+      // 6. Update localStorage cache
+      try {
+        if (typeof window !== 'undefined') {
+          const cacheKey = `genx:pos_orders_cache:${tenantId}`;
+          localStorage.setItem(cacheKey, JSON.stringify(remainingOrders.slice(0, 150)));
+        }
+      } catch {}
+    }
+
+    return {
+      deletedCount: dayOrders.length,
+      lastOrderNumber,
+    };
+  },
+
+  /** Hard-delete an order permanently from all stores (Supabase, SQLite, IndexedDB, cache) */
+  async deleteOrder(id: string, tenantId = getCurrentTenantId()): Promise<void> {
+    // 1. Delete from Supabase
+    if (isSupabaseConfigured()) {
+      try {
+        await supabase.from('pos_orders').delete().eq('id', id).eq('tenant_id', tenantId);
+        await supabase.from('orders').delete().eq('id', id).eq('tenant_id', tenantId);
+        await supabase.from('order_items').delete().eq('order_id', id).eq('tenant_id', tenantId);
+      } catch (err) {
+        console.warn('[db] Supabase pos_order delete error:', err);
+      }
+    }
+
+    // 2. Delete from SQLite
+    try {
+      const db = await getDatabase();
+      await db.execute('DELETE FROM pos_orders WHERE id = ? AND tenant_id = ?', [id, tenantId]);
+      await db.execute('DELETE FROM orders WHERE id = ? AND tenant_id = ?', [id, tenantId]);
+    } catch {}
+
+    // 3. Delete from IndexedDB offline_orders
+    try {
+      const { deleteItem, OFFLINE_STORES } = await import('@/services/offlineDB');
+      await deleteItem(OFFLINE_STORES.orders, id);
+    } catch {}
+
+    // 4. Update localStorage cache
+    try {
+      if (typeof window !== 'undefined') {
+        const cacheKey = `genx:pos_orders_cache:${tenantId}`;
+        const raw = localStorage.getItem(cacheKey);
+        if (raw) {
+          const prev: POSOrder[] = JSON.parse(raw);
+          const next = prev.filter((o) => o.id !== id);
+          localStorage.setItem(cacheKey, JSON.stringify(next));
+        }
+      }
+    } catch {}
+  },
+
+  /** Delete every single POS order from all stores (Supabase, SQLite, IndexedDB, localStorage).
+   *  After this, nextOrderNumber will return 1 (i.e. #0001). */
+  async resetAllOrders(tenantId = getCurrentTenantId()): Promise<{ deletedCount: number }> {
+    let deletedCount = 0;
+
+    // 1. Delete from Supabase pos_orders, orders, and order_items
+    if (isSupabaseConfigured()) {
+      try {
+        const { data: sbOrders } = await supabase
+          .from('pos_orders')
+          .select('id')
+          .eq('tenant_id', tenantId);
+        if (sbOrders && sbOrders.length > 0) {
+          await supabase
+            .from('pos_orders')
+            .delete()
+            .eq('tenant_id', tenantId);
+          deletedCount += sbOrders.length;
+        }
+      } catch (e) {
+        console.warn('[resetAllOrders] Supabase pos_orders delete error:', e);
+      }
+
+      try {
+        await supabase.from('orders').delete().eq('tenant_id', tenantId);
+      } catch {}
+
+      try {
+        await supabase.from('order_items').delete().eq('tenant_id', tenantId);
+      } catch {}
+    }
+
+    // 2. Delete from SQLite (tauri-mock or native)
+    try {
+      const db = await getDatabase();
+      await db.execute('DELETE FROM pos_orders WHERE tenant_id = ?', [tenantId]);
+      await db.execute('DELETE FROM orders WHERE tenant_id = ?', [tenantId]);
+    } catch {}
+
+    // 3. Delete from IndexedDB (OFFLINE_STORES.orders in genx_cloud_pos and genx_pos_db)
+    try {
+      const { clearStore, OFFLINE_STORES } = await import('@/services/offlineDB');
+      await clearStore(OFFLINE_STORES.orders);
+    } catch {}
+
+    try {
+      if (typeof window !== 'undefined' && 'indexedDB' in window) {
+        for (const dbName of ['genx_cloud_pos', 'genx_pos_db']) {
+          const req = indexedDB.open(dbName);
+          req.onsuccess = () => {
+            const db = req.result;
+            for (const store of Array.from(db.objectStoreNames)) {
+              if (store.toLowerCase().includes('order')) {
+                try {
+                  const tx = db.transaction(store, 'readwrite');
+                  tx.objectStore(store).clear();
+                } catch {}
+              }
+            }
+          };
+        }
+      }
+    } catch {}
+
+    // 4. Clear localStorage cache
+    try {
+      if (typeof window !== 'undefined') {
+        const keysToRemove: string[] = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (
+            key &&
+            (key.startsWith('genx:pos_orders_cache') ||
+              key === 'pos_orders' ||
+              key.startsWith('pos_orders') ||
+              key === 'orders' ||
+              key.startsWith('orders_') ||
+              key.includes('orderNumber') ||
+              key.includes('order_number') ||
+              key.includes('currentOrderNumber'))
+          ) {
+            keysToRemove.push(key);
+          }
+        }
+        keysToRemove.forEach((k) => localStorage.removeItem(k));
+      }
+    } catch {}
+
+    return { deletedCount };
   },
 };
 
@@ -1055,75 +1592,261 @@ export const serviceRepo = {
 
 export const vehicleRepo = {
   async findAll(tenantId = getCurrentTenantId()): Promise<Vehicle[]> {
+    const results: Vehicle[] = [];
+    const seenPlates = new Set<string>();
+
+    // 1. From localStorage cache (instant synchronous retrieval)
+    try {
+      if (typeof window !== 'undefined') {
+        const raw = localStorage.getItem(`genx:vehicles_cache:${tenantId}`);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            for (const v of parsed) {
+              const clean = (v.licensePlate || '').trim().toUpperCase();
+              if (clean && !seenPlates.has(clean)) {
+                seenPlates.add(clean);
+                results.push(v);
+              }
+            }
+          }
+        }
+      }
+    } catch {}
+
+    // 2. From local SQLite database
+    try {
+      const db = await getDatabase();
+      const rows = await db.select<any[]>('SELECT * FROM vehicles WHERE tenant_id = ? ORDER BY updated_at DESC', [tenantId]);
+      if (rows && rows.length > 0) {
+        for (const r of rows) {
+          const v = mapVehicle(r);
+          const clean = v.licensePlate.trim().toUpperCase();
+          if (clean && !seenPlates.has(clean)) {
+            seenPlates.add(clean);
+            results.push(v);
+          }
+        }
+      }
+    } catch {}
+
+    // 3. From Supabase Cloud vehicles table
     if (isSupabaseConfigured()) {
       try {
         const { data, error } = await supabase
           .from('vehicles')
           .select('*')
           .eq('tenant_id', tenantId)
-          .order('make');
+          .order('updated_at', { ascending: false });
 
         if (!error && data) {
-          return data.map(mapVehicle);
+          for (const row of data) {
+            const v = mapVehicle(row);
+            const clean = v.licensePlate.trim().toUpperCase();
+            if (clean && !seenPlates.has(clean)) {
+              seenPlates.add(clean);
+              results.push(v);
+            }
+          }
         }
       } catch (err) {
         console.warn('[db] Supabase vehicles findAll error:', err);
       }
     }
 
-    const db = await getDatabase();
-    const rows = await db.select<any[]>('SELECT * FROM vehicles WHERE tenant_id = ? ORDER BY make, model', [tenantId]);
-    return rows.map(mapVehicle);
+    // 4. Synthesize vehicles directly from pos_orders so any invoiced vehicle is 100% guaranteed to show
+    try {
+      const allOrders = await posOrderRepo.findLocal(tenantId);
+      for (const ord of allOrders) {
+        let plate = (ord.vehiclePlateNumber || '').trim().toUpperCase();
+        let makeModel = ord.vehicleMakeModel || '';
+        let mileage = ord.vehicleMileage != null ? Number(ord.vehicleMileage) : undefined;
+        let customerName = ord.customerName;
+
+        if (!plate && ord.notes) {
+          try {
+            const parsed = typeof ord.notes === 'string' ? JSON.parse(ord.notes) : ord.notes;
+            if (parsed?.vehicle?.plateNumber || parsed?.vehicle?.regNo) {
+              plate = String(parsed.vehicle.plateNumber || parsed.vehicle.regNo).trim().toUpperCase();
+              if (parsed.vehicle.makeModel) makeModel = parsed.vehicle.makeModel;
+              if (parsed.vehicle.mileage != null) mileage = Number(parsed.vehicle.mileage);
+            }
+          } catch {}
+        }
+
+        if (plate && !seenPlates.has(plate)) {
+          seenPlates.add(plate);
+          const parts = makeModel.split(' ');
+          const make = parts[0] || 'Vehicle';
+          const model = parts.slice(1).join(' ') || '';
+          results.push({
+            id: `v-${plate}`,
+            tenantId,
+            licensePlate: plate,
+            make,
+            model,
+            year: new Date(ord.createdAt).getFullYear(),
+            customerName,
+            mileage,
+            createdAt: ord.createdAt,
+            updatedAt: ord.createdAt,
+          });
+        }
+      }
+    } catch (e) {
+      console.warn('[db] Error synthesizing vehicles from orders:', e);
+    }
+
+    // Save to cache
+    try {
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(`genx:vehicles_cache:${tenantId}`, JSON.stringify(results.slice(0, 200)));
+      }
+    } catch {}
+
+    return results.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
   },
 
   async create(v: Omit<Vehicle, 'id' | 'createdAt' | 'updatedAt'>): Promise<Vehicle> {
-    const id = crypto.randomUUID();
+    return this.upsertByPlate(v);
+  },
+
+  async findByPlate(plate: string, tenantId = getCurrentTenantId()): Promise<Vehicle | null> {
+    const cleanPlate = (plate || '').trim().toUpperCase();
+    if (!cleanPlate) return null;
+
+    const all = await this.findAll(tenantId);
+    const found = all.find(
+      (v) =>
+        v.licensePlate.trim().toUpperCase() === cleanPlate ||
+        v.licensePlate.replace(/\s+/g, '').toUpperCase() === cleanPlate.replace(/\s+/g, '')
+    );
+    return found || null;
+  },
+
+  async upsertByPlate(v: {
+    tenantId?: string;
+    customerName?: string;
+    customerId?: string;
+    make: string;
+    model: string;
+    year?: number;
+    licensePlate: string;
+    vin?: string;
+    color?: string;
+    mileage?: number | string;
+    notes?: string;
+  }): Promise<Vehicle> {
+    const tenantId = v.tenantId || getCurrentTenantId();
+    const cleanPlate = (v.licensePlate || '').trim().toUpperCase();
+    const existing = await this.findByPlate(cleanPlate, tenantId);
+
+    const id = existing?.id && !existing.id.startsWith('v-') ? existing.id : crypto.randomUUID();
     const now = Date.now();
+    const createdAt = existing?.createdAt || now;
+    const mileageNum = v.mileage != null && v.mileage !== '' ? Number(v.mileage) : (existing?.mileage ?? null);
+    const yr = Number(v.year) || existing?.year || new Date().getFullYear();
+
+    const notesPayload = JSON.stringify({
+      notes: v.notes || null,
+      mileage: mileageNum,
+      customerName: v.customerName || existing?.customerName || null,
+    });
+
+    const updatedVehicle: Vehicle = {
+      id,
+      tenantId,
+      customerId: v.customerId || existing?.customerId,
+      customerName: v.customerName || existing?.customerName,
+      make: v.make || existing?.make || 'General',
+      model: v.model || existing?.model || 'Vehicle',
+      year: yr,
+      licensePlate: cleanPlate,
+      vin: v.vin || existing?.vin,
+      color: v.color || existing?.color,
+      mileage: mileageNum != null ? mileageNum : undefined,
+      notes: notesPayload,
+      createdAt,
+      updatedAt: now,
+    };
 
     if (isSupabaseConfigured()) {
       try {
         await supabase.from('vehicles').upsert({
           id,
-          tenant_id: v.tenantId,
-          customer_id: v.customerId || null,
-          customer_name: v.customerName || null,
-          make: v.make,
-          model: v.model,
-          year: v.year,
-          license_plate: v.licensePlate,
-          vin: v.vin || null,
-          color: v.color || null,
-          mileage: v.mileage || null,
-          notes: v.notes || null,
-          created_at: now,
+          tenant_id: tenantId,
+          customer_id: updatedVehicle.customerId || null,
+          make: updatedVehicle.make,
+          model: updatedVehicle.model,
+          year: String(updatedVehicle.year),
+          license_plate: cleanPlate,
+          vin: updatedVehicle.vin || null,
+          color: updatedVehicle.color || null,
+          notes: notesPayload,
+          created_at: createdAt,
           updated_at: now,
         });
       } catch (err) {
-        console.warn('[db] Supabase vehicle create error:', err);
+        console.warn('[db] Supabase vehicle upsert error:', err);
       }
     }
 
     const db = await getDatabase();
-    await db.execute(
-      `INSERT INTO vehicles (id, tenant_id, customer_id, customer_name, make, model, year, license_plate, vin, color, mileage, notes, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-      [id, v.tenantId, v.customerId||null, v.customerName||null, v.make, v.model, v.year, v.licensePlate, v.vin||null, v.color||null, v.mileage||null, v.notes||null, now, now]
-    );
+    try {
+      if (existing && !existing.id.startsWith('v-')) {
+        await db.execute(
+          `UPDATE vehicles SET customer_name = COALESCE(?, customer_name), make = COALESCE(?, make), model = COALESCE(?, model), mileage = COALESCE(?, mileage), notes = ?, updated_at = ? WHERE id = ? AND tenant_id = ?`,
+          [v.customerName || null, v.make || null, v.model || null, mileageNum, notesPayload, now, id, tenantId]
+        );
+      } else {
+        await db.execute(
+          `INSERT INTO vehicles (id, tenant_id, customer_id, customer_name, make, model, year, license_plate, vin, color, mileage, notes, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+          [id, tenantId, updatedVehicle.customerId || null, updatedVehicle.customerName || null, updatedVehicle.make, updatedVehicle.model, yr, cleanPlate, updatedVehicle.vin || null, updatedVehicle.color || null, mileageNum, notesPayload, createdAt, now]
+        );
+      }
+    } catch (dbErr) {
+      console.warn('[db] Local vehicle upsert error:', dbErr);
+    }
+
+    try {
+      if (typeof window !== 'undefined') {
+        const cacheKey = `genx:vehicles_cache:${tenantId}`;
+        const raw = localStorage.getItem(cacheKey);
+        const prev: Vehicle[] = raw ? JSON.parse(raw) : [];
+        const next = [
+          updatedVehicle,
+          ...prev.filter(
+            (item) => item.licensePlate.trim().toUpperCase() !== cleanPlate
+          ),
+        ];
+        localStorage.setItem(cacheKey, JSON.stringify(next.slice(0, 200)));
+      }
+    } catch {}
+
+    return updatedVehicle;
+  },
+
+  async getVehicleHistory(plate: string, tenantId = getCurrentTenantId()): Promise<{ vehicle: Vehicle | null; orders: POSOrder[] }> {
+    const cleanPlate = (plate || '').trim().toUpperCase();
+    const vehicle = await this.findByPlate(cleanPlate, tenantId);
+    const allOrders = await posOrderRepo.findAll(tenantId);
+
+    const matchingOrders = allOrders.filter((o) => {
+      const oPlate = (o.vehiclePlateNumber || '').trim().toUpperCase();
+      if (oPlate && (oPlate === cleanPlate || oPlate.replace(/\s+/g, '') === cleanPlate.replace(/\s+/g, ''))) return true;
+      if (o.notes) {
+        try {
+          const parsed = typeof o.notes === 'string' ? JSON.parse(o.notes) : o.notes;
+          const nPlate = String(parsed?.vehicle?.plateNumber || parsed?.vehicle?.regNo || '').trim().toUpperCase();
+          if (nPlate && (nPlate === cleanPlate || nPlate.replace(/\s+/g, '') === cleanPlate.replace(/\s+/g, ''))) return true;
+        } catch {}
+      }
+      return false;
+    });
 
     return {
-      id,
-      tenantId: v.tenantId,
-      customerId: v.customerId,
-      customerName: v.customerName,
-      make: v.make,
-      model: v.model,
-      year: v.year,
-      licensePlate: v.licensePlate,
-      vin: v.vin,
-      color: v.color,
-      mileage: v.mileage,
-      notes: v.notes,
-      createdAt: now,
-      updatedAt: now,
+      vehicle,
+      orders: matchingOrders.sort((a, b) => b.createdAt - a.createdAt),
     };
   },
 };

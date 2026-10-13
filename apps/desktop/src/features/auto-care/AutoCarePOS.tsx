@@ -27,10 +27,11 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import PaymentPage, { type PaymentData, type POSCustomer, type POSCartItem } from "./PaymentPage";
 import PaymentSuccessScreen from "./PaymentSuccessScreen";
-import { completePOSSale, posOrderRepo } from "../../lib/auto-care-db";
+import POSVehicleModal, { type POSVehicleDetails } from "./POSVehicleModal";
+import { completePOSSale, posOrderRepo, vehicleRepo } from "../../lib/auto-care-db";
 import { useAuth } from "../../hooks/useAuth";
 import { useProducts, useCategories } from "../../hooks/useProducts";
-import { productRepo, getCurrentTenantId } from "../../lib/db";
+import { productRepo, customerRepo, getCurrentTenantId } from "../../lib/db";
 
 import { isOnline } from "../../services/connectionManager";
 import { saveOfflineOrder } from "../../services/offlineOrders";
@@ -76,6 +77,8 @@ export function AutoCarePOS() {
   const [search, setSearch] = useState("");
   const [cart, setCart] = useState<CartItem[]>([]);
   const [customer, setCustomer] = useState("Walk-in Customer");
+  const [vehicleDetails, setVehicleDetails] = useState<POSVehicleDetails | null>(null);
+  const [vehicleModalOpen, setVehicleModalOpen] = useState(false);
   const [mobileCartOpen, setMobileCartOpen] = useState(false);
   const [showMenuDropdown, setShowMenuDropdown] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
@@ -141,6 +144,11 @@ export function AutoCarePOS() {
     method: string;
     invoiceNumber?: string;
     customerName?: string;
+    vehicle?: {
+      makeModel?: string;
+      plateNumber?: string;
+      mileage?: string | number;
+    };
     items?: POSCartItem[];
     subtotal?: number;
     tax?: number;
@@ -306,10 +314,11 @@ export function AutoCarePOS() {
   const handlePOSPayment = async (data: PaymentData) => {
     let invoiceNumber = "";
     const activeTenant = getCurrentTenantId();
+    let paidOrder: any = null;
 
     // 1. Atomic SQLite Order creation + Stock deduction + Outbox event
     try {
-      const paidOrder = await posOrderRepo.createPaid({
+      paidOrder = await posOrderRepo.createPaid({
         items: (data.items || []).map((item) => ({
           id: String(item?.id || (item as any)?.productId || crypto.randomUUID()),
           name: item?.name || 'Item',
@@ -323,13 +332,45 @@ export function AutoCarePOS() {
         total: data.total,
         paidAmount: data.paidAmount,
         paymentMethod: data.paymentMethod,
-        customerName: data.customer?.name || (customer !== "Walk-in Customer" ? customer : undefined),
+        customerName: vehicleDetails?.customerName || data.customer?.name || (customer !== "Walk-in Customer" ? customer : undefined),
         customerId: data.customer?.id,
+        vehiclePlateNumber: vehicleDetails?.regNo,
+        vehicleMakeModel: vehicleDetails ? `${vehicleDetails.make} ${vehicleDetails.model}`.trim() : undefined,
+        vehicleMileage: vehicleDetails?.mileage,
         existingOrderId: currentOrderId || undefined,
         tenantId: activeTenant,
       });
 
       invoiceNumber = String(paidOrder?.orderNumber ?? 1).padStart(4, "0");
+
+      // Save / update vehicle in vehicles database & history for years of tracking
+      if (vehicleDetails?.regNo) {
+        void vehicleRepo.upsertByPlate({
+          tenantId: activeTenant,
+          licensePlate: vehicleDetails.regNo,
+          make: vehicleDetails.make,
+          model: vehicleDetails.model,
+          mileage: vehicleDetails.mileage,
+          customerName: vehicleDetails.customerName,
+          notes: vehicleDetails.notes,
+        }).catch((err) => console.warn('[pos] Vehicle upsert error:', err));
+      }
+
+      // Save customer to customers module if name provided
+      if (
+        vehicleDetails?.customerName &&
+        vehicleDetails.customerName.trim() &&
+        vehicleDetails.customerName !== 'Walk-in Customer'
+      ) {
+        void customerRepo.create({
+          id: crypto.randomUUID(),
+          tenantId: activeTenant,
+          name: vehicleDetails.customerName.trim(),
+          phone: vehicleDetails.phone || undefined,
+          balance: 0,
+          creditLimit: 0,
+        }).catch(() => {});
+      }
     } catch (e) {
       console.error("Atomic POS sale failed in SQLite:", e);
       throw e;
@@ -368,17 +409,18 @@ export function AutoCarePOS() {
         tax: data.tax,
         total: data.total,
         paymentMethod: data.paymentMethod,
-        customerName: data.customer?.name,
+        customerName: vehicleDetails?.customerName || data.customer?.name,
         customerId: data.customer?.id,
       });
 
       if (!invoiceNumber) {
-        invoiceNumber = invoice?.invoiceNumber ?? `INV-${Math.floor(Math.random() * 90000 + 10000)}`;
+        invoiceNumber = invoice?.invoiceNumber ?? `INV-${String(paidOrder?.orderNumber ?? 1).padStart(4, "0")}`;
       }
 
       // Save offline mirror record
       void saveOfflineOrder({
         clientOrderId: invoiceNumber,
+        orderNumber: paidOrder?.orderNumber ?? 1,
         items: data.items,
         subtotal: data.subtotal,
         tax: data.tax,
@@ -399,6 +441,7 @@ export function AutoCarePOS() {
     setCart([]);
     setSelectedPOSCustomer(null);
     setCustomer("Walk-in Customer");
+    setVehicleDetails(null);
     setCurrentOrderId(null);
     void posOrderRepo.nextOrderNumber(activeTenant).then(setCurrentOrderNumber);
   };
@@ -444,7 +487,12 @@ export function AutoCarePOS() {
               change,
               method: data.paymentMethod,
               invoiceNumber: lastInvoiceNumberRef.current || `INV-${Math.floor(Math.random() * 90000 + 10000)}`,
-              customerName: data.customer?.name,
+              customerName: vehicleDetails?.customerName || data.customer?.name,
+              vehicle: vehicleDetails ? {
+                makeModel: `${vehicleDetails.make} ${vehicleDetails.model}`.trim(),
+                plateNumber: vehicleDetails.regNo,
+                mileage: vehicleDetails.mileage,
+              } : undefined,
               items: data.items,
               subtotal: data.subtotal,
               tax: data.tax,
@@ -468,6 +516,7 @@ export function AutoCarePOS() {
               customer: successData.customerName
                 ? { name: successData.customerName }
                 : undefined,
+              vehicle: successData.vehicle,
               items: (successData.items || []).map((item) => ({
                 id: item.id,
                 name: item.name,
@@ -519,6 +568,11 @@ export function AutoCarePOS() {
 
                 const orderNum = orderArg?.invoiceNumber || orderArg?.orderNumber || successData?.invoiceNumber || `AC-${Date.now()}`;
                 const custName = orderArg?.customer?.name || successData?.customerName;
+                const veh = orderArg?.vehicle || successData?.vehicle || (vehicleDetails ? {
+                  makeModel: `${vehicleDetails.make} ${vehicleDetails.model}`.trim(),
+                  plateNumber: vehicleDetails.regNo,
+                  mileage: vehicleDetails.mileage,
+                } : undefined);
                 const payMethod = paymentArg?.method || successData?.method || 'cash';
                 const paidAmt = Number(orderArg?.amountPaid ?? successData?.paidAmount ?? successData?.amount ?? 0);
                 const subTot = Number(orderArg?.subtotal ?? successData?.subtotal ?? subtotal);
@@ -533,6 +587,7 @@ export function AutoCarePOS() {
                     cashierName: user?.name || user?.email || 'Cashier',
                     terminalName: 'POS-01',
                     customer: custName ? { name: custName } : undefined,
+                    vehicle: veh,
                     items: printItems,
                     subtotal: subTot,
                     discount: 0,
@@ -855,20 +910,45 @@ export function AutoCarePOS() {
               </div>
             </div>
 
-            {/* Customer / Note / Action buttons */}
+            {/* Customer & Vehicle Details button */}
             <div className="flex items-center gap-1.5 border-t border-[#e8e8e8] px-2.5 py-1.5">
               <button
-                onClick={() => {
-                  const value = window.prompt("Customer name", customer);
-                  if (value) {
-                    setCustomer(value);
-                    setSelectedPOSCustomer({ name: value });
-                  }
-                }}
-                className="flex h-[32px] flex-1 min-w-0 items-center justify-center gap-1.5 rounded border border-[#d3d3d3] px-2 text-xs font-medium text-slate-800 hover:bg-slate-50 transition-colors"
+                type="button"
+                onClick={() => setVehicleModalOpen(true)}
+                className={`flex h-[34px] flex-1 min-w-0 items-center justify-between gap-1.5 rounded-lg border px-2.5 text-xs font-medium transition-all ${
+                  vehicleDetails?.regNo
+                    ? 'bg-blue-50 border-blue-400 text-blue-950 font-bold shadow-xs'
+                    : 'bg-white border-[#d3d3d3] text-slate-800 hover:bg-slate-50'
+                }`}
+                title="Click to enter Customer & Vehicle Details (Reg No, Make, Model, Mileage)"
               >
-                <UserRound className="h-3 w-3 shrink-0" />
-                <span className="truncate">{customer}</span>
+                <div className="flex items-center gap-1.5 min-w-0 truncate">
+                  <Car className={`h-3.5 w-3.5 shrink-0 ${vehicleDetails?.regNo ? 'text-blue-600' : 'text-slate-500'}`} />
+                  {vehicleDetails?.regNo ? (
+                    <div className="flex items-center gap-1.5 truncate">
+                      <span className="font-extrabold uppercase px-1.5 py-0.5 bg-blue-600 text-white text-[10px] rounded tracking-wider">
+                        {vehicleDetails.regNo}
+                      </span>
+                      <span className="truncate text-slate-800 text-[11px] font-semibold">
+                        {vehicleDetails.make} {vehicleDetails.model}
+                      </span>
+                    </div>
+                  ) : (
+                    <span className="truncate font-semibold text-slate-700">
+                      {customer !== "Walk-in Customer" ? customer : "Vehicle Details"}
+                    </span>
+                  )}
+                </div>
+
+                {vehicleDetails?.regNo ? (
+                  <span className="text-[10px] text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded font-bold shrink-0 border border-emerald-200">
+                    {vehicleDetails.mileage ? `${Number(vehicleDetails.mileage).toLocaleString()} km` : 'Active'}
+                  </span>
+                ) : (
+                  <span className="text-[10px] text-blue-600 font-bold uppercase tracking-wider shrink-0 bg-blue-50 px-1.5 py-0.5 rounded">
+                    + Details
+                  </span>
+                )}
               </button>
 
               <button
@@ -1091,6 +1171,23 @@ export function AutoCarePOS() {
         </section>
 
       </div>
+
+      {/* POS Vehicle Details Modal */}
+      <POSVehicleModal
+        isOpen={vehicleModalOpen}
+        onClose={() => setVehicleModalOpen(false)}
+        onSave={(v) => {
+          setVehicleDetails(v);
+          if (v) {
+            setCustomer(v.customerName || "Walk-in Customer");
+            setSelectedPOSCustomer({ name: v.customerName, phone: v.phone });
+          } else {
+            setCustomer("Walk-in Customer");
+            setSelectedPOSCustomer(null);
+          }
+        }}
+        currentDetails={vehicleDetails}
+      />
 
     </div>
   );

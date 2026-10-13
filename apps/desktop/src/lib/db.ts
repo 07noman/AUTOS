@@ -1,5 +1,6 @@
 import Database from '@tauri-apps/plugin-sql';
 import { Product, Category } from '@genx/types/domain/product';
+export type { Product, Category };
 import { Order } from '@genx/types/domain/order';
 import { Customer } from '@genx/types/domain/customer';
 import { db as legacyDb } from './db-legacy';

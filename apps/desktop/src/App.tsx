@@ -16,7 +16,9 @@ import { AutoCarePOS } from './features/auto-care/AutoCarePOS';
 import { ServiceJobs } from './features/auto-care/ServiceJobs';
 import { NewJobForm } from './features/auto-care/NewJobForm';
 import { VehiclesView } from './features/auto-care/VehiclesView';
+import VehicleHistoryView from './features/auto-care/VehicleHistoryView';
 import { AutoCareModuleView } from './features/auto-care/AutoCareModuleView';
+import { AutoCareReportsPage } from './features/auto-care/AutoCareReportsPage';
 import { PartsAndProducts } from './features/auto-care/PartsAndProducts';
 import { InventoryView } from './features/inventory/InventoryView';
 import { POSOrdersPage } from './features/auto-care/POSOrdersPage';
@@ -108,8 +110,8 @@ function App() {
         <Route path="jobs/new" element={<NewJobForm />} />
         <Route path="jobs/:jobId" element={<NewJobForm />} />
         <Route path="vehicles" element={<VehiclesView />} />
-        <Route path="vehicle-history" element={<AutoCareModuleView moduleId="vehicle-history" />} />
-        <Route path="customers" element={<AutoCareModuleView moduleId="customers" />} />
+        <Route path="vehicle-history" element={<VehicleHistoryView />} />
+        <Route path="customers" element={<Customers />} />
         <Route path="inventory" element={<InventoryView />} />
         <Route path="estimates" element={<AutoCareModuleView moduleId="estimates" />} />
         <Route path="appointments" element={<AutoCareModuleView moduleId="appointments" />} />
@@ -118,7 +120,7 @@ function App() {
         <Route path="staff" element={<AutoCareModuleView moduleId="staff" />} />
         <Route path="parts" element={<Products />} />
         <Route path="orders" element={<POSOrdersPage />} />
-        <Route path="reports" element={<AutoCareModuleView moduleId="reports" />} />
+        <Route path="reports" element={<AutoCareReportsPage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="settings/receipt-branding" element={<ReceiptBrandingPage />} />
         <Route path="settings/receipt" element={<ReceiptBrandingPage />} />

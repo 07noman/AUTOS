@@ -329,8 +329,8 @@
     overflow: visible !important;
   }
 
-  /* Hide everything on the page except the receipt portal */
-  body > *:not(#genx-receipt-portal) {
+  /* Hide everything on the page except the receipt portal and print iframe */
+  body > *:not(#genx-receipt-portal):not(#genx-receipt-print-frame) {
     display: none !important;
   }
 

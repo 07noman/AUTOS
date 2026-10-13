@@ -176,9 +176,15 @@ const MODULE_META: Record<
   },
 };
 
+import { AutoCareReportsPage } from './AutoCareReportsPage';
+
 export function AutoCareModuleView({ moduleId }: Props) {
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
+
+  if (moduleId === 'reports') {
+    return <AutoCareReportsPage />;
+  }
 
   const meta = MODULE_META[moduleId] || {
     title: 'Auto Care Module',
