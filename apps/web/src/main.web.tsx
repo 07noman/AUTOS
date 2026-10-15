@@ -33,9 +33,21 @@ setupTauriBrowserMock();
 // Setup PWA install banner listener
 setupPwaInstall();
 
-// NOTE: We intentionally do NOT register sw.js here.
-// The desktop app registers a service worker for offline-first Tauri shell caching.
-// The web version relies on Vercel's edge CDN and Supabase for availability.
+// Clean up any stale service workers or caches from previous desktop/PWA builds
+if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
+  navigator.serviceWorker.getRegistrations().then((registrations) => {
+    for (const registration of registrations) {
+      registration.unregister();
+    }
+  });
+  if ('caches' in window) {
+    caches.keys().then((names) => {
+      for (const name of names) {
+        caches.delete(name);
+      }
+    });
+  }
+}
 
 // Initialize database before rendering
 // In the browser, this runs via tauri-mock → localStorage.
