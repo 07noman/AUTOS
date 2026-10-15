@@ -16,14 +16,15 @@ export function createClientOrderId(): string {
 }
 
 export async function saveOfflineOrder(order: any): Promise<any> {
-  const clientOrderId = order.clientOrderId || createClientOrderId();
+  const clientOrderId = order.clientOrderId || order.id || createClientOrderId();
 
   const offlineOrder = {
     ...order,
+    id: order.id || clientOrderId,
     clientOrderId,
-    syncStatus: "pending_sync",
-    createdOfflineAt: new Date().toISOString(),
-    syncAttempts: 0,
+    syncStatus: order.syncStatus || "pending_sync",
+    createdOfflineAt: order.createdOfflineAt || new Date().toISOString(),
+    syncAttempts: order.syncAttempts || 0,
   };
 
   await putItem(OFFLINE_STORES.orders, offlineOrder);

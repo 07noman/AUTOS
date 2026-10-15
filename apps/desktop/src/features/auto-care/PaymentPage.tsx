@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useRef } from "react";
 import {
   Banknote,
   CreditCard,
@@ -273,6 +273,7 @@ export default function PaymentPage({
   const [method, setMethod] = useState<PaymentMethod>("cash");
   const [amount, setAmount] = useState(total.toFixed(2));
   const [processing, setProcessing] = useState(false);
+  const isSubmittingRef = useRef(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [localCustomer, setLocalCustomer] = useState<POSCustomer | null>(
     externalCustomer ?? null
@@ -343,7 +344,7 @@ export default function PaymentPage({
   // ── Validate / submit ──────────────────────────────────────────────────────
 
   const handleValidate = async () => {
-    if (processing) return;
+    if (processing || isSubmittingRef.current) return;
 
     if (method === "credit" && !customer) {
       openCustomerPicker();
@@ -353,6 +354,7 @@ export default function PaymentPage({
     if (method !== "credit" && numericAmount < total) return;
 
     try {
+      isSubmittingRef.current = true;
       setProcessing(true);
 
       const paymentData: PaymentData = {
@@ -384,6 +386,7 @@ export default function PaymentPage({
       );
     } finally {
       setProcessing(false);
+      isSubmittingRef.current = false;
     }
   };
 

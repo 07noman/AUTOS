@@ -137,6 +137,7 @@ export function AutoCarePOS() {
   // Payment page state
   const [showPayment, setShowPayment] = useState(false);
   const lastInvoiceNumberRef = useRef<string | undefined>(undefined);
+  const isSubmittingPaymentRef = useRef(false);
 
   const [successData, setSuccessData] = useState<{
     amount: number;
@@ -312,12 +313,18 @@ export function AutoCarePOS() {
 
   // ── handlePOSPayment ──────────────────────────────────────────────────────
   const handlePOSPayment = async (data: PaymentData) => {
-    let invoiceNumber = "";
-    const activeTenant = getCurrentTenantId();
-    let paidOrder: any = null;
+    if (isSubmittingPaymentRef.current) {
+      console.warn('[pos] Payment submission already in progress, ignoring duplicate call');
+      return;
+    }
+    isSubmittingPaymentRef.current = true;
 
-    // 1. Atomic SQLite Order creation + Stock deduction + Outbox event
     try {
+      let invoiceNumber = "";
+      const activeTenant = getCurrentTenantId();
+      let paidOrder: any = null;
+
+      // 1. Atomic SQLite Order creation + Stock deduction + Outbox event
       paidOrder = await posOrderRepo.createPaid({
         items: (data.items || []).map((item) => ({
           id: String(item?.id || (item as any)?.productId || crypto.randomUUID()),
@@ -371,79 +378,67 @@ export function AutoCarePOS() {
           creditLimit: 0,
         }).catch(() => {});
       }
+
+      // Refresh products in cache so inventory counters decrement immediately
+      void queryClient.invalidateQueries({ queryKey: ["products"] });
+
+      if (isOnline()) {
+        try {
+          const invoice = await completePOSSale({
+            items: data.items.map((item) => ({
+              name: item.name,
+              quantity: item.quantity,
+              price: item.price,
+            })),
+            subtotal: data.subtotal,
+            tax: data.tax,
+            total: data.total,
+            paymentMethod: data.paymentMethod,
+            customerName: vehicleDetails?.customerName || data.customer?.name,
+            customerId: data.customer?.id,
+          });
+
+          if (invoice?.invoiceNumber) {
+            invoiceNumber = invoice.invoiceNumber;
+          }
+        } catch (e) {
+          console.warn('[pos] completePOSSale invoice warning:', e);
+        }
+      }
+
+      // Mirror to IndexedDB using strictly identical paidOrder.id and orderNumber so it never creates a duplicate order!
+      void saveOfflineOrder({
+        id: paidOrder.id,
+        clientOrderId: paidOrder.id,
+        orderNumber: paidOrder.orderNumber,
+        items: data.items,
+        subtotal: data.subtotal,
+        tax: data.tax,
+        total: data.total,
+        paymentMethod: data.paymentMethod,
+        paidAmount: data.paidAmount,
+        customer: data.customer,
+        completedAt: new Date().toISOString(),
+        source: isOnline() ? "online" : "offline",
+        syncStatus: isOnline() ? "synced" : "pending_sync",
+        tenantId: activeTenant,
+      }).catch(() => {});
+
+      lastInvoiceNumberRef.current = invoiceNumber || (currentOrderNumber ? String(currentOrderNumber).padStart(4, "0") : "0001");
+
+      // Clear cart & reset order after sale
+      setCart([]);
+      setSelectedPOSCustomer(null);
+      setCustomer("Walk-in Customer");
+      setVehicleDetails(null);
+      setCurrentOrderId(null);
+      void posOrderRepo.nextOrderNumber(activeTenant).then(setCurrentOrderNumber);
     } catch (e) {
       console.error("Atomic POS sale failed in SQLite:", e);
       throw e;
+    } finally {
+      isSubmittingPaymentRef.current = false;
     }
-
-    // Refresh products in cache so inventory counters decrement immediately
-    void queryClient.invalidateQueries({ queryKey: ["products"] });
-
-    if (!isOnline()) {
-      // 3. Offline sale - Save locally to IndexedDB
-      const offlineOrder = await saveOfflineOrder({
-        items: data.items,
-        subtotal: data.subtotal,
-        tax: data.tax,
-        total: data.total,
-        paymentMethod: data.paymentMethod,
-        paidAmount: data.paidAmount,
-        customer: data.customer,
-        completedAt: new Date().toISOString(),
-        source: "offline",
-        tenantId: activeTenant,
-      });
-
-      if (!invoiceNumber) {
-        invoiceNumber = offlineOrder.clientOrderId;
-      }
-    } else {
-      // 4. Online sale
-      const invoice = await completePOSSale({
-        items: data.items.map((item) => ({
-          name: item.name,
-          quantity: item.quantity,
-          price: item.price,
-        })),
-        subtotal: data.subtotal,
-        tax: data.tax,
-        total: data.total,
-        paymentMethod: data.paymentMethod,
-        customerName: vehicleDetails?.customerName || data.customer?.name,
-        customerId: data.customer?.id,
-      });
-
-      if (!invoiceNumber) {
-        invoiceNumber = invoice?.invoiceNumber ?? `INV-${String(paidOrder?.orderNumber ?? 1).padStart(4, "0")}`;
-      }
-
-      // Save offline mirror record
-      void saveOfflineOrder({
-        clientOrderId: invoiceNumber,
-        orderNumber: paidOrder?.orderNumber ?? 1,
-        items: data.items,
-        subtotal: data.subtotal,
-        tax: data.tax,
-        total: data.total,
-        paymentMethod: data.paymentMethod,
-        paidAmount: data.paidAmount,
-        customer: data.customer,
-        completedAt: new Date().toISOString(),
-        source: "online",
-        syncStatus: "synced",
-        tenantId: activeTenant,
-      }).catch(() => {});
-    }
-
-    lastInvoiceNumberRef.current = invoiceNumber || (currentOrderNumber ? String(currentOrderNumber).padStart(4, "0") : "0001");
-
-    // Clear cart & reset order after sale
-    setCart([]);
-    setSelectedPOSCustomer(null);
-    setCustomer("Walk-in Customer");
-    setVehicleDetails(null);
-    setCurrentOrderId(null);
-    void posOrderRepo.nextOrderNumber(activeTenant).then(setCurrentOrderNumber);
   };
 
   const handleKeypadPress = (key: string) => {
