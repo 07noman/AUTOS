@@ -532,7 +532,7 @@ export const orderRepo = {
           notes: order.notes || null,
           created_at: order.createdAt || now,
           updated_at: order.updatedAt || now,
-        });
+        }, { onConflict: 'id' });
 
         if (items && items.length > 0) {
           const itemRows = items.map((i) => ({
@@ -549,7 +549,7 @@ export const orderRepo = {
             total: i.total,
             created_at: now,
           }));
-          await supabase.from('order_items').insert(itemRows);
+          await supabase.from('order_items').upsert(itemRows, { onConflict: 'id' });
         }
       } catch (err) {
         console.warn('[db] Supabase order insert error:', err);
@@ -635,7 +635,7 @@ export const orderRepo = {
           notes: order.notes || null,
           created_at: order.createdAt || now,
           updated_at: order.updatedAt || now,
-        });
+        }, { onConflict: 'id' });
 
         if (items && items.length > 0) {
           const itemRows = items.map((item) => ({
@@ -652,9 +652,9 @@ export const orderRepo = {
             total: item.total,
             created_at: now,
           }));
-          const { error: itemsError } = await supabase.from('order_items').insert(itemRows);
+          const { error: itemsError } = await supabase.from('order_items').upsert(itemRows, { onConflict: 'id' });
           if (itemsError) {
-            console.warn('[db] Supabase order_items insert warning:', itemsError.message);
+            console.warn('[db] Supabase order_items upsert warning:', itemsError.message);
           }
 
           // Deduct stock in Supabase for each item

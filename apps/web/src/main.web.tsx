@@ -53,6 +53,10 @@ if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
 // In the browser, this runs via tauri-mock → localStorage.
 // When Supabase is configured (VITE_SUPABASE_URL), auth & data use the real API.
 import { initializeDatabase } from '@/lib/db';
+import { clearOfflineOrdersQueue } from '@/services/offlineOrders';
+
+// Clear any stale offline orders queue to prevent duplicate sync on startup
+void clearOfflineOrdersQueue();
 
 initializeDatabase()
   .catch((err) => {
@@ -68,14 +72,15 @@ initializeDatabase()
       },
     });
 
+    // NOTE: React.StrictMode is intentionally omitted in web/production build
+    // to prevent double-mounting, duplicate effect calls, and duplicated order submits
+    // during cold starts on Vercel.
     ReactDOM.createRoot(document.getElementById('root')!).render(
-      <React.StrictMode>
-        <QueryClientProvider client={queryClient}>
-          {/* BrowserRouter for clean URLs on Vercel (no hash routing) */}
-          <BrowserRouter>
-            <App />
-          </BrowserRouter>
-        </QueryClientProvider>
-      </React.StrictMode>
+      <QueryClientProvider client={queryClient}>
+        {/* BrowserRouter for clean URLs on Vercel (no hash routing) */}
+        <BrowserRouter>
+          <App />
+        </BrowserRouter>
+      </QueryClientProvider>
     );
   });

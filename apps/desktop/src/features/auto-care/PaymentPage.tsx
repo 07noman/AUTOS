@@ -273,7 +273,10 @@ export default function PaymentPage({
   const [method, setMethod] = useState<PaymentMethod>("cash");
   const [amount, setAmount] = useState(total.toFixed(2));
   const [processing, setProcessing] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const isProcessingRef = useRef(false);
   const isSubmittingRef = useRef(false);
+  const lastClickTimestampRef = useRef<number>(0);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [localCustomer, setLocalCustomer] = useState<POSCustomer | null>(
     externalCustomer ?? null
@@ -341,10 +344,15 @@ export default function PaymentPage({
     }
   };
 
-  // ── Validate / submit ──────────────────────────────────────────────────────
+  // ── Validate / submit (Idempotent Payment Handler) ─────────────────────────
 
   const handleValidate = async () => {
-    if (processing || isSubmittingRef.current) return;
+    const now = Date.now();
+    // Idempotency protection: Guard against double-clicks, concurrent executions & cold start retries
+    if (isProcessing || processing || isProcessingRef.current || isSubmittingRef.current || (now - lastClickTimestampRef.current < 2500)) {
+      console.warn("[Payment] Duplicate validatePayment call blocked by idempotency guard");
+      return;
+    }
 
     if (method === "credit" && !customer) {
       openCustomerPicker();
@@ -354,8 +362,18 @@ export default function PaymentPage({
     if (method !== "credit" && numericAmount < total) return;
 
     try {
+      isProcessingRef.current = true;
       isSubmittingRef.current = true;
+      lastClickTimestampRef.current = now;
+      setIsProcessing(true);
       setProcessing(true);
+
+      console.log("[Payment] Validating payment...", {
+        orderId,
+        total,
+        method,
+        amount: numericAmount,
+      });
 
       const paymentData: PaymentData = {
         orderId,
@@ -380,15 +398,23 @@ export default function PaymentPage({
         setSuccess(true);
       }
     } catch (err) {
-      console.error("Payment processing failed:", err);
+      console.error("[Payment] Payment processing failed:", err);
       alert(
         `Payment failed: ${err instanceof Error ? err.message : String(err)}`
       );
     } finally {
+      setIsProcessing(false);
       setProcessing(false);
-      isSubmittingRef.current = false;
+      // Keep guard active briefly to prevent race conditions during modal dismiss/navigation
+      setTimeout(() => {
+        isProcessingRef.current = false;
+        isSubmittingRef.current = false;
+      }, 1500);
     }
   };
+
+  // Direct alias for validatePayment
+  const validatePayment = handleValidate;
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -714,10 +740,10 @@ export default function PaymentPage({
           <button
             type="button"
             className="validate-button"
-            disabled={processing || !canValidate}
+            disabled={isProcessing || processing || isProcessingRef.current || !canValidate}
             onClick={handleValidate}
           >
-            {processing ? (
+            {isProcessing || processing ? (
               <>
                 <span className="payment-spinner" />
                 Processing…

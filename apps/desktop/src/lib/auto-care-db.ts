@@ -734,7 +734,7 @@ export const posOrderRepo = {
           created_at: order.createdAt,
           updated_at: order.updatedAt,
         };
-        const { error: ongoingErr } = await supabase.from('pos_orders').upsert(fullPayload);
+        const { error: ongoingErr } = await supabase.from('pos_orders').upsert(fullPayload, { onConflict: 'id' });
         if (ongoingErr) {
           console.warn('[db] pos_orders createOngoing retry with safe payload:', ongoingErr.message);
           // Fallback payload without columns that might not exist yet
@@ -750,7 +750,7 @@ export const posOrderRepo = {
             notes: JSON.stringify({ items: order.items, notes: order.notes }),
             created_at: order.createdAt,
             updated_at: order.updatedAt,
-          });
+          }, { onConflict: 'id' });
         }
       } catch (err) {
         console.warn('[db] Supabase createOngoing error:', err);
@@ -840,7 +840,7 @@ export const posOrderRepo = {
           updated_at: now,
         };
 
-        const { error: upsertErr } = await supabase.from('pos_orders').upsert(fullPayload);
+        const { error: upsertErr } = await supabase.from('pos_orders').upsert(fullPayload, { onConflict: 'id' });
         if (upsertErr) {
           console.warn('[db] pos_orders full upsert warning, retrying with fallback payload:', upsertErr.message);
           // Fallback payload: safe columns only, items and vehicle encoded in notes
@@ -868,7 +868,7 @@ export const posOrderRepo = {
             created_at: now,
             updated_at: now,
           };
-          const { error: safeErr } = await supabase.from('pos_orders').upsert(safePayload);
+          const { error: safeErr } = await supabase.from('pos_orders').upsert(safePayload, { onConflict: 'id' });
           if (safeErr) {
             console.error('[db] pos_orders safe upsert error:', safeErr.message);
           }
@@ -897,7 +897,7 @@ export const posOrderRepo = {
             }),
             created_at: now,
             updated_at: now,
-          });
+          }, { onConflict: 'id' });
 
           if (input.items && input.items.length > 0) {
             const itemRows = input.items.map((it) => ({
@@ -913,7 +913,7 @@ export const posOrderRepo = {
               tax: 0,
               total: it.price * it.quantity,
             }));
-            await supabase.from('order_items').insert(itemRows);
+            await supabase.from('order_items').upsert(itemRows, { onConflict: 'id' });
           }
         } catch (stdErr) {
           console.warn('[db] standard orders mirror error:', stdErr);

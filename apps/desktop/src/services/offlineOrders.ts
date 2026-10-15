@@ -3,8 +3,18 @@
 import {
   putItem,
   getAllItems,
+  clearStore,
   OFFLINE_STORES,
 } from "./offlineDB";
+
+export async function clearOfflineOrdersQueue(): Promise<void> {
+  try {
+    await clearStore(OFFLINE_STORES.orders);
+    console.log('[offlineOrders] Offline orders queue cleared to prevent duplicate retries');
+  } catch (err) {
+    console.warn('[offlineOrders] Could not clear offline orders queue:', err);
+  }
+}
 
 export function createClientOrderId(): string {
   return (

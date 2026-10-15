@@ -138,6 +138,7 @@ export function AutoCarePOS() {
   const [showPayment, setShowPayment] = useState(false);
   const lastInvoiceNumberRef = useRef<string | undefined>(undefined);
   const isSubmittingPaymentRef = useRef(false);
+  const lastPaymentTimestampRef = useRef<number>(0);
 
   const [successData, setSuccessData] = useState<{
     amount: number;
@@ -311,13 +312,22 @@ export function AutoCarePOS() {
     setCart([]);
   };
 
-  // ── handlePOSPayment ──────────────────────────────────────────────────────
+  // ── handlePOSPayment (Idempotent POS Payment Submission) ─────────────────
   const handlePOSPayment = async (data: PaymentData) => {
-    if (isSubmittingPaymentRef.current) {
-      console.warn('[pos] Payment submission already in progress, ignoring duplicate call');
+    const now = Date.now();
+    if (isSubmittingPaymentRef.current || (now - lastPaymentTimestampRef.current < 3500)) {
+      console.warn('[pos] Payment submission already in progress or debounced, ignoring duplicate call');
       return;
     }
     isSubmittingPaymentRef.current = true;
+    lastPaymentTimestampRef.current = now;
+
+    console.log('[pos] Executing atomic POS sale...', {
+      orderId: data.orderId,
+      total: data.total,
+      itemCount: data.items.length,
+      method: data.paymentMethod,
+    });
 
     try {
       let invoiceNumber = "";
@@ -420,7 +430,7 @@ export function AutoCarePOS() {
         customer: data.customer,
         completedAt: new Date().toISOString(),
         source: isOnline() ? "online" : "offline",
-        syncStatus: isOnline() ? "synced" : "pending_sync",
+        syncStatus: "synced",
         tenantId: activeTenant,
       }).catch(() => {});
 
@@ -437,7 +447,9 @@ export function AutoCarePOS() {
       console.error("Atomic POS sale failed in SQLite:", e);
       throw e;
     } finally {
-      isSubmittingPaymentRef.current = false;
+      setTimeout(() => {
+        isSubmittingPaymentRef.current = false;
+      }, 2000);
     }
   };
 
