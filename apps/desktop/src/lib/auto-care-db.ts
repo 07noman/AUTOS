@@ -363,10 +363,14 @@ function mapPOSOrder(r: any): POSOrder {
  * each order has a strictly unique, sequential orderNumber.
  */
 function deduplicateAndSequenceOrderNumbers(orders: POSOrder[], tenantId: string): POSOrder[] {
-  if (!orders || orders.length === 0) return [];
+  if (!orders || orders.length === 0 || !tenantId) return [];
+
+  // Strictly filter out any orders that do not belong to this tenant
+  const forTenant = orders.filter((o) => o.tenantId === tenantId);
+  if (forTenant.length === 0) return [];
 
   // Sort chronologically ascending
-  const chronological = [...orders].sort((a, b) => a.createdAt - b.createdAt);
+  const chronological = [...forTenant].sort((a, b) => a.createdAt - b.createdAt);
 
   const usedNumbers = new Set<number>();
   let hasChanges = false;
@@ -430,7 +434,7 @@ export const posOrderRepo = {
   async nextOrderNumber(tenantId = getCurrentTenantId()): Promise<number> {
     let maxNum = 0;
 
-    // 1. From localStorage cache
+    // 1. From localStorage cache (tenant-specific key)
     try {
       if (typeof window !== 'undefined') {
         const raw = localStorage.getItem(`genx:pos_orders_cache:${tenantId}`);
@@ -438,8 +442,10 @@ export const posOrderRepo = {
           const parsed = JSON.parse(raw);
           if (Array.isArray(parsed)) {
             for (const o of parsed) {
-              const n = Number(o.orderNumber ?? o.order_number) || 0;
-              if (n > maxNum) maxNum = n;
+              if (o && o.tenantId === tenantId) {
+                const n = Number(o.orderNumber ?? o.order_number) || 0;
+                if (n > maxNum) maxNum = n;
+              }
             }
           }
         }
@@ -485,9 +491,10 @@ export const posOrderRepo = {
 
   /**
    * Instant local-first query from memory cache, local SQLite, and IndexedDB (< 5ms).
-   * Never waits for internet or Supabase.
+   * Strictly enforces tenant isolation: orders from other tenants are never included.
    */
   async findLocal(tenantId = getCurrentTenantId()): Promise<POSOrder[]> {
+    if (!tenantId) return [];
     const results: POSOrder[] = [];
     const seen = new Set<string>();
 
@@ -499,7 +506,7 @@ export const posOrderRepo = {
           const parsed = JSON.parse(raw);
           if (Array.isArray(parsed)) {
             for (const o of parsed) {
-              if (o && o.id && !seen.has(String(o.id))) {
+              if (o && o.id && o.tenantId === tenantId && !seen.has(String(o.id))) {
                 seen.add(String(o.id));
                 results.push(o);
               }
@@ -509,7 +516,7 @@ export const posOrderRepo = {
       }
     } catch {}
 
-    // 2. From local SQLite table
+    // 2. From local SQLite table (strictly filtered by tenantId)
     try {
       const db = await getDatabase();
       const rows = await db.select<any[]>(
@@ -519,7 +526,7 @@ export const posOrderRepo = {
       if (rows && rows.length > 0) {
         for (const r of rows) {
           const mapped = mapPOSOrder(r);
-          if (!seen.has(mapped.id)) {
+          if (mapped.tenantId === tenantId && !seen.has(mapped.id)) {
             seen.add(mapped.id);
             results.push(mapped);
           }
@@ -527,33 +534,36 @@ export const posOrderRepo = {
       }
     } catch {}
 
-    // 3. From IndexedDB offline_orders
+    // 3. From IndexedDB offline_orders (STRICTLY filter by tenantId)
     try {
       const { getAllItems, OFFLINE_STORES } = await import('@/services/offlineDB');
       const offItems = await getAllItems(OFFLINE_STORES.orders);
       if (Array.isArray(offItems)) {
         for (const item of offItems) {
-          const id = String(item.clientOrderId || item.id || '');
-          if (id && !seen.has(id)) {
-            seen.add(id);
-            const rawNum = Number(item.orderNumber ?? item.order_number);
-            const orderNumber = Number.isFinite(rawNum) && rawNum > 0 ? rawNum : 0;
-            results.push({
-              id,
-              tenantId: item.tenantId || tenantId,
-              orderNumber,
-              status: 'PAID',
-              customerName: item.customer?.name || item.customerName,
-              paymentMethod: item.paymentMethod || 'cash',
-              subtotal: Number(item.subtotal || 0),
-              tax: Number(item.tax || 0),
-              total: Number(item.total || 0),
-              paidAmount: Number(item.paidAmount ?? item.total ?? 0),
-              items: item.items || [],
-              notes: item.notes || undefined,
-              createdAt: item.completedAt ? new Date(item.completedAt).getTime() : Date.now(),
-              updatedAt: item.completedAt ? new Date(item.completedAt).getTime() : Date.now(),
-            });
+          // Strictly reject items belonging to other tenants
+          if (item && item.tenantId === tenantId) {
+            const id = String(item.clientOrderId || item.id || '');
+            if (id && !seen.has(id)) {
+              seen.add(id);
+              const rawNum = Number(item.orderNumber ?? item.order_number);
+              const orderNumber = Number.isFinite(rawNum) && rawNum > 0 ? rawNum : 0;
+              results.push({
+                id,
+                tenantId,
+                orderNumber,
+                status: 'PAID',
+                customerName: item.customer?.name || item.customerName,
+                paymentMethod: item.paymentMethod || 'cash',
+                subtotal: Number(item.subtotal || 0),
+                tax: Number(item.tax || 0),
+                total: Number(item.total || 0),
+                paidAmount: Number(item.paidAmount ?? item.total ?? 0),
+                items: item.items || [],
+                notes: item.notes || undefined,
+                createdAt: item.completedAt ? new Date(item.completedAt).getTime() : Date.now(),
+                updatedAt: item.completedAt ? new Date(item.completedAt).getTime() : Date.now(),
+              });
+            }
           }
         }
       }
@@ -566,10 +576,12 @@ export const posOrderRepo = {
   /**
    * Find all POS orders for tenant.
    * Local first -> Parallel cloud queries with timeout -> Combined deduplicated output.
+   * Enforces 100% strict multi-tenant isolation.
    */
   async findAll(tenantId = getCurrentTenantId()): Promise<POSOrder[]> {
+    if (!tenantId) return [];
     const local = await this.findLocal(tenantId);
-    const results: POSOrder[] = [...local];
+    const results: POSOrder[] = local.filter((o) => o.tenantId === tenantId);
     const seen = new Set<string>(results.map((o) => o.id));
 
     if (isSupabaseConfigured()) {
@@ -578,7 +590,7 @@ export const posOrderRepo = {
           setTimeout(() => reject(new Error('Supabase timeout')), 2200)
         );
 
-        // Fetch only POS orders from Supabase to avoid duplicate entries caused by mirrored 'orders' table.
+        // Fetch only POS orders from Supabase matching the current tenantId
         const fetchPromise = Promise.allSettled([
           supabase
             .from('pos_orders')
@@ -588,10 +600,12 @@ export const posOrderRepo = {
         ]).then(([posRes]) => {
           if (posRes.status === 'fulfilled' && !posRes.value.error && posRes.value.data) {
             for (const po of posRes.value.data) {
-              const mapped = mapPOSOrder(po);
-              if (!seen.has(mapped.id)) {
-                seen.add(mapped.id);
-                results.push(mapped);
+              if (String(po.tenant_id) === tenantId) {
+                const mapped = mapPOSOrder(po);
+                if (mapped.tenantId === tenantId && !seen.has(mapped.id)) {
+                  seen.add(mapped.id);
+                  results.push(mapped);
+                }
               }
             }
           }
@@ -603,7 +617,8 @@ export const posOrderRepo = {
       }
     }
 
-    const sorted = results.sort((a, b) => b.createdAt - a.createdAt);
+    const filtered = results.filter((o) => o.tenantId === tenantId);
+    const sorted = filtered.sort((a, b) => b.createdAt - a.createdAt);
     const normalized = deduplicateAndSequenceOrderNumbers(sorted, tenantId);
 
     try {
@@ -612,11 +627,12 @@ export const posOrderRepo = {
       }
     } catch {}
 
-    return normalized;
+    return normalized.filter((o) => o.tenantId === tenantId);
   },
 
   /** Find by status: ONGOING or PAID or CANCELLED */
   async findByStatus(status: POSOrder['status'], tenantId = getCurrentTenantId()): Promise<POSOrder[]> {
+    if (!tenantId) return [];
     if (isSupabaseConfigured()) {
       try {
         const { data, error } = await supabase
@@ -1603,10 +1619,12 @@ export const vehicleRepo = {
           const parsed = JSON.parse(raw);
           if (Array.isArray(parsed)) {
             for (const v of parsed) {
-              const clean = (v.licensePlate || '').trim().toUpperCase();
-              if (clean && !seenPlates.has(clean)) {
-                seenPlates.add(clean);
-                results.push(v);
+              if (v && v.tenantId === tenantId) {
+                const clean = (v.licensePlate || '').trim().toUpperCase();
+                if (clean && !seenPlates.has(clean)) {
+                  seenPlates.add(clean);
+                  results.push(v);
+                }
               }
             }
           }
@@ -1621,10 +1639,12 @@ export const vehicleRepo = {
       if (rows && rows.length > 0) {
         for (const r of rows) {
           const v = mapVehicle(r);
-          const clean = v.licensePlate.trim().toUpperCase();
-          if (clean && !seenPlates.has(clean)) {
-            seenPlates.add(clean);
-            results.push(v);
+          if (v.tenantId === tenantId) {
+            const clean = v.licensePlate.trim().toUpperCase();
+            if (clean && !seenPlates.has(clean)) {
+              seenPlates.add(clean);
+              results.push(v);
+            }
           }
         }
       }
@@ -1641,11 +1661,15 @@ export const vehicleRepo = {
 
         if (!error && data) {
           for (const row of data) {
-            const v = mapVehicle(row);
-            const clean = v.licensePlate.trim().toUpperCase();
-            if (clean && !seenPlates.has(clean)) {
-              seenPlates.add(clean);
-              results.push(v);
+            if (String(row.tenant_id) === tenantId) {
+              const v = mapVehicle(row);
+              if (v.tenantId === tenantId) {
+                const clean = v.licensePlate.trim().toUpperCase();
+                if (clean && !seenPlates.has(clean)) {
+                  seenPlates.add(clean);
+                  results.push(v);
+                }
+              }
             }
           }
         }
@@ -1658,6 +1682,7 @@ export const vehicleRepo = {
     try {
       const allOrders = await posOrderRepo.findLocal(tenantId);
       for (const ord of allOrders) {
+        if (ord.tenantId !== tenantId) continue;
         let plate = (ord.vehiclePlateNumber || '').trim().toUpperCase();
         let makeModel = ord.vehicleMakeModel || '';
         let mileage = ord.vehicleMileage != null ? Number(ord.vehicleMileage) : undefined;
@@ -1697,14 +1722,16 @@ export const vehicleRepo = {
       console.warn('[db] Error synthesizing vehicles from orders:', e);
     }
 
+    const filtered = results.filter((v) => v.tenantId === tenantId);
+
     // Save to cache
     try {
       if (typeof window !== 'undefined') {
-        localStorage.setItem(`genx:vehicles_cache:${tenantId}`, JSON.stringify(results.slice(0, 200)));
+        localStorage.setItem(`genx:vehicles_cache:${tenantId}`, JSON.stringify(filtered.slice(0, 200)));
       }
     } catch {}
 
-    return results.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+    return filtered.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
   },
 
   async create(v: Omit<Vehicle, 'id' | 'createdAt' | 'updatedAt'>): Promise<Vehicle> {

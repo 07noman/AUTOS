@@ -616,7 +616,7 @@ export function setupTauriBrowserMock(): void {
             return item ? [item] : [];
           }
           const tenantId = values[0];
-          return syncState.filter((s) => !tenantId || s.tenant_id === tenantId);
+          return tenantId ? syncState.filter((s) => s.tenant_id === tenantId) : [];
         }
 
         // ── stock_movements SELECT ─────────────────────────────────────────
@@ -647,8 +647,7 @@ export function setupTauriBrowserMock(): void {
 
           const tenantId = values[0];
           const limit = values[1] || 100;
-          return movements
-            .filter((m) => !tenantId || m.tenant_id === tenantId)
+          return (tenantId ? movements.filter((m) => m.tenant_id === tenantId) : [])
             .sort((a, b) => b.created_at - a.created_at)
             .slice(0, limit);
         }
@@ -658,12 +657,11 @@ export function setupTauriBrowserMock(): void {
           const categories = getStorage<any[]>('categories', []);
           if (query.includes('WHERE id = ? AND tenant_id = ?')) {
             const [id, tenantId] = values;
-            const item = categories.find((c) => c.id === id && (!tenantId || c.tenant_id === tenantId));
+            const item = categories.find((c) => c.id === id && c.tenant_id === tenantId);
             return item ? [item] : [];
           }
           const tenantId = values[0];
-          return categories
-            .filter((c) => !tenantId || c.tenant_id === tenantId)
+          return (tenantId ? categories.filter((c) => c.tenant_id === tenantId) : [])
             .sort((a, b) => a.name.localeCompare(b.name));
         }
 
@@ -671,7 +669,7 @@ export function setupTauriBrowserMock(): void {
           const products = getStorage<any[]>('products', []);
           if (query.includes('COUNT(*)')) {
             const tenantId = values[0];
-            const count = products.filter((p) => !tenantId || p.tenant_id === tenantId).length;
+            const count = (tenantId ? products.filter((p) => p.tenant_id === tenantId) : []).length;
             return [{ count }];
           }
 
@@ -689,8 +687,8 @@ export function setupTauriBrowserMock(): void {
 
           if (query.includes('stock <= minimum_stock')) {
             const tenantId = values[0];
-            return products.filter(
-              (p) => (!tenantId || p.tenant_id === tenantId) && !p.deleted_at && p.stock <= p.minimum_stock
+            return (tenantId ? products.filter((p) => p.tenant_id === tenantId) : []).filter(
+              (p) => !p.deleted_at && p.stock <= p.minimum_stock
             );
           }
 
@@ -698,7 +696,7 @@ export function setupTauriBrowserMock(): void {
             const tenantId = values[0];
             const q = (values[1] || '').replace(/%/g, '').toLowerCase();
             return products.filter((p) => {
-              if (tenantId && p.tenant_id !== tenantId) return false;
+              if (!tenantId || p.tenant_id !== tenantId) return false;
               if (p.deleted_at) return false;
               return (
                 p.name.toLowerCase().includes(q) ||
@@ -709,7 +707,7 @@ export function setupTauriBrowserMock(): void {
           }
 
           const tenantId = values[0];
-          return products.filter((p) => (!tenantId || p.tenant_id === tenantId) && !p.deleted_at);
+          return (tenantId ? products.filter((p) => p.tenant_id === tenantId) : []).filter((p) => !p.deleted_at);
         }
 
         if (query.includes('FROM orders')) {
@@ -726,7 +724,7 @@ export function setupTauriBrowserMock(): void {
             );
           }
           const tenantId = values[0];
-          return orders.filter((o) => !tenantId || o.tenant_id === tenantId);
+          return tenantId ? orders.filter((o) => o.tenant_id === tenantId) : [];
         }
 
         // ── pos_orders SELECT ──────────────────────────────────────────────
@@ -735,7 +733,7 @@ export function setupTauriBrowserMock(): void {
 
           if (query.includes('COALESCE(MAX(order_number)')) {
             const tenantId = values[0];
-            const filtered = pos_orders.filter((o) => !tenantId || o.tenant_id === tenantId);
+            const filtered = tenantId ? pos_orders.filter((o) => o.tenant_id === tenantId) : [];
             const max_num = filtered.reduce((m, o) => Math.max(m, Number(o.order_number) || 0), 0);
             return [{ max_num }];
           }
@@ -747,8 +745,9 @@ export function setupTauriBrowserMock(): void {
           }
 
           const tenantId = values[0];
+          if (!tenantId) return [];
           const filtered = pos_orders
-            .filter((o) => !tenantId || o.tenant_id === tenantId)
+            .filter((o) => o.tenant_id === tenantId)
             .sort((a, b) => Number(b.order_number) - Number(a.order_number));
           return filtered;
         }
@@ -757,16 +756,16 @@ export function setupTauriBrowserMock(): void {
           const outbox = getStorage<any[]>('outbox', []);
           if (query.includes('COUNT(*)')) {
             const tenantId = values[0];
-            const count = outbox.filter(
-              (o) => (!tenantId || o.tenant_id === tenantId) && o.status === 'pending'
+            const count = (tenantId ? outbox.filter((o) => o.tenant_id === tenantId) : []).filter(
+              (o) => o.status === 'pending'
             ).length;
             return [{ count }];
           }
 
           const tenantId = values[0];
           const limit = values[1] || 100;
-          return outbox
-            .filter((o) => (!tenantId || o.tenant_id === tenantId) && o.status === 'pending')
+          return (tenantId ? outbox.filter((o) => o.tenant_id === tenantId) : [])
+            .filter((o) => o.status === 'pending')
             .slice(0, limit);
         }
 
@@ -779,8 +778,7 @@ export function setupTauriBrowserMock(): void {
             return item ? [item] : [];
           }
           const tenantId = values[0];
-          return customers
-            .filter((c) => !tenantId || c.tenant_id === tenantId)
+          return (tenantId ? customers.filter((c) => c.tenant_id === tenantId) : [])
             .sort((a, b) => a.name.localeCompare(b.name));
         }
 
@@ -801,8 +799,7 @@ export function setupTauriBrowserMock(): void {
             return item ? [item] : [];
           }
           const tenantId = values[0];
-          return vehicles
-            .filter((v) => !tenantId || v.tenant_id === tenantId)
+          return (tenantId ? vehicles.filter((v) => v.tenant_id === tenantId) : [])
             .sort((a, b) => (b.updated_at || 0) - (a.updated_at || 0));
         }
 
@@ -811,7 +808,7 @@ export function setupTauriBrowserMock(): void {
           const invoices = getStorage<any[]>('auto_care_invoices', []);
           if (query.includes('COUNT(*)')) {
             const tenantId = values[0];
-            const count = invoices.filter((i) => !tenantId || i.tenant_id === tenantId).length;
+            const count = (tenantId ? invoices.filter((i) => i.tenant_id === tenantId) : []).length;
             return [{ count }];
           }
           if (query.includes('WHERE id = ?')) {
@@ -820,8 +817,7 @@ export function setupTauriBrowserMock(): void {
             return item ? [item] : [];
           }
           const tenantId = values[0];
-          return invoices
-            .filter((i) => !tenantId || i.tenant_id === tenantId)
+          return (tenantId ? invoices.filter((i) => i.tenant_id === tenantId) : [])
             .sort((a, b) => b.created_at - a.created_at);
         }
 
@@ -832,3 +828,26 @@ export function setupTauriBrowserMock(): void {
     },
   };
 }
+
+/**
+ * Completely purges all locally mocked SQLite tables and caches
+ * to ensure 100% tenant isolation when switching or logging out users.
+ */
+export function purgeMockDatabase(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const keysToRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && (key.startsWith('genx_sql_') || key.startsWith('genx:pos_orders_') || key.startsWith('genx:vehicles_') || key.startsWith('genx:receipt_settings'))) {
+        keysToRemove.push(key);
+      }
+    }
+    for (const k of keysToRemove) {
+      localStorage.removeItem(k);
+    }
+  } catch (e) {
+    console.warn('[tauri-mock] purgeMockDatabase warning:', e);
+  }
+}
+

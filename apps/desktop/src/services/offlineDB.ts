@@ -161,3 +161,13 @@ export async function clearStore(storeName: string): Promise<void> {
   }
 }
 
+export async function clearAllOfflineStores(): Promise<void> {
+  try {
+    await Promise.all(
+      Object.values(OFFLINE_STORES).map((store) => clearStore(store))
+    );
+  } catch {
+    // ignore
+  }
+}
+

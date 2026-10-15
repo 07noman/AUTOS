@@ -123,6 +123,12 @@ export const useAuth = create<AuthState>()(
                 tenantId,
               };
 
+              // ── STRICT TENANT ISOLATION: Purge previous tenant's local data if different ──
+              const prevUser = get().user;
+              if (prevUser && prevUser.tenantId !== tenantId) {
+                await purgeLocalTenantSessionData();
+              }
+
               localStorage.setItem('genx:authToken', data.session.access_token);
               set({
                 user,
@@ -278,6 +284,7 @@ export const useAuth = create<AuthState>()(
         } catch {
           // ignore
         }
+        await purgeLocalTenantSessionData();
         localStorage.removeItem('genx:authToken');
         localStorage.removeItem('genx:selectedModule');
         localStorage.removeItem('genx:lastSyncTimestamp');
@@ -298,3 +305,43 @@ export const useAuth = create<AuthState>()(
     }
   )
 );
+
+/**
+ * Completely purges all local storage and IndexedDB data belonging to a tenant session
+ * to guarantee 100% strict SaaS multi-tenant isolation.
+ */
+export async function purgeLocalTenantSessionData(): Promise<void> {
+  if (typeof window === 'undefined') return;
+  try {
+    // 1. Purge all mock SQL tables in localStorage
+    const { purgeMockDatabase } = await import('@/lib/tauri-mock');
+    purgeMockDatabase();
+
+    // 2. Clear IndexedDB offline stores (orders, products, inventory, customers)
+    const { clearAllOfflineStores } = await import('@/services/offlineDB');
+    await clearAllOfflineStores();
+
+    // 3. Purge all tenant caches and session items in localStorage
+    const toRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (
+        k &&
+        (k.startsWith('genx:pos_orders_') ||
+         k.startsWith('genx:vehicles_') ||
+         k.startsWith('genx:receipt_settings') ||
+         k.startsWith('genx:offline-creds') ||
+         k.startsWith('genx:lastSync') ||
+         k.startsWith('genx_sql_'))
+      ) {
+        toRemove.push(k);
+      }
+    }
+    for (const k of toRemove) {
+      localStorage.removeItem(k);
+    }
+  } catch (err) {
+    console.warn('[auth] purgeLocalTenantSessionData error:', err);
+  }
+}
+

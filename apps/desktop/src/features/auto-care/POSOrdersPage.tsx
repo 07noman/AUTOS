@@ -372,7 +372,9 @@ export function POSOrdersPage() {
         const raw = localStorage.getItem(`genx:pos_orders_cache:${tenantId}`);
         if (raw) {
           const parsed = JSON.parse(raw);
-          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            return parsed.filter((o: any) => o && o.tenantId === tenantId);
+          }
         }
       }
     } catch {}
@@ -397,16 +399,16 @@ export function POSOrdersPage() {
     if (isManual) setRefreshing(true);
     const tenantId = getCurrentTenantId();
     try {
-      // 1. Instant local load from SQLite and IndexedDB (< 5ms)
-      const local = await posOrderRepo.findLocal(tenantId);
+      // 1. Instant local load from SQLite and IndexedDB (< 5ms) strictly for this tenant
+      const local = (await posOrderRepo.findLocal(tenantId)).filter((o) => o.tenantId === tenantId);
       if (local.length > 0) {
         setOrders(local);
         setSelected((prev) => prev ?? local[0] ?? null);
         setLoading(false);
       }
 
-      // 2. Background revalidation from database / Supabase
-      const all = await posOrderRepo.findAll(tenantId);
+      // 2. Background revalidation from database / Supabase strictly for this tenant
+      const all = (await posOrderRepo.findAll(tenantId)).filter((o) => o.tenantId === tenantId);
       setOrders(all);
       setSelected((prev) => {
         if (!prev && all.length > 0) return all[0];

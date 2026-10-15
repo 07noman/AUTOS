@@ -89,7 +89,9 @@ export function getCurrentTenantId(): string {
     if (raw) {
       const parsed = JSON.parse(raw) as { state?: { user?: { tenantId?: string } } };
       const tenantId = parsed?.state?.user?.tenantId;
-      if (tenantId && tenantId !== 'tenant-1') return tenantId;
+      if (tenantId && typeof tenantId === 'string' && tenantId.trim()) {
+        return tenantId.trim();
+      }
     }
   } catch {
     // ignore parse errors
