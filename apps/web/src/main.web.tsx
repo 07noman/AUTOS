@@ -21,6 +21,8 @@ import { BrowserRouter } from 'react-router-dom';
 import App from '@/App';
 import '@/index.css';
 
+// Deployment trigger for Auto Care Security & Module Visibility (v1.1)
+
 // Tauri browser mock — lets SQLite repos fall back to localStorage in browser
 import { setupTauriBrowserMock } from '@/lib/tauri-mock';
 
