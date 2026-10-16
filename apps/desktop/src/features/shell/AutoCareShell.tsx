@@ -8,10 +8,13 @@ import {
   Moon,
   Sun,
   LogOut,
+  EyeOff,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useConnectivity } from '@/hooks/useConnectivity';
 import UserMenu from '@/components/UserMenu';
+import { PasscodeLock } from '@/components/PasscodeLock';
+import { getAppSettings, isModuleUnlocked } from '@/lib/app-settings';
 
 export function AutoCareShell() {
   const navigate = useNavigate();
@@ -20,6 +23,40 @@ export function AutoCareShell() {
   const [showUserMenu, setShowUserMenu] = useState(false);
   const { user, logout } = useAuth();
   const { status, syncStatus, refreshPending } = useConnectivity();
+
+  // App settings protection state
+  const [isPasscodeEnabled, setIsPasscodeEnabled] = useState(false);
+  const [hiddenModules, setHiddenModules] = useState<string[]>([]);
+  const [sessionUnlocked, setSessionUnlocked] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    let isMounted = true;
+    void (async () => {
+      try {
+        const settings = await getAppSettings();
+        if (isMounted) {
+          setIsPasscodeEnabled(Boolean(settings.is_passcode_enabled));
+          setHiddenModules(settings.hidden_modules || []);
+        }
+      } catch (err) {
+        console.warn('[AutoCareShell] Failed to load app settings:', err);
+      }
+    })();
+
+    const handleSettingsChanged = (e: Event) => {
+      const custom = e as CustomEvent;
+      if (custom?.detail && isMounted) {
+        setIsPasscodeEnabled(Boolean(custom.detail.is_passcode_enabled));
+        setHiddenModules(custom.detail.hidden_modules || []);
+      }
+    };
+
+    window.addEventListener('app_settings_changed', handleSettingsChanged);
+    return () => {
+      isMounted = false;
+      window.removeEventListener('app_settings_changed', handleSettingsChanged);
+    };
+  }, []);
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', darkMode);
@@ -38,6 +75,7 @@ export function AutoCareShell() {
   const getAppTitle = () => {
     const p = location.pathname;
     if (p.includes('/pos')) return 'Point of Sale';
+    if (p.includes('/orders')) return 'POS Orders';
     if (p.includes('/dashboard')) return 'Dashboard';
     if (p.includes('/jobs') || p.includes('/service-jobs')) return 'Service Jobs';
     if (p.includes('/vehicles')) return 'Vehicles';
@@ -132,9 +170,47 @@ export function AutoCareShell() {
         </div>
       </header>
 
-      {/* Main Content Area without sidebars */}
-      <main className="flex-1 overflow-y-auto bg-bg">
-        <Outlet />
+      {/* Main Content Area */}
+      <main className="flex-1 overflow-y-auto bg-bg relative">
+        {(() => {
+          const appTitle = getAppTitle();
+          const isModuleHidden = appTitle !== 'Settings' && hiddenModules.includes(appTitle);
+          const isModuleLocked =
+            isPasscodeEnabled && !isModuleUnlocked(appTitle) && !sessionUnlocked[appTitle];
+
+          if (isModuleHidden) {
+            return (
+              <div className="flex flex-col items-center justify-center min-h-[65vh] p-6 text-center select-none">
+                <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-rose-500/10 text-rose-400 border border-rose-500/20 mb-4 shadow-lg shadow-rose-500/5">
+                  <EyeOff className="h-8 w-8" />
+                </div>
+                <h2 className="text-xl font-bold text-text mb-2">Module Hidden by Administrator</h2>
+                <p className="text-sm text-text-secondary max-w-md mb-6 leading-relaxed">
+                  The <span className="text-text font-semibold">{appTitle}</span> module is currently hidden in your store settings and cannot be accessed.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => navigate('/auto-care')}
+                  className="px-5 py-2.5 rounded-xl bg-primary text-white text-sm font-semibold hover:bg-primary/90 transition shadow-lg shadow-primary/20 cursor-pointer"
+                >
+                  Return to Launcher
+                </button>
+              </div>
+            );
+          }
+
+          if (isModuleLocked) {
+            return (
+              <PasscodeLock
+                moduleName={appTitle}
+                onUnlock={() => setSessionUnlocked((prev) => ({ ...prev, [appTitle]: true }))}
+                onClose={() => navigate('/auto-care')}
+              />
+            );
+          }
+
+          return <Outlet />;
+        })()}
       </main>
     </div>
   );

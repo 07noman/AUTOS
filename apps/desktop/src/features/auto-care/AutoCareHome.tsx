@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   LayoutDashboard,
   ShoppingCart,
@@ -26,6 +26,8 @@ import {
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import UserMenu from "@/components/UserMenu";
+import { PasscodeLock } from "@/components/PasscodeLock";
+import { getAppSettings, isModuleUnlocked } from "@/lib/app-settings";
 
 export type AutoCareApp = {
   id: string;
@@ -156,14 +158,67 @@ export function AutoCareHome() {
   const [showMenu, setShowMenu] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
 
+  // Feature 1 & 2 states
+  const [isPasscodeEnabled, setIsPasscodeEnabled] = useState(false);
+  const [hiddenModules, setHiddenModules] = useState<string[]>([]);
+  const [pendingAppForUnlock, setPendingAppForUnlock] = useState<AutoCareApp | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+    void (async () => {
+      try {
+        const settings = await getAppSettings();
+        if (isMounted) {
+          setIsPasscodeEnabled(Boolean(settings.is_passcode_enabled));
+          setHiddenModules(settings.hidden_modules || []);
+        }
+      } catch (err) {
+        console.warn("[AutoCareHome] Failed to load app settings:", err);
+      }
+    })();
+
+    const handleSettingsChanged = (e: Event) => {
+      const custom = e as CustomEvent;
+      if (custom?.detail && isMounted) {
+        setIsPasscodeEnabled(Boolean(custom.detail.is_passcode_enabled));
+        setHiddenModules(custom.detail.hidden_modules || []);
+      }
+    };
+
+    window.addEventListener("app_settings_changed", handleSettingsChanged);
+    return () => {
+      isMounted = false;
+      window.removeEventListener("app_settings_changed", handleSettingsChanged);
+    };
+  }, []);
+
   const openApp = (app: AutoCareApp) => {
+    // If passcode protection is enabled and module not unlocked in current session
+    if (isPasscodeEnabled && !isModuleUnlocked(app.name)) {
+      setPendingAppForUnlock(app);
+      return;
+    }
+
     navigate(app.href);
+  };
+
+  const handleUnlockSuccess = () => {
+    if (pendingAppForUnlock) {
+      const targetHref = pendingAppForUnlock.href;
+      setPendingAppForUnlock(null);
+      navigate(targetHref);
+    }
   };
 
   const handleSwitchBusiness = () => {
     localStorage.removeItem("genx:selectedModule");
     navigate("/select-module");
   };
+
+  // Filter out any modules present in hidden_modules (Settings is never hidden)
+  const visibleModules = AUTO_CARE_APPS.filter(
+    (app) => app.name === "Settings" || !hiddenModules.includes(app.name)
+  );
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-[#1d1d23] text-white select-none">
@@ -301,10 +356,10 @@ export function AutoCareHome() {
           </div>
 
           {/* =================================================
-              APPLICATION GRID
+              APPLICATION GRID (FILTERED BY VISIBILITY)
           ================================================== */}
           <div className="mx-auto grid max-w-[850px] grid-cols-3 justify-items-center gap-x-6 gap-y-9 sm:grid-cols-4 sm:gap-x-10 sm:gap-y-12 md:grid-cols-5 md:gap-x-12 md:gap-y-14">
-            {AUTO_CARE_APPS.map((app) => {
+            {visibleModules.map((app) => {
               const Icon = app.icon;
 
               return (
@@ -356,6 +411,17 @@ export function AutoCareHome() {
           </div>
         </div>
       </section>
+
+      {/* =====================================================
+          FEATURE 1: 4-DIGIT MASTER PASSCODE LOCK MODAL
+      ====================================================== */}
+      {pendingAppForUnlock && (
+        <PasscodeLock
+          moduleName={pendingAppForUnlock.name}
+          onUnlock={handleUnlockSuccess}
+          onClose={() => setPendingAppForUnlock(null)}
+        />
+      )}
     </main>
   );
 }

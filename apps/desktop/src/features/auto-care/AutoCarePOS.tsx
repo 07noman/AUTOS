@@ -22,6 +22,7 @@ import {
   X,
   ShoppingCart,
   LayoutGrid,
+  EyeOff,
 } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
@@ -38,6 +39,8 @@ import { saveOfflineOrder } from "../../services/offlineOrders";
 import { reduceStock } from "../../services/offlineInventory";
 import SoftwareMode from "../../components/SoftwareMode";
 import UserMenu from "../../components/UserMenu";
+import { PasscodeLock } from "@/components/PasscodeLock";
+import { getAppSettings, isModuleUnlocked } from "@/lib/app-settings";
 
 type Category = {
   id: string;
@@ -471,6 +474,67 @@ export function AutoCarePOS() {
     price: item.price,
     type: item.type,
   }));
+
+  // ── Protection Guard: Hidden Module & Master Passcode ────────────────────
+  const [posUnlocked, setPosUnlocked] = useState(() => isModuleUnlocked('Point of Sale'));
+  const [isPosBlocked, setIsPosBlocked] = useState(false);
+  const [isPosLocked, setIsPosLocked] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+    void (async () => {
+      try {
+        const settings = await getAppSettings();
+        if (!isMounted) return;
+        if (settings.hidden_modules?.includes('Point of Sale')) {
+          setIsPosBlocked(true);
+        } else if (settings.is_passcode_enabled && !isModuleUnlocked('Point of Sale') && !posUnlocked) {
+          setIsPosLocked(true);
+        }
+      } catch (err) {
+        console.warn('[AutoCarePOS] Error checking protection settings:', err);
+      }
+    })();
+    return () => {
+      isMounted = false;
+    };
+  }, [posUnlocked]);
+
+  if (isPosBlocked) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-[#1d1d23] text-white p-6 text-center select-none">
+        <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-rose-500/10 text-rose-400 border border-rose-500/20 mb-4 shadow-lg shadow-rose-500/5">
+          <EyeOff className="h-8 w-8" />
+        </div>
+        <h2 className="text-xl font-bold mb-2">Point of Sale Hidden</h2>
+        <p className="text-sm text-slate-400 max-w-md mb-6 leading-relaxed">
+          The Point of Sale module is currently hidden by administrator settings.
+        </p>
+        <button
+          type="button"
+          onClick={() => navigate('/auto-care')}
+          className="px-5 py-2.5 rounded-xl bg-primary text-white text-sm font-semibold hover:bg-primary/90 transition shadow-lg shadow-primary/20 cursor-pointer"
+        >
+          Return to Launcher
+        </button>
+      </div>
+    );
+  }
+
+  if (isPosLocked) {
+    return (
+      <div className="min-h-screen bg-[#1d1d23]">
+        <PasscodeLock
+          moduleName="Point of Sale"
+          onUnlock={() => {
+            setPosUnlocked(true);
+            setIsPosLocked(false);
+          }}
+          onClose={() => navigate('/auto-care')}
+        />
+      </div>
+    );
+  }
 
   // ── PaymentPage: full-screen overlay, cart is NOT cleared on back ─────────
   if (showPayment) {
