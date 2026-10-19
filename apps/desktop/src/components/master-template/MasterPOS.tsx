@@ -125,7 +125,7 @@ export function MasterPOS({ businessType: propType }: MasterPOSProps) {
         make: jobVehicle || "",
         model: "",
         mileage: "",
-        customerName: jobCustomer || undefined,
+        customerName: jobCustomer || "",
       });
     }
   }, [searchParams]);

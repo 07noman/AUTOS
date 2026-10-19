@@ -27,6 +27,7 @@ import { ReceiptBrandingPage } from './features/settings/ReceiptBrandingPage';
 import { useAuth } from './hooks/useAuth';
 import { useRealtimeSync } from './hooks/useProducts';
 import { initializeDatabase } from './lib/db';
+import { initializeAutoCareSchema } from './lib/auto-care-db';
 import { initializeSync } from './lib/sync';
 import { BusinessHome } from './features/business/BusinessHome';
 import { BusinessShell } from './features/business/BusinessShell';
@@ -157,42 +158,89 @@ function App() {
         <Route path="settings/receipt" element={<ReceiptBrandingPage />} />
       </Route>
 
-      {/* Standard / Retail / Restaurant / Mart / Bakery fallback routes */}
-      <Route path="/" element={<AppShell />}>
-        <Route
-          index
-          element={
-            isAutoCare ? (
-              <Navigate to="/auto-care" replace />
-            ) : selectedModule ? (
-              <Navigate to={`/business/${selectedModule}`} replace />
-            ) : (
-              <Navigate to="/select-module" replace />
-            )
-          }
-        />
-        <Route path="pos" element={<POS />} />
-        <Route path="pos/advanced" element={<AdvancedPOS />} />
-        <Route path="dashboard" element={<Dashboard />} />
-        <Route path="products" element={<Products />} />
-        <Route path="inventory" element={<InventoryView />} />
-        <Route path="customers" element={<Customers />} />
-        <Route path="reports" element={<SalesReport />} />
-        <Route path="orders" element={<POSOrdersPage />} />
-        {/* If in auto care mode, /settings redirects to /auto-care/settings */}
-        <Route
-          path="settings"
-          element={
-            isAutoCare ? (
-              <Navigate to="/auto-care/settings" replace />
-            ) : (
-              <SettingsPage />
-            )
-          }
-        />
-        <Route path="settings/receipt-branding" element={<ReceiptBrandingPage />} />
-        <Route path="settings/receipt" element={<ReceiptBrandingPage />} />
-      </Route>
+      {/* All standard business types use the unified Master Template UI */}
+      <Route
+        path="/pos"
+        element={
+          isAutoCare ? (
+            <Navigate to="/auto-care/pos" replace />
+          ) : (
+            <Navigate to={`/business/${selectedModule || 'general'}/pos`} replace />
+          )
+        }
+      />
+      <Route
+        path="/dashboard"
+        element={
+          isAutoCare ? (
+            <Navigate to="/auto-care/dashboard" replace />
+          ) : (
+            <Navigate to={`/business/${selectedModule || 'general'}/dashboard`} replace />
+          )
+        }
+      />
+      <Route
+        path="/inventory"
+        element={
+          isAutoCare ? (
+            <Navigate to="/auto-care/inventory" replace />
+          ) : (
+            <Navigate to={`/business/${selectedModule || 'general'}/inventory`} replace />
+          )
+        }
+      />
+      <Route
+        path="/customers"
+        element={
+          isAutoCare ? (
+            <Navigate to="/auto-care/customers" replace />
+          ) : (
+            <Navigate to={`/business/${selectedModule || 'general'}/customers`} replace />
+          )
+        }
+      />
+      <Route
+        path="/products"
+        element={
+          isAutoCare ? (
+            <Navigate to="/auto-care/parts" replace />
+          ) : (
+            <Navigate to={`/business/${selectedModule || 'general'}/parts`} replace />
+          )
+        }
+      />
+      <Route
+        path="/reports"
+        element={
+          isAutoCare ? (
+            <Navigate to="/auto-care/reports" replace />
+          ) : (
+            <Navigate to={`/business/${selectedModule || 'general'}/reports`} replace />
+          )
+        }
+      />
+      <Route
+        path="/settings"
+        element={
+          isAutoCare ? (
+            <Navigate to="/auto-care/settings" replace />
+          ) : (
+            <Navigate to={`/business/${selectedModule || 'general'}/settings`} replace />
+          )
+        }
+      />
+      <Route
+        path="/"
+        element={
+          isAutoCare ? (
+            <Navigate to="/auto-care" replace />
+          ) : selectedModule ? (
+            <Navigate to={`/business/${selectedModule}`} replace />
+          ) : (
+            <Navigate to="/select-module" replace />
+          )
+        }
+      />
 
       {/* Catch-all fallback */}
       <Route path="*" element={<Navigate to="/" replace />} />
