@@ -13,11 +13,11 @@ export function ModuleSelector({ onBack }: { onBack?: () => void }) {
     if (!isAuthenticated) {
       navigate('/login');
     } else {
-      // 2# If already logged in, immediately open the chosen business type point of sale
+      // If already logged in, navigate to the unified business launcher
       if (businessType === 'auto-parts') {
         navigate('/auto-care');
       } else {
-        navigate('/pos');
+        navigate(`/business/${businessType}`);
       }
     }
   };

@@ -27,8 +27,11 @@ import { ReceiptBrandingPage } from './features/settings/ReceiptBrandingPage';
 import { useAuth } from './hooks/useAuth';
 import { useRealtimeSync } from './hooks/useProducts';
 import { initializeDatabase } from './lib/db';
-import { initializeAutoCareSchema } from './lib/auto-care-db';
 import { initializeSync } from './lib/sync';
+import { BusinessHome } from './features/business/BusinessHome';
+import { BusinessShell } from './features/business/BusinessShell';
+import { MasterDashboard, MasterPOS, MasterInventory, MasterOrders } from './components/master-template';
+import { resolveBusinessType } from './lib/businessTypes';
 
 function App() {
   const { isAuthenticated, validateSession } = useAuth();
@@ -126,15 +129,45 @@ function App() {
         <Route path="settings/receipt" element={<ReceiptBrandingPage />} />
       </Route>
 
-      {/* Standard / Retail / Restaurant / Mart / Bakery POS shell routes */}
+      {/* Unified Business Master Launcher & Sub-Modules (100% Identical to Auto Parts) */}
+      <Route path="/business/:businessType" element={<BusinessHome />} />
+      <Route path="/business/:businessType/pos" element={<MasterPOS />} />
+      <Route path="/business/:businessType/orders" element={<MasterOrders />} />
+
+      <Route path="/business/:businessType" element={<BusinessShell />}>
+        <Route path="dashboard" element={<MasterDashboard />} />
+        <Route path="service-jobs" element={<ServiceJobs />} />
+        <Route path="jobs" element={<ServiceJobs />} />
+        <Route path="jobs/new" element={<NewJobForm />} />
+        <Route path="jobs/:jobId" element={<NewJobForm />} />
+        <Route path="vehicles" element={<VehiclesView />} />
+        <Route path="vehicle-history" element={<VehicleHistoryView />} />
+        <Route path="customers" element={<Customers />} />
+        <Route path="inventory" element={<MasterInventory />} />
+        <Route path="estimates" element={<AutoCareModuleView moduleId="estimates" />} />
+        <Route path="appointments" element={<AutoCareModuleView moduleId="appointments" />} />
+        <Route path="job-board" element={<AutoCareModuleView moduleId="job-board" />} />
+        <Route path="payments" element={<AutoCareModuleView moduleId="payments" />} />
+        <Route path="staff" element={<AutoCareModuleView moduleId="staff" />} />
+        <Route path="parts" element={<Products />} />
+        <Route path="orders" element={<MasterOrders />} />
+        <Route path="reports" element={<AutoCareReportsPage />} />
+        <Route path="settings" element={<SettingsPage />} />
+        <Route path="settings/receipt-branding" element={<ReceiptBrandingPage />} />
+        <Route path="settings/receipt" element={<ReceiptBrandingPage />} />
+      </Route>
+
+      {/* Standard / Retail / Restaurant / Mart / Bakery fallback routes */}
       <Route path="/" element={<AppShell />}>
         <Route
           index
           element={
             isAutoCare ? (
               <Navigate to="/auto-care" replace />
+            ) : selectedModule ? (
+              <Navigate to={`/business/${selectedModule}`} replace />
             ) : (
-              <Navigate to="/pos" replace />
+              <Navigate to="/select-module" replace />
             )
           }
         />
