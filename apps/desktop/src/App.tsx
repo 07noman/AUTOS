@@ -33,6 +33,7 @@ import { BusinessHome } from './features/business/BusinessHome';
 import { BusinessShell } from './features/business/BusinessShell';
 import { MasterDashboard, MasterPOS, MasterInventory, MasterOrders } from './components/master-template';
 import { resolveBusinessType } from './lib/businessTypes';
+import { AccountActionsPage } from './features/account-actions/AccountActionsPage';
 
 function App() {
   const { isAuthenticated, validateSession } = useAuth();
@@ -97,6 +98,7 @@ function App() {
       {/* Route to switch / choose business type */}
       <Route path="/select-module" element={<ModuleSelector />} />
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/account-actions" element={<AccountActionsPage />} />
 
       {/* Auto Care App Launcher — Full Screen Odoo-Style (NO sidebar) */}
       <Route path="/auto-care" element={<AutoCareHome />} />

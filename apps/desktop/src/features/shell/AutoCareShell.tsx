@@ -12,7 +12,6 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useConnectivity } from '@/hooks/useConnectivity';
-import UserMenu from '@/components/UserMenu';
 import { PasscodeLock } from '@/components/PasscodeLock';
 import { getAppSettings, isModuleUnlocked } from '@/lib/app-settings';
 
@@ -20,7 +19,6 @@ export function AutoCareShell() {
   const navigate = useNavigate();
   const location = useLocation();
   const [darkMode, setDarkMode] = useState(false);
-  const [showUserMenu, setShowUserMenu] = useState(false);
   const { user, logout } = useAuth();
   const { status, syncStatus, refreshPending } = useConnectivity();
 
@@ -153,19 +151,13 @@ export function AutoCareShell() {
           <div className="relative flex items-center gap-2 pl-2 border-l border-white/10">
             <button
               type="button"
-              onClick={() => setShowUserMenu(!showUserMenu)}
+              onClick={() => navigate('/account-actions')}
               className="h-7 w-7 rounded-full bg-emerald-500 flex items-center justify-center text-xs font-bold text-white shadow-sm cursor-pointer hover:ring-2 hover:ring-white/40 transition"
               title={user?.name || "Auto Care User"}
+              aria-label="Account Actions"
             >
               {user?.name?.charAt(0).toUpperCase() || 'A'}
             </button>
-
-            {showUserMenu && (
-              <UserMenu
-                onLogout={logout}
-                onClose={() => setShowUserMenu(false)}
-              />
-            )}
           </div>
         </div>
       </header>

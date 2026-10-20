@@ -25,7 +25,6 @@ import {
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
-import UserMenu from "@/components/UserMenu";
 import { PasscodeLock } from "@/components/PasscodeLock";
 import { getAppSettings, isModuleUnlocked } from "@/lib/app-settings";
 
@@ -156,7 +155,6 @@ export function AutoCareHome() {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
   const [showMenu, setShowMenu] = useState(false);
-  const [showUserMenu, setShowUserMenu] = useState(false);
 
   // Feature 1 & 2 states
   const [isPasscodeEnabled, setIsPasscodeEnabled] = useState(false);
@@ -320,19 +318,13 @@ export function AutoCareHome() {
           <div className="relative">
             <button
               type="button"
-              onClick={() => setShowUserMenu(!showUserMenu)}
+              onClick={() => navigate('/account-actions')}
               className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-500 text-sm font-bold text-white shadow-lg shadow-emerald-500/10 cursor-pointer hover:ring-2 hover:ring-white/40 transition"
               title={user?.name || "Auto Care User"}
+              aria-label="Account Actions"
             >
               {user?.name?.charAt(0).toUpperCase() || "A"}
             </button>
-
-            {showUserMenu && (
-              <UserMenu
-                onLogout={logout}
-                onClose={() => setShowUserMenu(false)}
-              />
-            )}
           </div>
         </div>
       </header>

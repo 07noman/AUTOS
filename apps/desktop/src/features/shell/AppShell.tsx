@@ -25,7 +25,6 @@ import { Avatar, AvatarFallback } from '@genx/ui/Avatar';
 import { Badge } from '@genx/ui/Badge';
 import { useAuth } from '@/hooks/useAuth';
 import { useConnectivity } from '@/hooks/useConnectivity';
-import UserMenu from '@/components/UserMenu';
 
 const navItems = [
   { icon: ShoppingCart, label: 'POS', path: '/pos' },
@@ -55,7 +54,6 @@ export function AppShell() {
   const navigate = useNavigate();
   const [sidebarExpanded, setSidebarExpanded] = useState(true);
   const [darkMode, setDarkMode] = useState(false);
-  const [showUserMenu, setShowUserMenu] = useState(false);
   const { user, logout } = useAuth();
   const { status, syncStatus, pendingCount, refreshPending } = useConnectivity();
 
@@ -190,9 +188,10 @@ export function AppShell() {
             <div className="relative flex items-center space-x-3 border-l border-border pl-4">
               <button
                 type="button"
-                onClick={() => setShowUserMenu(!showUserMenu)}
+                onClick={() => navigate('/account-actions')}
                 className="flex items-center space-x-3 text-left cursor-pointer hover:opacity-80 transition"
-                title={user?.name || "User menu"}
+                title={user?.name || "Account Actions"}
+                aria-label="Account Actions"
               >
                 <Avatar>
                   <AvatarFallback className="bg-primary text-white text-sm">{user?.name?.charAt(0) ?? 'U'}</AvatarFallback>
@@ -204,13 +203,6 @@ export function AppShell() {
                   </div>
                 )}
               </button>
-
-              {showUserMenu && (
-                <UserMenu
-                  onLogout={logout}
-                  onClose={() => setShowUserMenu(false)}
-                />
-              )}
             </div>
           </div>
         </header>

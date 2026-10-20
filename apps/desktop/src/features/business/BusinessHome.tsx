@@ -18,7 +18,6 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
-import UserMenu from '@/components/UserMenu';
 import { PasscodeLock } from '@/components/PasscodeLock';
 import { getAppSettings, isModuleUnlocked } from '@/lib/app-settings';
 import {
@@ -41,7 +40,6 @@ export function BusinessHome({ businessType: propType }: Props) {
   const activeType = resolveBusinessType(propType || params.businessType || localStorage.getItem('genx:selectedModule'));
   const { user, logout } = useAuth();
   const [showMenu, setShowMenu] = useState(false);
-  const [showUserMenu, setShowUserMenu] = useState(false);
 
   const [isPasscodeEnabled, setIsPasscodeEnabled] = useState(false);
   const [hiddenModules, setHiddenModules] = useState<string[]>([]);
@@ -196,16 +194,13 @@ export function BusinessHome({ businessType: propType }: Props) {
           <div className="relative">
             <button
               type="button"
-              onClick={() => setShowUserMenu(!showUserMenu)}
+              onClick={() => navigate('/account-actions')}
               className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-500 text-sm font-bold text-white shadow-lg shadow-emerald-500/10 cursor-pointer hover:ring-2 hover:ring-white/40 transition"
               title={user?.name || `${config.name} User`}
+              aria-label="Account Actions"
             >
               {user?.name?.charAt(0).toUpperCase() || config.name.charAt(0).toUpperCase()}
             </button>
-
-            {showUserMenu && (
-              <UserMenu onLogout={logout} onClose={() => setShowUserMenu(false)} />
-            )}
           </div>
         </div>
       </header>

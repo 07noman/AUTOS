@@ -332,6 +332,7 @@ export async function purgeLocalTenantSessionData(): Promise<void> {
          k.startsWith('genx:receipt_settings') ||
          k.startsWith('genx:offline-creds') ||
          k.startsWith('genx:lastSync') ||
+         k.startsWith('genx:app_settings:') ||  // per-user settings cache
          k.startsWith('genx_sql_'))
       ) {
         toRemove.push(k);

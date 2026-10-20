@@ -33,6 +33,7 @@ import { saveOfflineOrder } from "@/services/offlineOrders";
 import { reduceStock } from "@/services/offlineInventory";
 import SoftwareMode from "@/components/SoftwareMode";
 import UserMenu from "@/components/UserMenu";
+import { AccountActionsPage } from "@/features/account-actions/AccountActionsPage";
 import { PasscodeLock } from "@/components/PasscodeLock";
 import { getAppSettings, isModuleUnlocked } from "@/lib/app-settings";
 import { BUSINESS_TYPES, resolveBusinessType, type BusinessTypeKey } from "@/lib/businessTypes";
@@ -66,7 +67,7 @@ interface MasterPOSProps {
 
 export function MasterPOS({ businessType: propType }: MasterPOSProps) {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const urlParams = useParams<{ businessType?: string }>();
   
   const bKey = resolveBusinessType(propType || urlParams.businessType);
@@ -88,6 +89,27 @@ export function MasterPOS({ businessType: propType }: MasterPOSProps) {
   const [selectedPOSCustomer, setSelectedPOSCustomer] = useState<POSCustomer | null>(null);
   const [showMenuDropdown, setShowMenuDropdown] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
+
+  const showAccountActions = showUserMenu || searchParams.get("view") === "actions";
+
+  const handleCloseAccountActions = () => {
+    setShowUserMenu(false);
+    if (searchParams.get("view") === "actions") {
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete("view");
+        return next;
+      });
+    }
+  };
+
+  const handleOpenAccountActions = () => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set("view", "actions");
+      return next;
+    });
+  };
 
   // App settings protection state
   const [isPasscodeEnabled, setIsPasscodeEnabled] = useState(false);
@@ -363,17 +385,17 @@ export function MasterPOS({ businessType: propType }: MasterPOSProps) {
             <SoftwareMode compact={true} />
           </div>
 
+          {/* User Profile & Account Actions */}
           <div className="relative">
             <button
-              onClick={() => setShowUserMenu(!showUserMenu)}
-              className="flex h-[34px] w-[34px] items-center justify-center rounded-lg bg-[#00897b] text-[13px] font-bold text-white shadow-sm hover:ring-2 hover:ring-[#00897b]/40 transition"
+              type="button"
+              onClick={handleOpenAccountActions}
+              className="flex h-[34px] w-[34px] items-center justify-center rounded-lg bg-[#00897b] text-[13px] font-bold text-white shadow-sm hover:ring-2 hover:ring-[#00897b]/40 transition cursor-pointer"
               title={user?.name || `${config.name} Cashier`}
+              aria-label="Account Actions"
             >
               {user?.name?.charAt(0).toUpperCase() || config.name.charAt(0).toUpperCase()}
             </button>
-            {showUserMenu && (
-              <UserMenu onLogout={logout} onClose={() => setShowUserMenu(false)} />
-            )}
           </div>
 
           <div className="relative">
@@ -669,6 +691,16 @@ export function MasterPOS({ businessType: propType }: MasterPOSProps) {
           }}
           onBack={() => setSuccessData(null)}
           onContinue={() => setSuccessData(null)}
+        />
+      )}
+
+      {/* Odoo-style Full Page Account Actions Grid */}
+      {showAccountActions && (
+        <AccountActionsPage
+          onClose={handleCloseAccountActions}
+          onLogout={logout}
+          cartItemCount={cart.length}
+          businessType={bKey}
         />
       )}
     </div>

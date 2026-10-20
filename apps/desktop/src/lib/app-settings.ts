@@ -10,7 +10,9 @@ export interface AppSettings {
   updated_at?: string;
 }
 
-const LOCAL_STORAGE_KEY = 'genx:app_settings';
+// NOTE: LOCAL_STORAGE_KEY is intentionally a function so each user gets
+// their own isolated cache. Never use a bare constant key.
+const getLocalStorageKey = (userId: string): string => `genx:app_settings:${userId}`;
 const UNLOCK_EXPIRY_MS = 30 * 60 * 1000; // 30 minutes
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -18,6 +20,19 @@ const DEFAULT_SETTINGS: AppSettings = {
   is_passcode_enabled: false,
   hidden_modules: [],
 };
+
+/**
+ * Returns the currently authenticated Supabase user ID, or null if not logged in.
+ */
+async function getCurrentUserId(): Promise<string | null> {
+  if (!isSupabaseConfigured()) return null;
+  try {
+    const { data } = await supabase.auth.getUser();
+    return data?.user?.id ?? null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Computes a secure SHA-256 hash with salt for a 4-digit passcode
@@ -107,12 +122,12 @@ export function lockAllModules(): void {
 }
 
 /**
- * Reads cached settings from localStorage
+ * Reads cached settings from localStorage, scoped to the given user ID.
  */
-function getCachedSettings(): AppSettings {
+function getCachedSettings(userId: string): AppSettings {
   if (typeof window === 'undefined') return DEFAULT_SETTINGS;
   try {
-    const cached = localStorage.getItem(LOCAL_STORAGE_KEY);
+    const cached = localStorage.getItem(getLocalStorageKey(userId));
     if (cached) {
       return { ...DEFAULT_SETTINGS, ...JSON.parse(cached) };
     }
@@ -123,12 +138,12 @@ function getCachedSettings(): AppSettings {
 }
 
 /**
- * Writes cached settings to localStorage
+ * Writes cached settings to localStorage, scoped to the given user ID.
  */
-function setCachedSettings(settings: AppSettings): void {
+function setCachedSettings(userId: string, settings: AppSettings): void {
   if (typeof window === 'undefined') return;
   try {
-    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(settings));
+    localStorage.setItem(getLocalStorageKey(userId), JSON.stringify(settings));
     window.dispatchEvent(new CustomEvent('app_settings_changed', { detail: settings }));
   } catch (err) {
     console.warn('[app-settings] Error caching settings:', err);
@@ -136,21 +151,24 @@ function setCachedSettings(settings: AppSettings): void {
 }
 
 /**
- * Fetches app settings from Supabase (falling back to localStorage)
+ * Fetches app settings from Supabase for the currently authenticated user,
+ * falling back to localStorage. Each user has their own isolated settings row.
  */
 export async function getAppSettings(): Promise<AppSettings> {
-  const cached = getCachedSettings();
+  const userId = await getCurrentUserId();
 
-  if (!isSupabaseConfigured()) {
-    return cached;
+  // If not logged in or Supabase not configured, use local cache (or default)
+  if (!userId || !isSupabaseConfigured()) {
+    return userId ? getCachedSettings(userId) : DEFAULT_SETTINGS;
   }
+
+  const cached = getCachedSettings(userId);
 
   try {
     const { data, error } = await supabase
       .from('app_settings')
       .select('id, user_id, master_passcode, is_passcode_enabled, hidden_modules, created_at, updated_at')
-      .order('created_at', { ascending: true })
-      .limit(1)
+      .eq('user_id', userId)
       .maybeSingle();
 
     if (error) {
@@ -168,11 +186,12 @@ export async function getAppSettings(): Promise<AppSettings> {
         created_at: data.created_at,
         updated_at: data.updated_at,
       };
-      setCachedSettings(merged);
+      setCachedSettings(userId, merged);
       return merged;
     } else {
-      // If table is completely empty, insert initial default row
+      // No settings row for this user yet — insert a fresh default row
       const initialRow = {
+        user_id: userId,
         is_passcode_enabled: false,
         master_passcode: null,
         hidden_modules: [],
@@ -184,7 +203,7 @@ export async function getAppSettings(): Promise<AppSettings> {
         .single();
 
       if (!insertErr && created) {
-        setCachedSettings(created);
+        setCachedSettings(userId, created);
         return created;
       }
     }
@@ -196,20 +215,23 @@ export async function getAppSettings(): Promise<AppSettings> {
 }
 
 /**
- * Updates app settings in Supabase and syncs local storage
+ * Updates app settings in Supabase for the current user and syncs local storage.
+ * Each user's settings are completely independent.
  */
 export async function updateAppSettings(updates: Partial<AppSettings>): Promise<AppSettings> {
+  const userId = await getCurrentUserId();
   const current = await getAppSettings();
   const nextSettings: AppSettings = {
     ...current,
     ...updates,
+    user_id: userId ?? current.user_id,
     updated_at: new Date().toISOString(),
   };
 
   // Immediate local update for responsive UI
-  setCachedSettings(nextSettings);
+  if (userId) setCachedSettings(userId, nextSettings);
 
-  if (!isSupabaseConfigured()) {
+  if (!isSupabaseConfigured() || !userId) {
     return nextSettings;
   }
 
@@ -224,17 +246,19 @@ export async function updateAppSettings(updates: Partial<AppSettings>): Promise<
           updated_at: nextSettings.updated_at,
         })
         .eq('id', current.id)
+        .eq('user_id', userId)   // Safety: only update rows owned by this user
         .select()
         .single();
 
       if (!error && data) {
-        setCachedSettings(data);
+        setCachedSettings(userId, data);
         return data;
       }
     } else {
       const { data, error } = await supabase
         .from('app_settings')
         .insert({
+          user_id: userId,
           master_passcode: nextSettings.master_passcode,
           is_passcode_enabled: nextSettings.is_passcode_enabled,
           hidden_modules: nextSettings.hidden_modules,
@@ -243,7 +267,7 @@ export async function updateAppSettings(updates: Partial<AppSettings>): Promise<
         .single();
 
       if (!error && data) {
-        setCachedSettings(data);
+        setCachedSettings(userId, data);
         return data;
       }
     }
