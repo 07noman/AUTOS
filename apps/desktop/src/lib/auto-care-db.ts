@@ -787,6 +787,7 @@ export const posOrderRepo = {
   async createPaid(input: {
     items: POSOrderItem[];
     subtotal: number;
+    discount?: number;
     tax: number;
     total: number;
     paidAmount: number;
@@ -852,7 +853,7 @@ export const posOrderRepo = {
             customer_name: input.customerName || null,
             payment_method: input.paymentMethod,
             subtotal: input.subtotal,
-            discount: 0,
+            discount: input.discount ?? 0,
             tax: input.tax,
             total: input.total,
             notes: JSON.stringify({
@@ -882,7 +883,7 @@ export const posOrderRepo = {
             order_number: `ORD-${orderNumber}`,
             customer_id: input.customerId || null,
             subtotal: input.subtotal,
-            discount: 0,
+            discount: input.discount ?? 0,
             tax: input.tax,
             total: input.total,
             payment_method: input.paymentMethod,

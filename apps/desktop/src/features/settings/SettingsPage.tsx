@@ -58,8 +58,8 @@ export function SettingsPage() {
 
   const [receiptAutoPrint, setReceiptAutoPrint] = useState(false);
   const [barcodeAutoFocus, setBarcodeAutoFocus] = useState(true);
-  const [taxRate, setTaxRate] = useState('8.0');
-  const [currency, setCurrency] = useState('USD ($)');
+  const [taxRate, setTaxRate] = useState(() => localStorage.getItem('genx:default_tax_rate') ?? '0');
+  const [currency, setCurrency] = useState(() => localStorage.getItem('genx:store_currency') ?? 'PKR (Rs)');
   const [savedMessage, setSavedMessage] = useState('');
 
   // Feature 1: Master Passcode Protection State
@@ -212,8 +212,16 @@ export function SettingsPage() {
   };
 
   const handleSaveSettings = () => {
-    setSavedMessage('Settings saved successfully');
-    setTimeout(() => setSavedMessage(''), 3000);
+    const parsedTax = Math.max(0, parseFloat(taxRate) || 0);
+    localStorage.setItem('genx:default_tax_rate', String(parsedTax));
+    localStorage.setItem('genx:store_currency', currency);
+    window.dispatchEvent(
+      new CustomEvent('genx:tax-rate-changed', {
+        detail: { taxRate: parsedTax, currency },
+      })
+    );
+    setSavedMessage(`Settings saved! Default Tax: ${parsedTax}%, Currency: ${currency}`);
+    setTimeout(() => setSavedMessage(''), 3500);
   };
 
   return (

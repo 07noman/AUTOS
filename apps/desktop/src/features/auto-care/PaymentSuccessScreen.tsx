@@ -26,7 +26,9 @@ export interface SuccessOrder extends GenXReceiptOrder {
   };
   items?: GenXReceiptItem[];
   subtotal?: number;
+  discount?: number;
   tax?: number;
+  taxRatePercent?: number;
   taxAmount?: number;
   taxableAmount?: number;
   total?: number;
@@ -348,9 +350,15 @@ export default function PaymentSuccessScreen({
               <strong>{fmt(order.subtotal, currency)}</strong>
             </div>
           )}
+          {order?.discount != null && order.discount > 0 && (
+            <div className="pss-detail-row" style={{ color: '#059669' }}>
+              <span>Discount</span>
+              <strong>-{fmt(order.discount, currency)}</strong>
+            </div>
+          )}
           {order?.tax != null && order.tax > 0 && (
             <div className="pss-detail-row">
-              <span>Tax (5%)</span>
+              <span>Tax{order?.taxRatePercent != null ? ` (${order.taxRatePercent}%)` : ''}</span>
               <strong>{fmt(order.tax, currency)}</strong>
             </div>
           )}

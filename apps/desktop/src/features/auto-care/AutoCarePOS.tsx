@@ -23,12 +23,15 @@ import {
   ShoppingCart,
   LayoutGrid,
   EyeOff,
+  Tag,
+  Percent,
 } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import PaymentPage, { type PaymentData, type POSCustomer, type POSCartItem } from "./PaymentPage";
 import PaymentSuccessScreen from "./PaymentSuccessScreen";
 import POSVehicleModal, { type POSVehicleDetails } from "./POSVehicleModal";
+import { DiscountModal, type DiscountType } from "@/components/pos/DiscountModal";
 import { completePOSSale, posOrderRepo, vehicleRepo } from "../../lib/auto-care-db";
 import { useAuth } from "../../hooks/useAuth";
 import { useProducts, useCategories } from "../../hooks/useProducts";
@@ -178,7 +181,9 @@ export function AutoCarePOS() {
     };
     items?: POSCartItem[];
     subtotal?: number;
+    discount?: number;
     tax?: number;
+    taxRatePercent?: number;
     total?: number;
     paidAmount?: number;
     orderId?: string;
@@ -229,13 +234,53 @@ export function AutoCarePOS() {
     });
   }, [allPosProducts, activeCategory, search]);
 
+  // ── Store & Tax integration (0% default or saved setting) ────────────────
+  const [taxRatePercent, setTaxRatePercent] = useState<number>(() => {
+    const saved = localStorage.getItem('genx:default_tax_rate');
+    return saved !== null ? Math.max(0, parseFloat(saved) || 0) : 0;
+  });
+
+  useEffect(() => {
+    const handleTaxChanged = (e: Event) => {
+      const custom = e as CustomEvent;
+      if (custom?.detail?.taxRate !== undefined) {
+        setTaxRatePercent(Math.max(0, Number(custom.detail.taxRate) || 0));
+      }
+    };
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === 'genx:default_tax_rate') {
+        setTaxRatePercent(Math.max(0, parseFloat(e.newValue || '0') || 0));
+      }
+    };
+    window.addEventListener('genx:tax-rate-changed', handleTaxChanged);
+    window.addEventListener('storage', handleStorage);
+    return () => {
+      window.removeEventListener('genx:tax-rate-changed', handleTaxChanged);
+      window.removeEventListener('storage', handleStorage);
+    };
+  }, []);
+
+  // ── Cart Discount state (Amount or Percent) ──────────────────────────────
+  const [discountType, setDiscountType] = useState<DiscountType>('percent');
+  const [discountValue, setDiscountValue] = useState<number>(0);
+  const [isDiscountModalOpen, setIsDiscountModalOpen] = useState(false);
+
   const subtotal = cart.reduce(
     (total, item) => total + item.price * item.quantity,
     0
   );
 
-  const tax = subtotal * 0.05;
-  const total = subtotal + tax;
+  const discountAmount = useMemo(() => {
+    if (discountValue <= 0 || subtotal <= 0) return 0;
+    if (discountType === 'percent') {
+      return (subtotal * Math.min(100, discountValue)) / 100;
+    }
+    return Math.min(subtotal, discountValue);
+  }, [subtotal, discountType, discountValue]);
+
+  const discountedSubtotal = Math.max(0, subtotal - discountAmount);
+  const tax = (discountedSubtotal * Math.max(0, taxRatePercent)) / 100;
+  const total = discountedSubtotal + tax;
 
   const addToCart = (product: Product) => {
     setCart((current) => {
@@ -322,6 +367,7 @@ export function AutoCarePOS() {
       }
     }
     setCart([]);
+    setDiscountValue(0);
     setSelectedPOSCustomer(null);
     setCustomer("Walk-in Customer");
     setCurrentOrderId(null);
@@ -335,6 +381,7 @@ export function AutoCarePOS() {
 
   const clearCart = () => {
     setCart([]);
+    setDiscountValue(0);
   };
 
   // ── handlePOSPayment (Idempotent POS Payment Submission) ─────────────────
@@ -370,6 +417,7 @@ export function AutoCarePOS() {
           subtotal: (item?.price || 0) * (item?.quantity || 1),
         })),
         subtotal: data.subtotal,
+        discount: data.discount ?? discountAmount,
         tax: data.tax,
         total: data.total,
         paidAmount: data.paidAmount,
@@ -448,6 +496,7 @@ export function AutoCarePOS() {
         orderNumber: paidOrder.orderNumber,
         items: data.items,
         subtotal: data.subtotal,
+        discount: data.discount ?? discountAmount,
         tax: data.tax,
         total: data.total,
         paymentMethod: data.paymentMethod,
@@ -463,6 +512,7 @@ export function AutoCarePOS() {
 
       // Clear cart & reset order after sale
       setCart([]);
+      setDiscountValue(0);
       setSelectedPOSCustomer(null);
       setCustomer("Walk-in Customer");
       setVehicleDetails(null);
@@ -565,7 +615,9 @@ export function AutoCarePOS() {
         <PaymentPage
           total={total}
           subtotal={subtotal}
+          discount={discountAmount}
           tax={tax}
+          taxRatePercent={taxRatePercent}
           items={paymentItems}
           orderId={currentOrderNumber ? String(currentOrderNumber).padStart(4, "0") : "0001"}
           selectedCustomer={selectedPOSCustomer}
@@ -588,7 +640,9 @@ export function AutoCarePOS() {
               } : undefined,
               items: data.items,
               subtotal: data.subtotal,
+              discount: data.discount ?? discountAmount,
               tax: data.tax,
+              taxRatePercent,
               total: data.total,
               paidAmount: data.paidAmount,
               orderId: data.orderId,
@@ -619,9 +673,11 @@ export function AutoCarePOS() {
                 unit: item.type === "service" ? "Hours" : "Units",
               })),
               subtotal: successData.subtotal ?? subtotal,
+              discount: successData.discount ?? discountAmount,
               tax: successData.tax ?? tax,
+              taxRatePercent: successData.taxRatePercent ?? taxRatePercent,
               taxAmount: successData.tax ?? tax,
-              taxableAmount: successData.subtotal ?? subtotal,
+              taxableAmount: (successData.subtotal ?? subtotal) - (successData.discount ?? discountAmount),
               total: successData.total ?? total,
               paymentMethod: successData.method,
               amountPaid: successData.paidAmount ?? successData.amount,
@@ -683,8 +739,9 @@ export function AutoCarePOS() {
                     vehicle: veh,
                     items: printItems,
                     subtotal: subTot,
-                    discount: 0,
+                    discount: Number(orderArg?.discount ?? successData?.discount ?? discountAmount),
                     tax: taxAmt,
+                    taxRatePercent: Number(orderArg?.taxRatePercent ?? successData?.taxRatePercent ?? taxRatePercent),
                     total: totAmt,
                     paymentMethod: payMethod,
                     amountPaid: paidAmt,
@@ -984,13 +1041,59 @@ export function AutoCarePOS() {
           {/* Bottom section: Totals + Customer/Note + Keypad + Payment */}
           <div className="shrink-0 border-t border-[#d8d8d8] bg-white">
             
-            {/* Taxes and Total */}
-            <div className="px-3 py-1.5">
+            {/* Totals, Discount & Tax */}
+            <div className="px-3 py-2 space-y-1 bg-white">
               <div className="flex items-center justify-between text-xs text-slate-600">
-                <span>Taxes (5%)</span>
+                <span>Subtotal</span>
+                <span>Rs. {subtotal.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+              </div>
+
+              {/* Discount Row (Replaces hardcoded tax & opens discount modal with amount/percent) */}
+              <div className="flex items-center justify-between text-xs">
+                <button
+                  type="button"
+                  onClick={() => setIsDiscountModalOpen(true)}
+                  disabled={cart.length === 0}
+                  className="flex items-center gap-1.5 font-semibold text-emerald-700 hover:text-emerald-800 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition-colors"
+                  title="Click to apply discount (percentage or fixed amount)"
+                >
+                  <Tag className="h-3.5 w-3.5 text-emerald-600" />
+                  {discountAmount > 0 ? (
+                    <span>Discount ({discountType === 'percent' ? `${discountValue}%` : 'Rs.'})</span>
+                  ) : (
+                    <span>+ Add Discount</span>
+                  )}
+                </button>
+                {discountAmount > 0 ? (
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-bold text-emerald-600">
+                      -Rs. {discountAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDiscountValue(0);
+                      }}
+                      className="text-slate-400 hover:text-rose-500 cursor-pointer p-0.5 rounded transition-colors"
+                      title="Remove discount"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                ) : (
+                  <span className="text-slate-400 text-[11px]">Rs. 0</span>
+                )}
+              </div>
+
+              {/* Taxes (Dynamic from Store Settings, 0% default) */}
+              <div className="flex items-center justify-between text-xs text-slate-600">
+                <span>Taxes ({taxRatePercent}%)</span>
                 <span>Rs. {tax.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
               </div>
-              <div className="flex items-center justify-between text-base font-bold text-slate-900 mt-0.5">
+
+              {/* Total Bill */}
+              <div className="flex items-center justify-between text-base font-bold text-slate-900 pt-1 border-t border-[#e8e8e8]">
                 <span>Total</span>
                 <span className="text-slate-900 font-bold text-[17px]">
                   Rs. {total.toLocaleString(undefined, { maximumFractionDigits: 0 })}
@@ -1275,6 +1378,23 @@ export function AutoCarePOS() {
           }
         }}
         currentDetails={vehicleDetails}
+      />
+
+      {/* Cart Discount Modal */}
+      <DiscountModal
+        isOpen={isDiscountModalOpen}
+        onClose={() => setIsDiscountModalOpen(false)}
+        subtotal={subtotal}
+        currentType={discountType}
+        currentValue={discountValue}
+        taxRatePercent={taxRatePercent}
+        onApply={(type, val) => {
+          setDiscountType(type);
+          setDiscountValue(val);
+        }}
+        onRemove={() => {
+          setDiscountValue(0);
+        }}
       />
 
       {/* Odoo-style Full Page Account Actions Grid */}

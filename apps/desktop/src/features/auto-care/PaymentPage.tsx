@@ -34,7 +34,9 @@ export interface PaymentData {
   orderId?: string;
   items: POSCartItem[];
   subtotal: number;
+  discount?: number;
   tax: number;
+  taxRatePercent?: number;
   total: number;
   paymentMethod: PaymentMethod;
   /** Cash/card: amount the customer handed over. Credit: 0. */
@@ -213,7 +215,9 @@ function SuccessOverlay({
 interface PaymentPageProps {
   total: number;
   subtotal: number;
+  discount?: number;
   tax: number;
+  taxRatePercent?: number;
   items: POSCartItem[];
   orderId?: string;
 
@@ -258,7 +262,9 @@ interface PaymentPageProps {
 export default function PaymentPage({
   total,
   subtotal,
+  discount = 0,
   tax,
+  taxRatePercent = 0,
   items,
   orderId,
   selectedCustomer: externalCustomer,
@@ -379,7 +385,9 @@ export default function PaymentPage({
         orderId,
         items,
         subtotal,
+        discount,
         tax,
+        taxRatePercent,
         total,
         paymentMethod: method,
         paidAmount: method === "credit" ? 0 : numericAmount,
@@ -632,6 +640,11 @@ export default function PaymentPage({
                 })}
               </strong>
             </div>
+            {discount > 0 && (
+              <div style={{ fontSize: '12px', fontWeight: 600, color: '#059669', marginTop: '4px' }}>
+                Discount Applied: -Rs. {discount.toLocaleString()}
+              </div>
+            )}
           </div>
 
           {/* Selected method pill */}
