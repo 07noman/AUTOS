@@ -219,11 +219,7 @@ export function PartsAndProducts() {
                       <div className="text-sm font-bold text-text">
                         Rs. {product.sellingPrice.toFixed(2)}
                       </div>
-                      {product.costPrice > 0 && (
-                        <div className="text-xs text-text-muted">
-                          Cost: Rs. {product.costPrice.toFixed(2)}
-                        </div>
-                      )}
+
                     </div>
 
                     <div className="text-center hidden md:block w-16">

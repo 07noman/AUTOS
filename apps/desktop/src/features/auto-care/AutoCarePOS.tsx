@@ -57,6 +57,7 @@ type Product = {
   name: string;
   price: number;
   category: string;
+  categoryId?: string;
   image?: string;
   type: "product" | "service";
   stock?: number;
@@ -123,15 +124,38 @@ export function AutoCarePOS() {
       "bg-pink-100",
       "bg-cyan-100",
     ];
+    const addedNames = new Set<string>();
+
     dbCategories.forEach((c, idx) => {
+      const cleanName = (c.name || '').trim();
+      if (!cleanName || addedNames.has(cleanName.toLowerCase())) return;
+      addedNames.add(cleanName.toLowerCase());
       list.push({
-        id: c.name,
-        name: c.name,
+        id: c.id || cleanName,
+        name: cleanName,
         color: swatches[idx % swatches.length],
       });
     });
+
+    // Also include any non-UUID category present on products that isn't in dbCategories
+    dbProducts.forEach((p, idx) => {
+      const rawCat = (p.categoryId || (p as any).category || '').trim();
+      if (!rawCat) return;
+      const matchingDbCat = dbCategories.find(
+        (c) => c.id === rawCat || c.name.toLowerCase() === rawCat.toLowerCase()
+      );
+      if (!matchingDbCat && !addedNames.has(rawCat.toLowerCase()) && !/^[0-9a-f-]{36}$/i.test(rawCat)) {
+        addedNames.add(rawCat.toLowerCase());
+        list.push({
+          id: rawCat,
+          name: rawCat,
+          color: swatches[(dbCategories.length + idx) % swatches.length],
+        });
+      }
+    });
+
     return list;
-  }, [dbCategories]);
+  }, [dbCategories, dbProducts]);
 
   // Persistent Order state
   const [currentOrderId, setCurrentOrderId] = useState<string | null>(null);
@@ -195,11 +219,18 @@ export function AutoCarePOS() {
   // Products from database only (NO mock products)
   const allPosProducts = useMemo<Product[]>(() => {
     return dbProducts.map((p) => {
+      const rawCat = (p.categoryId || (p as any).category || '').trim();
+      const matchedCat = dbCategories.find(
+        (c) => c.id === rawCat || c.name.toLowerCase() === rawCat.toLowerCase()
+      );
+      const displayCategory = matchedCat ? matchedCat.name : (rawCat || "General");
+
       return {
         id: p.id,
         name: p.name,
         price: p.sellingPrice,
-        category: p.categoryId || "General",
+        category: displayCategory,
+        categoryId: matchedCat ? matchedCat.id : rawCat,
         image: p.images?.[0],
         type: "product" as const,
         stock: p.stock,
@@ -208,19 +239,30 @@ export function AutoCarePOS() {
         sku: p.sku,
       };
     });
-  }, [dbProducts]);
+  }, [dbProducts, dbCategories]);
 
 
   const filteredProducts = useMemo(() => {
     return allPosProducts.filter((product) => {
       let categoryMatch = activeCategory === "all";
       if (!categoryMatch) {
-        const prodCat = (product.category || "").toLowerCase();
-        const activeCat = activeCategory.toLowerCase();
+        const activeClean = activeCategory.trim().toLowerCase();
+        const prodCatName = (product.category || "").trim().toLowerCase();
+        const prodCatId = (product.categoryId || "").trim().toLowerCase();
+
+        const matchedActiveCat = dbCategories.find(
+          (c) => c.id.toLowerCase() === activeClean || c.name.toLowerCase() === activeClean
+        );
+        const activeName = matchedActiveCat ? matchedActiveCat.name.toLowerCase() : activeClean;
+        const activeId = matchedActiveCat ? matchedActiveCat.id.toLowerCase() : activeClean;
+
         categoryMatch =
-          prodCat === activeCat ||
-          prodCat.includes(activeCat) ||
-          activeCat.includes(prodCat);
+          prodCatId === activeId ||
+          prodCatId === activeName ||
+          prodCatName === activeName ||
+          prodCatName === activeId ||
+          prodCatName.includes(activeName) ||
+          activeName.includes(prodCatName);
       }
 
       const searchClean = search.trim().toLowerCase();
@@ -232,7 +274,7 @@ export function AutoCarePOS() {
 
       return categoryMatch && searchMatch;
     });
-  }, [allPosProducts, activeCategory, search]);
+  }, [allPosProducts, activeCategory, search, dbCategories]);
 
   // ── Store & Tax integration (0% default or saved setting) ────────────────
   const [taxRatePercent, setTaxRatePercent] = useState<number>(() => {

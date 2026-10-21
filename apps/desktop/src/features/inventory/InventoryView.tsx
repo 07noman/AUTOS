@@ -61,6 +61,7 @@ export function InventoryView() {
   const [editPrice, setEditPrice] = useState(0);
   const [editCost, setEditCost] = useState(0);
   const [editMinStock, setEditMinStock] = useState(0);
+  const [editInitStock, setEditInitStock] = useState(0);
 
   // Category mapping
   const categoryMap = useMemo(() => {
@@ -189,14 +190,27 @@ export function InventoryView() {
   const handleSaveQuickEdit = async () => {
     if (!editProduct) return;
     try {
-      await updateProduct.mutateAsync({
+      // Prepare update payload
+      const updatePayload: Record<string, any> = {
         id: editProduct.id,
         tenantId: editProduct.tenantId,
         name: editName.trim(),
         sellingPrice: editPrice,
         costPrice: editCost,
         minimumStock: editMinStock,
-      });
+      };
+
+      // If init stock changed from current, set it directly as stock adjustment
+      const stockChanged = editInitStock !== (editProduct.stock ?? 0);
+      if (stockChanged) {
+        const delta = editInitStock - (editProduct.stock ?? 0);
+        await adjustStock.mutateAsync({
+          productId: editProduct.id,
+          quantityDelta: delta,
+        });
+      }
+
+      await updateProduct.mutateAsync(updatePayload as any);
       setEditProduct(null);
     } catch (err: any) {
       alert("Failed to update product: " + err.message);
@@ -487,6 +501,7 @@ export function InventoryView() {
                             setEditPrice(item.sellingPrice);
                             setEditCost(item.costPrice || 0);
                             setEditMinStock(item.minimumStock || 0);
+                            setEditInitStock(item.stock || 0);
                           }}
                           title="Edit Details"
                           className="text-slate-600 hover:bg-slate-100 h-8 w-8 p-0"
@@ -662,6 +677,20 @@ export function InventoryView() {
                   type="number"
                   value={editMinStock}
                   onChange={(e) => setEditMinStock(parseInt(e.target.value) || 0)}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-[#79556f]"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-700 block mb-1">Init Stock (Current Qty)</label>
+                <p className="text-[11px] text-slate-400 mb-1">
+                  Sets actual stock level. Current: {editProduct?.stock ?? 0} units
+                </p>
+                <input
+                  type="number"
+                  min="0"
+                  value={editInitStock}
+                  onChange={(e) => setEditInitStock(parseInt(e.target.value) || 0)}
                   className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-[#79556f]"
                 />
               </div>

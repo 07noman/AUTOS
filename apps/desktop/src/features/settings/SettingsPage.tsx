@@ -33,6 +33,8 @@ import {
   updateAppSettings,
   hashPasscode,
   lockAllModules,
+  lockModule,
+  isModuleUnlocked,
 } from '@/lib/app-settings';
 
 const BUSINESS_DETAILS: Record<
@@ -75,6 +77,16 @@ export function SettingsPage() {
   // Feature 2: Module Visibility State
   const [hiddenModules, setHiddenModules] = useState<string[]>([]);
   const [modulesSuccess, setModulesSuccess] = useState('');
+
+  // Feature 3: Per-Module Passcode Lock State
+  const [lockedModules, setLockedModules] = useState<Set<string>>(() => {
+    const locked = new Set<string>();
+    AUTO_CARE_APPS.forEach((app) => {
+      if (!isModuleUnlocked(app.name)) locked.add(app.name);
+    });
+    return locked;
+  });
+  const [moduleLockSuccess, setModuleLockSuccess] = useState('');
 
   useEffect(() => {
     let isMounted = true;
@@ -222,6 +234,24 @@ export function SettingsPage() {
     );
     setSavedMessage(`Settings saved! Default Tax: ${parsedTax}%, Currency: ${currency}`);
     setTimeout(() => setSavedMessage(''), 3500);
+  };
+
+  const handleToggleModuleLock = (moduleName: string) => {
+    if (lockedModules.has(moduleName)) {
+      // Module is currently locked (session-expired). Just keep it locked.
+      // User must go through the passcode screen to unlock.
+      setModuleLockSuccess(`"${moduleName}" is locked. Enter passcode on the module to unlock.`);
+    } else {
+      // Module is currently unlocked — lock it now
+      lockModule(moduleName);
+      setLockedModules((prev) => {
+        const next = new Set(prev);
+        next.add(moduleName);
+        return next;
+      });
+      setModuleLockSuccess(`"${moduleName}" locked — passcode required to access.`);
+    }
+    setTimeout(() => setModuleLockSuccess(''), 3500);
   };
 
   return (
@@ -529,6 +559,109 @@ export function SettingsPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* ======================================================================
+          FEATURE 3: PER-MODULE PASSCODE LOCK
+      ======================================================================= */}
+      {passcodeEnabled && (
+        <Card className="border border-border shadow-sm">
+          <CardHeader>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <KeyRound className="h-5 w-5 text-primary" /> Select Module to Set Passcode
+                </CardTitle>
+                <p className="text-xs text-text-secondary mt-1">
+                  Lock individual modules with the master passcode. Locked modules require passcode entry to access.
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  lockAllModules();
+                  const allLocked = new Set(AUTO_CARE_APPS.map((a) => a.name));
+                  setLockedModules(allLocked);
+                  setModuleLockSuccess('All modules locked!');
+                  setTimeout(() => setModuleLockSuccess(''), 3000);
+                }}
+                className="flex items-center gap-1.5 text-xs shrink-0"
+              >
+                <Lock className="h-3.5 w-3.5" /> Lock All
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {moduleLockSuccess && (
+              <div className="flex items-center gap-1.5 text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-3 py-2 rounded-lg">
+                <Check className="h-4 w-4 shrink-0" />
+                {moduleLockSuccess}
+              </div>
+            )}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {AUTO_CARE_APPS.map((app) => {
+                const Icon = app.icon;
+                const isLocked = lockedModules.has(app.name);
+                const isSettings = app.name === 'Settings';
+                return (
+                  <div
+                    key={app.id}
+                    className={`flex items-center justify-between p-3 rounded-xl border transition-colors ${
+                      isLocked
+                        ? 'border-rose-500/30 bg-rose-500/5'
+                        : 'border-emerald-500/30 bg-emerald-500/5'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div
+                        className={`flex h-9 w-9 items-center justify-center rounded-xl text-white shadow-sm ${app.iconBg}`}
+                      >
+                        <Icon className="h-4 w-4 drop-shadow" />
+                      </div>
+                      <div>
+                        <div className="text-sm font-semibold text-text">{app.name}</div>
+                        <div className="text-xs flex items-center gap-1">
+                          {isLocked ? (
+                            <span className="text-rose-400 flex items-center gap-1">
+                              <Lock className="h-3 w-3" /> Locked — passcode required
+                            </span>
+                          ) : (
+                            <span className="text-emerald-400 flex items-center gap-1">
+                              <Unlock className="h-3 w-3" /> Unlocked this session
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    {!isSettings && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleToggleModuleLock(app.name)}
+                        className={`h-8 px-3 text-xs font-medium ${
+                          isLocked
+                            ? 'text-rose-400 hover:bg-rose-500/10'
+                            : 'text-slate-500 hover:bg-slate-100'
+                        }`}
+                      >
+                        {isLocked ? (
+                          <>
+                            <Lock className="h-3.5 w-3.5 mr-1" /> Locked
+                          </>
+                        ) : (
+                          <>
+                            <Unlock className="h-3.5 w-3.5 mr-1" /> Lock Now
+                          </>
+                        )}
+                      </Button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Store & Financial Preferences */}
