@@ -21,7 +21,7 @@ import { BrowserRouter } from 'react-router-dom';
 import App from '@/App';
 import '@/index.css';
 
-// Deployment trigger v0.1.3: 0% default tax, store settings tax rate & interactive cart discount modal
+// Deployment trigger v0.1.5: POS category filter fix, inventory init stock, per-module passcode locking, hide cost in parts catalog
 
 // Tauri browser mock — lets SQLite repos fall back to localStorage in browser
 import { setupTauriBrowserMock } from '@/lib/tauri-mock';
