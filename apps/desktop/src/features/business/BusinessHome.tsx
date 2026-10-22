@@ -19,7 +19,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { PasscodeLock } from '@/components/PasscodeLock';
-import { getAppSettings, isModuleUnlocked } from '@/lib/app-settings';
+import { getAppSettings, isModuleUnlocked, getHiddenModulesSync } from '@/lib/app-settings';
 import {
   BUSINESS_TYPES,
   getBusinessApps,
@@ -42,7 +42,9 @@ export function BusinessHome({ businessType: propType }: Props) {
   const [showMenu, setShowMenu] = useState(false);
 
   const [isPasscodeEnabled, setIsPasscodeEnabled] = useState(false);
-  const [hiddenModules, setHiddenModules] = useState<string[]>([]);
+  const [hiddenModules, setHiddenModules] = useState<string[]>(() =>
+    getHiddenModulesSync(user?.id ?? null)
+  );
   const [pendingAppForUnlock, setPendingAppForUnlock] = useState<BusinessApp | null>(null);
 
   const config = BUSINESS_TYPES[activeType] ?? BUSINESS_TYPES['general'];

@@ -23,7 +23,7 @@ import {
 import { useAuth } from '@/hooks/useAuth';
 import { useConnectivity } from '@/hooks/useConnectivity';
 import { PasscodeLock } from '@/components/PasscodeLock';
-import { getAppSettings, isModuleUnlocked } from '@/lib/app-settings';
+import { getAppSettings, isModuleUnlocked, getHiddenModulesSync } from '@/lib/app-settings';
 import {
   BUSINESS_TYPES,
   resolveBusinessType,
@@ -43,7 +43,9 @@ export function BusinessShell() {
   const { status, syncStatus, refreshPending } = useConnectivity();
 
   const [isPasscodeEnabled, setIsPasscodeEnabled] = useState(false);
-  const [hiddenModules, setHiddenModules] = useState<string[]>([]);
+  const [hiddenModules, setHiddenModules] = useState<string[]>(() =>
+    getHiddenModulesSync(user?.id ?? null)
+  );
   const [sessionUnlocked, setSessionUnlocked] = useState<Record<string, boolean>>({});
 
   useEffect(() => {

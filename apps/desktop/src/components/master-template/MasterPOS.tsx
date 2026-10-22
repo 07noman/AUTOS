@@ -39,7 +39,7 @@ import SoftwareMode from "@/components/SoftwareMode";
 import UserMenu from "@/components/UserMenu";
 import { AccountActionsPage } from "@/features/account-actions/AccountActionsPage";
 import { PasscodeLock } from "@/components/PasscodeLock";
-import { getAppSettings, isModuleUnlocked } from "@/lib/app-settings";
+import { getAppSettings, isModuleUnlocked, getHiddenModulesSync } from "@/lib/app-settings";
 import { BUSINESS_TYPES, resolveBusinessType, type BusinessTypeKey } from "@/lib/businessTypes";
 
 type Category = {
@@ -117,7 +117,9 @@ export function MasterPOS({ businessType: propType }: MasterPOSProps) {
 
   // App settings protection state
   const [isPasscodeEnabled, setIsPasscodeEnabled] = useState(false);
-  const [hiddenModules, setHiddenModules] = useState<string[]>([]);
+  const [hiddenModules, setHiddenModules] = useState<string[]>(() =>
+    getHiddenModulesSync(user?.id ?? null)
+  );
   const [sessionUnlocked, setSessionUnlocked] = useState(false);
 
   useEffect(() => {

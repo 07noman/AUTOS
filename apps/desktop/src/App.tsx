@@ -232,6 +232,36 @@ function App() {
         }
       />
       <Route
+        path="/settings/receipt-branding"
+        element={
+          isAutoCare ? (
+            <Navigate to="/auto-care/settings/receipt-branding" replace />
+          ) : (
+            <Navigate to={`/business/${selectedModule || 'general'}/settings/receipt-branding`} replace />
+          )
+        }
+      />
+      <Route
+        path="/settings/receipt"
+        element={
+          isAutoCare ? (
+            <Navigate to="/auto-care/settings/receipt-branding" replace />
+          ) : (
+            <Navigate to={`/business/${selectedModule || 'general'}/settings/receipt-branding`} replace />
+          )
+        }
+      />
+      <Route
+        path="/receipt-branding"
+        element={
+          isAutoCare ? (
+            <Navigate to="/auto-care/settings/receipt-branding" replace />
+          ) : (
+            <Navigate to={`/business/${selectedModule || 'general'}/settings/receipt-branding`} replace />
+          )
+        }
+      />
+      <Route
         path="/"
         element={
           isAutoCare ? (

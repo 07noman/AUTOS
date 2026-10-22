@@ -122,6 +122,25 @@ export function lockAllModules(): void {
 }
 
 /**
+ * Synchronously reads only hidden_modules from localStorage for the given user.
+ * Used to initialize state BEFORE first render to prevent FOUC.
+ * Falls back to empty array if nothing cached yet.
+ */
+export function getHiddenModulesSync(userId: string | null | undefined): string[] {
+  if (!userId || typeof window === 'undefined') return [];
+  try {
+    const cached = localStorage.getItem(getLocalStorageKey(userId));
+    if (cached) {
+      const parsed = JSON.parse(cached) as Partial<AppSettings>;
+      return Array.isArray(parsed.hidden_modules) ? parsed.hidden_modules : [];
+    }
+  } catch {
+    // ignore
+  }
+  return [];
+}
+
+/**
  * Reads cached settings from localStorage, scoped to the given user ID.
  */
 function getCachedSettings(userId: string): AppSettings {

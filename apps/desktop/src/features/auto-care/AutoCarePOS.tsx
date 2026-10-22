@@ -44,7 +44,7 @@ import SoftwareMode from "../../components/SoftwareMode";
 import UserMenu from "../../components/UserMenu";
 import { AccountActionsPage } from "@/features/account-actions/AccountActionsPage";
 import { PasscodeLock } from "@/components/PasscodeLock";
-import { getAppSettings, isModuleUnlocked } from "@/lib/app-settings";
+import { getAppSettings, isModuleUnlocked, getHiddenModulesSync } from "@/lib/app-settings";
 
 type Category = {
   id: string;
@@ -591,7 +591,9 @@ export function AutoCarePOS() {
 
   // ── Protection Guard: Hidden Module & Master Passcode ────────────────────
   const [posUnlocked, setPosUnlocked] = useState(() => isModuleUnlocked('Point of Sale'));
-  const [isPosBlocked, setIsPosBlocked] = useState(false);
+  const [isPosBlocked, setIsPosBlocked] = useState(() =>
+    getHiddenModulesSync(user?.id ?? null).includes('Point of Sale')
+  );
   const [isPosLocked, setIsPosLocked] = useState(false);
 
   useEffect(() => {

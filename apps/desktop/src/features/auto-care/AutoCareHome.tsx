@@ -26,7 +26,7 @@ import {
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { PasscodeLock } from "@/components/PasscodeLock";
-import { getAppSettings, isModuleUnlocked } from "@/lib/app-settings";
+import { getAppSettings, isModuleUnlocked, getHiddenModulesSync } from "@/lib/app-settings";
 
 export type AutoCareApp = {
   id: string;
@@ -157,8 +157,12 @@ export function AutoCareHome() {
   const [showMenu, setShowMenu] = useState(false);
 
   // Feature 1 & 2 states
+  // BUG-2 FIX: Initialize hiddenModules synchronously from localStorage cache
+  // so modules are filtered BEFORE first render — eliminates the FOUC flash.
   const [isPasscodeEnabled, setIsPasscodeEnabled] = useState(false);
-  const [hiddenModules, setHiddenModules] = useState<string[]>([]);
+  const [hiddenModules, setHiddenModules] = useState<string[]>(() =>
+    getHiddenModulesSync(user?.id ?? null)
+  );
   const [pendingAppForUnlock, setPendingAppForUnlock] = useState<AutoCareApp | null>(null);
 
   useEffect(() => {

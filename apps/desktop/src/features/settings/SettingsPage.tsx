@@ -35,6 +35,7 @@ import {
   lockAllModules,
   lockModule,
   isModuleUnlocked,
+  getHiddenModulesSync,
 } from '@/lib/app-settings';
 
 const BUSINESS_DETAILS: Record<
@@ -75,7 +76,9 @@ export function SettingsPage() {
   const [isSavingPasscode, setIsSavingPasscode] = useState(false);
 
   // Feature 2: Module Visibility State
-  const [hiddenModules, setHiddenModules] = useState<string[]>([]);
+  const [hiddenModules, setHiddenModules] = useState<string[]>(() =>
+    getHiddenModulesSync(user?.id ?? null)
+  );
   const [modulesSuccess, setModulesSuccess] = useState('');
 
   // Feature 3: Per-Module Passcode Lock State
@@ -792,7 +795,7 @@ export function SettingsPage() {
                   navigate(
                     selectedModule === 'auto_care' || selectedModule === 'auto-parts'
                       ? '/auto-care/settings/receipt-branding'
-                      : '/settings/receipt-branding'
+                      : `/business/${selectedModule || 'general'}/settings/receipt-branding`
                   )
                 }
                 className="w-full flex items-center justify-center gap-2 mt-1 shadow-sm"
