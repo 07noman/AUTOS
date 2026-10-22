@@ -101,7 +101,7 @@ export function AutoCareShell() {
             type="button"
             onClick={() => navigate('/auto-care')}
             className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer group"
-            title="Return to Auto Care Apps Launcher"
+            title="Return to Business pos & store Apps Launcher"
           >
             <LayoutGrid className="h-4 w-4 text-white group-hover:scale-110 transition-transform" />
             <span className="text-xs font-semibold tracking-wide">Apps</span>
@@ -113,7 +113,7 @@ export function AutoCareShell() {
               to="/auto-care"
               className="text-white/70 hover:text-white font-medium transition-colors"
             >
-              Auto Care
+              Business pos & store
             </Link>
             <span className="text-white/40">/</span>
             <span className="text-emerald-400 font-semibold">{getAppTitle()}</span>
@@ -153,10 +153,10 @@ export function AutoCareShell() {
               type="button"
               onClick={() => navigate('/account-actions')}
               className="h-7 w-7 rounded-full bg-emerald-500 flex items-center justify-center text-xs font-bold text-white shadow-sm cursor-pointer hover:ring-2 hover:ring-white/40 transition"
-              title={user?.name || "Auto Care User"}
+              title={user?.name || "Business User"}
               aria-label="Account Actions"
             >
-              {user?.name?.charAt(0).toUpperCase() || 'A'}
+              {user?.name?.charAt(0).toUpperCase() || 'B'}
             </button>
           </div>
         </div>

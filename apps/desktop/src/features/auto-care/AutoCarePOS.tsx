@@ -830,7 +830,7 @@ export function AutoCarePOS() {
           {/* Register button */}
           <button
             onClick={() => navigate('/auto-care')}
-            title="Return to Auto Care Apps Launcher"
+            title="Return to Business pos & store Apps Launcher"
             className="flex h-[34px] items-center gap-1.5 rounded-lg border border-[#bce6e9] bg-[#e6f5f6] px-3 text-[13px] sm:text-[14px] font-medium text-[#00878a] hover:bg-[#d8f0f2] transition-colors"
           >
             <LayoutGrid className="h-4 w-4 text-[#00878a]" />
@@ -947,7 +947,7 @@ export function AutoCarePOS() {
                   className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 hover:bg-slate-100 font-medium"
                 >
                   <LayoutGrid className="h-3.5 w-3.5 text-[#159aa5]" />
-                  Auto Care Launcher
+                  Business pos & store Launcher
                 </button>
                 <button
                   onClick={() => navigate('/auto-care/service-jobs')}

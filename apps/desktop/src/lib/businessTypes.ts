@@ -36,7 +36,6 @@ import {
   Shirt,
   Armchair,
   Coffee,
-  CarFront,
 } from 'lucide-react';
 import type { ElementType } from 'react';
 
@@ -120,9 +119,9 @@ export const BUSINESS_TYPES: Record<BusinessTypeKey, BusinessConfig> = {
     accentColor: '#00838f',
   },
   'auto-parts': {
-    name: 'Auto Parts',
+    name: 'Business pos & store',
     label: 'Parts inventory, sales and customer records',
-    selectorIcon: CarFront,
+    selectorIcon: Store,
     dbPrefix: 'auto_parts',
     accentColor: '#3949ab',
   },

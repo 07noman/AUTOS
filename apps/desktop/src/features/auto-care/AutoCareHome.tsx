@@ -246,7 +246,7 @@ export function AutoCareHome() {
             GENX
           </span>
           <span className="text-xs text-white/40">/</span>
-          <span className="text-xs text-slate-400">Auto Care Launcher</span>
+          <span className="text-xs text-slate-400">Business pos & store Launcher</span>
         </div>
 
         <div className="flex items-center gap-3 sm:gap-4">
@@ -287,7 +287,7 @@ export function AutoCareHome() {
               onClick={() => setShowMenu(!showMenu)}
               className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm text-slate-200 transition hover:bg-white/[0.06]"
             >
-              Auto Care
+              Business pos & store
               <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
             </button>
 
@@ -320,10 +320,10 @@ export function AutoCareHome() {
               type="button"
               onClick={() => navigate('/account-actions')}
               className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-500 text-sm font-bold text-white shadow-lg shadow-emerald-500/10 cursor-pointer hover:ring-2 hover:ring-white/40 transition"
-              title={user?.name || "Auto Care User"}
+              title={user?.name || "Business User"}
               aria-label="Account Actions"
             >
-              {user?.name?.charAt(0).toUpperCase() || "A"}
+              {user?.name?.charAt(0).toUpperCase() || "B"}
             </button>
           </div>
         </div>
@@ -343,7 +343,7 @@ export function AutoCareHome() {
             </div>
 
             <h1 className="text-[24px] font-semibold tracking-tight text-white sm:text-[27px]">
-              Auto Care
+              Business pos & store
             </h1>
           </div>
 

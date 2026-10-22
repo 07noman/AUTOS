@@ -7,7 +7,6 @@ import {
   Shirt,
   Armchair,
   Coffee,
-  CarFront,
   Package,
   ArrowRight,
   Check,
@@ -79,9 +78,9 @@ const BUSINESS_OPTIONS: BusinessOption[] = [
   },
   {
     id: "auto-parts",
-    name: "Auto Parts",
+    name: "Business pos & store",
     description: "Parts inventory, sales and customer records",
-    icon: CarFront,
+    icon: Store,
   },
   {
     id: "general",

@@ -45,8 +45,8 @@ const BUSINESS_LABELS: Record<string, { label: string; icon: string }> = {
   clothing: { label: 'Clothing POS', icon: '👕' },
   furniture: { label: 'Furniture POS', icon: '🛋️' },
   bar: { label: 'Cafe & Bar POS', icon: '☕' },
-  'auto-parts': { label: 'Auto Parts POS', icon: '🔧' },
-  auto_care: { label: 'Auto Care POS', icon: '🔧' },
+  'auto-parts': { label: 'Business pos & store', icon: '🏪' },
+  auto_care: { label: 'Business pos & store', icon: '🏪' },
   general: { label: 'General POS', icon: '📦' },
 };
 

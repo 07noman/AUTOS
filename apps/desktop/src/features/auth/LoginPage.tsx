@@ -22,8 +22,8 @@ const MODULE_LABELS: Record<string, string> = {
   clothing: 'Clothing',
   furniture: 'Furniture',
   bar: 'Cafe & Bar',
-  'auto-parts': 'Auto Parts',
-  auto_care: 'Auto Care',
+  'auto-parts': 'Business pos & store',
+  auto_care: 'Business pos & store',
   general: 'General',
 };
 

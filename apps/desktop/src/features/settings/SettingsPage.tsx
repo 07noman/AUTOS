@@ -48,8 +48,8 @@ const BUSINESS_DETAILS: Record<
   clothing: { name: 'Clothing', icon: '👕', desc: 'Products with sizes, colors and variants' },
   furniture: { name: 'Furniture', icon: '🛋️', desc: 'Products, stock, quotations and customer orders' },
   bar: { name: 'Cafe & Bar', icon: '☕', desc: 'Counter sales, tables and quick service' },
-  'auto-parts': { name: 'Auto Parts', icon: '🔧', desc: 'Parts inventory, sales and vehicle records' },
-  auto_care: { name: 'Auto Care / Service', icon: '🔧', desc: 'Jobs, mechanics, vehicle service and parts' },
+  'auto-parts': { name: 'Business pos & store', icon: '🏪', desc: 'Point of sale, store inventory and customer records' },
+  auto_care: { name: 'Business pos & store', icon: '🏪', desc: 'Point of sale, store inventory and customer records' },
   general: { name: 'General POS', icon: '📦', desc: 'A flexible POS setup for your business' },
 };
 
