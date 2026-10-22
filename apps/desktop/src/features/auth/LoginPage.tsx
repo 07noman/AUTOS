@@ -161,14 +161,14 @@ export function LoginPage() {
         <div className="visual-content">
           <div className="brand-logo-wrapper mb-6 flex justify-center">
             <img
-              src="/assets/logo.svg"
+              src="/assets/logo.png"
               alt="GENX CLOUD POS Logo"
               className="h-12 max-w-[240px] object-contain"
               onError={(e) => {
                 const target = e.currentTarget;
-                if (target.src.endsWith('/assets/logo.svg')) {
-                  target.src = '/assets/logo.png';
-                } else if (target.src.endsWith('/assets/logo.png')) {
+                if (target.src.endsWith('/assets/logo.png')) {
+                  target.src = '/assets/logo.svg';
+                } else if (target.src.endsWith('/assets/logo.svg')) {
                   target.src = '/assets/logo.jpg';
                 }
               }}
@@ -178,14 +178,14 @@ export function LoginPage() {
 
           <div className="pos-image-wrapper">
             <img
-              src="/assets/pos-login-illustration.jpg"
+              src="/assets/pos-login-illustration.png"
               alt="GENX Cloud POS Business Management"
               className="pos-illustration"
               onError={(e) => {
                 const target = e.currentTarget;
-                if (target.src.endsWith('.jpg')) {
-                  target.src = '/assets/pos-login-illustration.png';
-                } else if (target.src.endsWith('.png')) {
+                if (target.src.endsWith('.png')) {
+                  target.src = '/assets/pos-login-illustration.jpg';
+                } else if (target.src.endsWith('.jpg')) {
                   target.src = '/assets/pos-login-illustration.svg';
                 } else {
                   target.style.display = 'none';
@@ -229,13 +229,13 @@ export function LoginPage() {
             <>
               <div className="mobile-brand mb-4 flex justify-center">
                 <img
-                  src="/assets/logo.svg"
+                  src="/assets/logo.png"
                   alt="GENX CLOUD POS Logo"
                   className="h-10 max-w-[200px] object-contain"
                   onError={(e) => {
                     const target = e.currentTarget;
-                    if (target.src.endsWith('/assets/logo.svg')) {
-                      target.src = '/assets/logo.png';
+                    if (target.src.endsWith('/assets/logo.png')) {
+                      target.src = '/assets/logo.svg';
                     }
                   }}
                 />

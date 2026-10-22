@@ -157,13 +157,13 @@ export default function FirstActivation({
             {/* Auto-setting Logo Image */}
             <div className="logo-placeholder flex items-center">
               <img
-                src="/assets/logo.svg"
+                src="/assets/logo.png"
                 alt="GENX CLOUD POS Logo"
                 className="h-10 max-w-[220px] object-contain transition-all"
                 onError={(e) => {
                   const target = e.currentTarget;
-                  if (target.src.endsWith('/assets/logo.svg')) {
-                    target.src = '/assets/logo.png';
+                  if (target.src.endsWith('/assets/logo.png')) {
+                    target.src = '/assets/logo.svg';
                   } else {
                     target.style.display = 'none';
                     const parent = target.parentElement;
