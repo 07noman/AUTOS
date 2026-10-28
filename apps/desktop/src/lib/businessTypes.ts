@@ -36,6 +36,7 @@ import {
   Shirt,
   Armchair,
   Coffee,
+  Wallet,
 } from 'lucide-react';
 import type { ElementType } from 'react';
 
@@ -175,6 +176,7 @@ export function getBusinessApps(businessType: BusinessTypeKey): BusinessApp[] {
     { id: 'parts',           name: 'Parts & Products', icon: Boxes,           iconBg: 'bg-[#ef6c00]', href: `${base}/parts` },
     { id: 'orders',          name: 'POS Orders',       icon: Receipt,         iconBg: 'bg-[#0d9488]', href: `${base}/orders` },
     { id: 'reports',         name: 'Reports',          icon: BarChart3,       iconBg: 'bg-[#0288d1]', href: `${base}/reports` },
+    { id: 'expenses',        name: 'Expenses',         icon: Wallet,          iconBg: 'bg-[#e11d48]', href: `${base}/expenses` },
     { id: 'settings',        name: 'Settings',         icon: Settings,        iconBg: 'bg-[#546e7a]', href: `${base}/settings` },
   ];
 }

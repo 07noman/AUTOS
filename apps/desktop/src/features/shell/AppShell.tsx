@@ -19,6 +19,7 @@ import {
   Sun,
   Receipt,
   ArrowLeft,
+  Wallet,
 } from 'lucide-react';
 import { Button } from '@genx/ui/Button';
 import { Avatar, AvatarFallback } from '@genx/ui/Avatar';
@@ -34,6 +35,7 @@ const navItems = [
   { icon: Boxes, label: 'Inventory', path: '/inventory' },
   { icon: Users, label: 'Customers', path: '/customers' },
   { icon: FileText, label: 'Reports', path: '/reports' },
+  { icon: Wallet, label: 'Expenses', path: '/expenses' },
   { icon: Settings, label: 'Settings', path: '/settings' },
 ];
 

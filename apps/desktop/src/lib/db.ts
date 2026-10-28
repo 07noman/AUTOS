@@ -8,6 +8,7 @@ import { runMigrations } from './migrations';
 import { getDeviceId } from './device';
 import { stockMovementRepo } from './stock-movements';
 import { supabase, isSupabaseConfigured } from './supabase';
+import { safeUUID } from './uuid';
 
 // Attach transaction method to Database prototype if not present
 if (typeof (Database.prototype as any).transaction !== 'function') {
@@ -584,7 +585,7 @@ export const orderRepo = {
           `INSERT INTO order_items (id, order_id, product_id, name, sku, quantity, price, discount, tax, total, created_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
-            crypto.randomUUID(),
+            safeUUID(),
             order.id,
             item.productId,
             item.name,
@@ -753,7 +754,7 @@ export const orderRepo = {
           `INSERT INTO order_items (id, order_id, product_id, name, sku, quantity, price, discount, tax, total, created_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
-            crypto.randomUUID(),
+            safeUUID(),
             order.id,
             item.productId,
             item.name,

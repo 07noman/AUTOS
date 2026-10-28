@@ -20,12 +20,14 @@ import {
   Percent,
   Trash2,
   AlertTriangle,
+  Wallet,
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@genx/ui/Card';
 import { Button } from '@genx/ui/Button';
 import { Badge } from '@genx/ui/Badge';
 import { posOrderRepo, type POSOrder, type POSOrderItem } from '@/lib/auto-care-db';
 import { productRepo, getCurrentTenantId } from '@/lib/db';
+import { expenseRepo, type Expense } from '@/lib/expenses-repo';
 import type { Product } from '@genx/types/domain/product';
 
 type DateRangeType = 'today' | 'yesterday' | '7days' | 'month' | 'year' | 'all';
@@ -34,12 +36,13 @@ export function AutoCareReportsPage() {
   const navigate = useNavigate();
   const [orders, setOrders] = useState<POSOrder[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [dateRange, setDateRange] = useState<DateRangeType>('month');
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
-  const [activeTab, setActiveTab] = useState<'overview' | 'parts' | 'payments'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'parts' | 'payments' | 'expenses'>('overview');
 
   const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
   const [clearing, setClearing] = useState(false);
@@ -56,12 +59,14 @@ export function AutoCareReportsPage() {
   const loadData = async (isManual = false) => {
     if (isManual) setRefreshing(true);
     try {
-      const [posOrders, allProducts] = await Promise.all([
+      const [posOrders, allProducts, allExpenses] = await Promise.all([
         posOrderRepo.findAll(tenantId),
         productRepo.findAll(tenantId).catch(() => []),
+        expenseRepo.findAll(tenantId).catch(() => []),
       ]);
       setOrders(posOrders);
       setProducts(allProducts);
+      setExpenses(allExpenses);
     } catch (err) {
       console.error('Failed to load report data:', err);
     } finally {
@@ -190,6 +195,65 @@ export function AutoCareReportsPage() {
     return orders;
   }, [orders, dateRange, customStart, customEnd]);
 
+  // Filter expenses strictly aligned with selected date range
+  const filteredExpenses = useMemo(() => {
+    const now = new Date();
+    const todayStr = now.toISOString().split('T')[0];
+
+    if (dateRange === 'today') {
+      return expenses.filter((e) => e.date === todayStr);
+    }
+
+    if (dateRange === 'yesterday') {
+      const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+      const yesterdayStr = yesterday.toISOString().split('T')[0];
+      return expenses.filter((e) => e.date === yesterdayStr);
+    }
+
+    if (dateRange === '7days') {
+      const cutoff = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+      return expenses.filter((e) => e.date >= cutoff);
+    }
+
+    if (dateRange === 'month') {
+      const startOfMonth = todayStr.substring(0, 7);
+      return expenses.filter((e) => (e.date || '').startsWith(startOfMonth));
+    }
+
+    if (dateRange === 'year') {
+      const startOfYear = todayStr.substring(0, 4);
+      return expenses.filter((e) => (e.date || '').startsWith(startOfYear));
+    }
+
+    if (customStart && customEnd) {
+      return expenses.filter((e) => e.date >= customStart && e.date <= customEnd);
+    }
+
+    return expenses;
+  }, [expenses, dateRange, customStart, customEnd]);
+
+  // Total expenses and category breakdown
+  const { totalExpenses, expensesByCategory } = useMemo(() => {
+    let total = 0;
+    const catMap = new Map<string, { category: string; count: number; total: number }>();
+
+    for (const exp of filteredExpenses) {
+      const amt = Number(exp.amount) || 0;
+      total += amt;
+      const cat = exp.category || 'Other';
+      const existing = catMap.get(cat);
+      if (existing) {
+        existing.count += 1;
+        existing.total += amt;
+      } else {
+        catMap.set(cat, { category: cat, count: 1, total: amt });
+      }
+    }
+
+    const expensesByCategory = Array.from(catMap.values()).sort((a, b) => b.total - a.total);
+    return { totalExpenses: total, expensesByCategory };
+  }, [filteredExpenses]);
+
   // Financial calculations
   const stats = useMemo(() => {
     const completedOrders = filteredOrders.filter(
@@ -297,6 +361,8 @@ export function AutoCareReportsPage() {
 
     const grossProfit = grossRevenue - totalCost;
     const profitMargin = grossRevenue > 0 ? (grossProfit / grossRevenue) * 100 : 0;
+    const netProfit = grossProfit - totalExpenses;
+    const netMargin = grossRevenue > 0 ? (netProfit / grossRevenue) * 100 : 0;
     const avgOrderValue = completedOrders.length > 0 ? grossRevenue / completedOrders.length : 0;
 
     const topItems = Array.from(partsMap.values()).sort((a, b) => b.revenue - a.revenue);
@@ -311,6 +377,9 @@ export function AutoCareReportsPage() {
       totalCost,
       grossProfit,
       profitMargin,
+      totalExpenses,
+      netProfit,
+      netMargin,
       avgOrderValue,
       partsRevenue,
       serviceRevenue,
@@ -319,7 +388,7 @@ export function AutoCareReportsPage() {
       paymentMethods,
       topItems,
     };
-  }, [filteredOrders, productCostMap]);
+  }, [filteredOrders, productCostMap, totalExpenses]);
 
   const money = (val: number) =>
     `Rs. ${Number(val || 0).toLocaleString('en-US', {
@@ -463,8 +532,8 @@ export function AutoCareReportsPage() {
         </div>
       </div>
 
-      {/* ── 4 Key Financial KPI Cards ────────────────────────────────────────── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* ── 5 Key Financial KPI Cards (Including Expenses & Net Profit) ─────── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         {/* 1. Gross Revenue */}
         <Card className="border border-border/80 shadow-sm hover:border-sky-500/50 transition">
           <CardContent className="p-4">
@@ -504,7 +573,7 @@ export function AutoCareReportsPage() {
           </CardContent>
         </Card>
 
-        {/* 3. Gross Profit & Margin */}
+        {/* 3. Gross Profit */}
         <Card className="border border-border/80 shadow-sm hover:border-emerald-500/50 transition">
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
@@ -518,26 +587,75 @@ export function AutoCareReportsPage() {
             </div>
             <div className="text-xs font-medium text-emerald-500 mt-1 flex items-center gap-1">
               <Percent className="h-3 w-3" />
-              <span>{stats.profitMargin.toFixed(1)}% Profit Margin</span>
+              <span>{stats.profitMargin.toFixed(1)}% Gross Margin</span>
             </div>
           </CardContent>
         </Card>
 
-        {/* 4. Average Ticket Size */}
-        <Card className="border border-border/80 shadow-sm hover:border-purple-500/50 transition">
+        {/* 4. Total Expenses */}
+        <Card className="border border-border/80 shadow-sm hover:border-rose-500/50 transition">
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-text-muted">Avg Order Value</span>
-              <div className="p-2 rounded-lg bg-purple-500/10 text-purple-500">
-                <ShoppingBag className="h-4 w-4" />
+              <span className="text-xs font-medium text-text-muted">Total Expenses</span>
+              <div className="p-2 rounded-lg bg-rose-500/10 text-rose-500">
+                <Wallet className="h-4 w-4" />
               </div>
             </div>
-            <div className="text-2xl font-bold text-text mt-2">
-              {money(stats.avgOrderValue)}
+            <div className="text-2xl font-bold text-rose-600 mt-2">
+              {money(stats.totalExpenses)}
             </div>
-            <p className="text-xs text-text-secondary mt-1">
-              Average spent per customer transaction
+            <p className="text-xs text-rose-400 mt-1 flex items-center justify-between">
+              <span>{filteredExpenses.length} expense entries</span>
+              <button
+                onClick={() => navigate('/expenses')}
+                className="underline hover:text-rose-300 font-medium"
+              >
+                Manage
+              </button>
             </p>
+          </CardContent>
+        </Card>
+
+        {/* 5. Net Profit (Sales - Expenses - Cost) */}
+        <Card
+          className={`border shadow-sm transition ${
+            stats.netProfit >= 0
+              ? 'border-teal-500/50 hover:border-teal-400'
+              : 'border-rose-500/50 hover:border-rose-400'
+          }`}
+        >
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-text-muted uppercase tracking-wider">
+                Net Profit
+              </span>
+              <div
+                className={`p-2 rounded-lg ${
+                  stats.netProfit >= 0
+                    ? 'bg-teal-500/10 text-teal-500'
+                    : 'bg-rose-500/10 text-rose-500'
+                }`}
+              >
+                <DollarSign className="h-4 w-4" />
+              </div>
+            </div>
+            <div
+              className={`text-2xl font-bold mt-2 ${
+                stats.netProfit >= 0 ? 'text-teal-400' : 'text-rose-400'
+              }`}
+            >
+              {money(stats.netProfit)}
+            </div>
+            <div
+              className={`text-xs font-medium mt-1 flex items-center gap-1 ${
+                stats.netProfit >= 0 ? 'text-teal-500' : 'text-rose-500'
+              }`}
+            >
+              <Percent className="h-3 w-3" />
+              <span>
+                {stats.netMargin.toFixed(1)}% Net Margin (Sales - Cost - Expenses)
+              </span>
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -576,6 +694,18 @@ export function AutoCareReportsPage() {
           }`}
         >
           Sales & Payment Breakdown
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('expenses')}
+          className={`pb-2.5 px-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-1.5 ${
+            activeTab === 'expenses'
+              ? 'border-rose-500 text-rose-500 font-semibold'
+              : 'border-transparent text-text-secondary hover:text-text'
+          }`}
+        >
+          <Wallet className="h-4 w-4" />
+          Expenses & Costs Breakdown
         </button>
       </div>
 
@@ -854,6 +984,107 @@ export function AutoCareReportsPage() {
               <p className="text-xs text-text-secondary mt-1">
                 {stats.paymentMethods.other.count} other orders
               </p>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* ── Tab 4: Expenses & Costs Breakdown ─────────────────────────────────── */}
+      {activeTab === 'expenses' && (
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <Card className="border-rose-500/30">
+              <CardContent className="p-4">
+                <span className="text-xs font-medium text-text-muted">Total Expenses ({rangeTitle})</span>
+                <div className="text-2xl font-bold text-rose-500 mt-1">
+                  {money(stats.totalExpenses)}
+                </div>
+                <p className="text-xs text-text-secondary mt-1">
+                  {filteredExpenses.length} entries recorded for this store
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card className="border-emerald-500/30">
+              <CardContent className="p-4">
+                <span className="text-xs font-medium text-text-muted">Net Operating Profit</span>
+                <div
+                  className={`text-2xl font-bold mt-1 ${
+                    stats.netProfit >= 0 ? 'text-teal-400' : 'text-rose-400'
+                  }`}
+                >
+                  {money(stats.netProfit)}
+                </div>
+                <p className="text-xs text-text-secondary mt-1">
+                  Sales minus Cost of Goods and Operating Expenses
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card className="flex flex-col justify-between">
+              <CardContent className="p-4 flex items-center justify-between h-full">
+                <div>
+                  <span className="text-xs font-medium text-text-muted">Manage Store Expenses</span>
+                  <p className="text-xs text-text-secondary mt-0.5">
+                    Add new bills, rent, payroll or utilities
+                  </p>
+                </div>
+                <Button
+                  onClick={() => navigate('/expenses')}
+                  className="bg-rose-500 hover:bg-rose-600 text-white shrink-0 flex items-center gap-1.5"
+                >
+                  <Wallet className="h-4 w-4" />
+                  Expenses Page
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between pb-3">
+              <div>
+                <CardTitle className="text-base font-semibold">Expenses by Category</CardTitle>
+                <p className="text-xs text-text-secondary mt-0.5">
+                  Operating expense breakdown for {rangeTitle}
+                </p>
+              </div>
+            </CardHeader>
+            <CardContent className="p-0">
+              {expensesByCategory.length === 0 ? (
+                <div className="p-8 text-center text-text-secondary text-sm">
+                  No expenses recorded for {rangeTitle}.
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead>
+                      <tr className="bg-muted/40 border-y border-border text-text-secondary font-semibold">
+                        <th className="py-2.5 px-4">Category</th>
+                        <th className="py-2.5 px-4 text-center">Count</th>
+                        <th className="py-2.5 px-4 text-right">Total Amount</th>
+                        <th className="py-2.5 px-4 text-right">% of Expenses</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border/60">
+                      {expensesByCategory.map((cat, idx) => (
+                        <tr key={idx} className="hover:bg-muted/30 transition-colors">
+                          <td className="py-3 px-4 font-semibold text-text">{cat.category}</td>
+                          <td className="py-3 px-4 text-center text-text-secondary">{cat.count}</td>
+                          <td className="py-3 px-4 text-right font-bold text-rose-500">
+                            {money(cat.total)}
+                          </td>
+                          <td className="py-3 px-4 text-right text-text-secondary">
+                            {stats.totalExpenses > 0
+                              ? ((cat.total / stats.totalExpenses) * 100).toFixed(1)
+                              : '0'}
+                            %
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>

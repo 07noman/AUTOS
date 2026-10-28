@@ -89,6 +89,7 @@ export function AutoCareShell() {
     if (p.includes('/staff')) return 'Staff';
     if (p.includes('/parts')) return 'Parts & Products';
     if (p.includes('/reports')) return 'Reports';
+    if (p.includes('/expenses')) return 'Expenses';
     if (p.includes('/settings')) return 'Settings';
     return 'App';
   };

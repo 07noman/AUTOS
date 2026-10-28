@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react';
-import { Download, TrendingUp, DollarSign, CreditCard, ShoppingBag, Calendar, Printer } from 'lucide-react';
+import { Download, TrendingUp, DollarSign, CreditCard, ShoppingBag, Calendar, Printer, Wallet } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { Button } from '@genx/ui/Button';
 import { Card, CardHeader, CardTitle, CardContent } from '@genx/ui/Card';
 import { Table, TableHeader, TableRow, TableHead, TableCell, TableBody } from '@genx/ui/Table';
 import { salesReportRepo, orderRepo, getCurrentTenantId, SaleRecord } from '@/lib/db';
+import { expenseRepo, type Expense } from '@/lib/expenses-repo';
 import { receiptSettingsRepo } from '@/lib/receipt-settings-repo';
 import { printThermalReceipt } from '@/features/receipt/print-service';
 
@@ -17,6 +18,12 @@ export function SalesReport() {
   const { data: sales = [], isLoading } = useQuery<SaleRecord[]>({
     queryKey: ['sales-report-unified', currentTenant],
     queryFn: () => salesReportRepo.getCompletedSales(currentTenant),
+    staleTime: 1000 * 30,
+  });
+
+  const { data: expenses = [] } = useQuery<Expense[]>({
+    queryKey: ['expenses-report', currentTenant],
+    queryFn: () => expenseRepo.findAll(currentTenant),
     staleTime: 1000 * 30,
   });
 
@@ -37,6 +44,28 @@ export function SalesReport() {
 
     return sales.filter((s) => s.createdAt >= cutoff);
   }, [sales, dateFilter]);
+
+  const filteredExpenses = useMemo(() => {
+    const now = new Date();
+    const todayStr = now.toISOString().split('T')[0];
+
+    if (dateFilter === 'today') {
+      return expenses.filter((e) => e.date === todayStr);
+    }
+    if (dateFilter === '7days') {
+      const cutoff = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+      return expenses.filter((e) => e.date >= cutoff);
+    }
+    if (dateFilter === '30days') {
+      const cutoff = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+      return expenses.filter((e) => e.date >= cutoff);
+    }
+    return expenses;
+  }, [expenses, dateFilter]);
+
+  const totalExpenses = useMemo(() => {
+    return filteredExpenses.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+  }, [filteredExpenses]);
 
   const money = (val: number) =>
     new Intl.NumberFormat('en-PK', {
@@ -63,6 +92,7 @@ export function SalesReport() {
       .reduce((s, o) => s + (Number(o.total) || 0), 0);
 
     const avgOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0;
+    const netProfit = totalRevenue - totalExpenses;
 
     const groups = filteredSales.reduce<
       Record<string, { date: string; orders: number; cash: number; credit: number; other: number; total: number }>
@@ -216,8 +246,8 @@ export function SalesReport() {
         </div>
       </div>
 
-      {/* Metric Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* Metric Cards (Including Expenses & Net Profit) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-text-secondary">Total Orders</CardTitle>
@@ -240,6 +270,32 @@ export function SalesReport() {
           </CardContent>
         </Card>
 
+        <Card className="border-rose-500/30">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-text-secondary">Total Expenses</CardTitle>
+            <Wallet className="h-4 w-4 text-rose-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-rose-500">{money(totalExpenses)}</div>
+            <p className="text-xs text-rose-400 mt-1">{filteredExpenses.length} expense entries</p>
+          </CardContent>
+        </Card>
+
+        <Card className={netProfit >= 0 ? 'border-teal-500/40' : 'border-rose-500/40'}>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-semibold text-text uppercase tracking-wider">
+              Net Profit
+            </CardTitle>
+            <DollarSign className={`h-4 w-4 ${netProfit >= 0 ? 'text-teal-400' : 'text-rose-400'}`} />
+          </CardHeader>
+          <CardContent>
+            <div className={`text-2xl font-bold ${netProfit >= 0 ? 'text-teal-400' : 'text-rose-400'}`}>
+              {money(netProfit)}
+            </div>
+            <p className="text-xs text-text-muted mt-1">Sales minus Expenses</p>
+          </CardContent>
+        </Card>
+
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-text-secondary">Cash Revenue</CardTitle>
@@ -248,17 +304,6 @@ export function SalesReport() {
           <CardContent>
             <div className="text-2xl font-bold">{money(cashRevenue)}</div>
             <p className="text-xs text-text-muted mt-1">Direct cash received</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-text-secondary">Credit / On Account</CardTitle>
-            <CreditCard className="h-4 w-4 text-warning" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-warning">{money(creditRevenue)}</div>
-            <p className="text-xs text-text-muted mt-1">Customer credit sales</p>
           </CardContent>
         </Card>
       </div>

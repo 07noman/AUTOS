@@ -1,4 +1,5 @@
 import { getDatabase, getCurrentTenantId } from './db';
+import { safeUUID } from './uuid';
 import type { StockMovement, MovementType, ReferenceType } from '@genx/types/domain/inventory';
 import { supabase, isSupabaseConfigured } from './supabase';
 
@@ -23,7 +24,7 @@ export const stockMovementRepo = {
     tx?: any
   ): Promise<StockMovement> {
     const db = tx ?? (await getDatabase());
-    const id = movement.id ?? crypto.randomUUID();
+    const id = movement.id ?? safeUUID();
     const tenantId = movement.tenantId ?? getCurrentTenantId();
     const now = movement.createdAt ?? Date.now();
 

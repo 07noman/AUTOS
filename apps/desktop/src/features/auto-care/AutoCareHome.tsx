@@ -22,6 +22,7 @@ import {
   LogOut,
   RefreshCw,
   Receipt,
+  Wallet,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
@@ -141,6 +142,13 @@ export const AUTO_CARE_APPS: AutoCareApp[] = [
     icon: BarChart3,
     iconBg: "bg-[#0288d1]",
     href: "/auto-care/reports",
+  },
+  {
+    id: "expenses",
+    name: "Expenses",
+    icon: Wallet,
+    iconBg: "bg-[#e11d48]",
+    href: "/auto-care/expenses",
   },
   {
     id: "settings",

@@ -1,4 +1,5 @@
 import { getDatabase } from './db';
+import { safeUUID } from './uuid';
 
 const DEVICE_KEY = 'device_id';
 let cachedDeviceId: string | null = null;
@@ -6,7 +7,7 @@ let cachedDeviceId: string | null = null;
 /**
  * Gets or creates the persistent logical Device ID stored in SQLite app_metadata table.
  * Persists across application restart and updates.
- * Cryptographically random UUID.
+ * Cryptographically random UUID with safe fallback.
  */
 export async function getDeviceId(): Promise<string> {
   if (cachedDeviceId) {
@@ -26,7 +27,7 @@ export async function getDeviceId(): Promise<string> {
     }
 
     // Generate stable random UUID
-    const newId = crypto.randomUUID();
+    const newId = safeUUID();
     const now = Date.now();
     await db.execute(
       'INSERT INTO app_metadata (key, value, created_at, updated_at) VALUES (?, ?, ?, ?)',
@@ -43,12 +44,12 @@ export async function getDeviceId(): Promise<string> {
         cachedDeviceId = local;
         return cachedDeviceId;
       }
-      const newId = crypto.randomUUID();
+      const newId = safeUUID();
       window.localStorage.setItem(`genx:${DEVICE_KEY}`, newId);
       cachedDeviceId = newId;
       return cachedDeviceId;
     }
-    return crypto.randomUUID();
+    return safeUUID();
   }
 }
 

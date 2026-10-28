@@ -2,6 +2,7 @@ import { getDatabase, getCurrentTenantId } from './db';
 import { getDeviceId } from './device';
 import { stockMovementRepo } from './stock-movements';
 import { supabase, isSupabaseConfigured } from './supabase';
+import { safeUUID } from './uuid';
 import type { Vehicle, AutoCareService, ServiceJob, ServiceJobItem, AutoCareInvoice } from '@genx/types/domain/auto-care';
 
 // ─── Schema Initialisation ────────────────────────────────────────────────────
@@ -697,7 +698,7 @@ export const posOrderRepo = {
     tenantId?: string;
   }): Promise<POSOrder> {
     const tenantId = input.tenantId ?? getCurrentTenantId();
-    const id = crypto.randomUUID();
+    const id = safeUUID();
     const now = Date.now();
     const orderNumber = await this.nextOrderNumber(tenantId);
 
@@ -807,7 +808,7 @@ export const posOrderRepo = {
     const deviceId = await getDeviceId();
 
     let finalOrder: POSOrder | null = null;
-    const orderId = input.existingOrderId ?? crypto.randomUUID();
+    const orderId = input.existingOrderId ?? safeUUID();
     let orderNumber: number;
     if (input.existingOrderId) {
       const existing = await this.findById(input.existingOrderId, tenantId);
@@ -902,7 +903,7 @@ export const posOrderRepo = {
 
           if (input.items && input.items.length > 0) {
             const itemRows = input.items.map((it) => ({
-              id: crypto.randomUUID(),
+              id: safeUUID(),
               order_id: orderId,
               tenant_id: tenantId,
               product_id: String(it.id),
@@ -957,7 +958,7 @@ export const posOrderRepo = {
 
             await stockMovementRepo.insert(
               {
-                id: crypto.randomUUID(),
+                id: safeUUID(),
                 tenantId,
                 productId: String(item.id),
                 quantityDelta: -item.quantity,
@@ -1419,7 +1420,7 @@ export const jobRepo = {
   },
 
   async create(job: Omit<ServiceJob, 'id' | 'createdAt' | 'updatedAt'>): Promise<ServiceJob> {
-    const id = crypto.randomUUID();
+    const id = safeUUID();
     const now = Date.now();
 
     if (isSupabaseConfigured()) {
@@ -1769,7 +1770,7 @@ export const vehicleRepo = {
     const cleanPlate = (v.licensePlate || '').trim().toUpperCase();
     const existing = await this.findByPlate(cleanPlate, tenantId);
 
-    const id = existing?.id && !existing.id.startsWith('v-') ? existing.id : crypto.randomUUID();
+    const id = existing?.id && !existing.id.startsWith('v-') ? existing.id : safeUUID();
     const now = Date.now();
     const createdAt = existing?.createdAt || now;
     const mileageNum = v.mileage != null && v.mileage !== '' ? Number(v.mileage) : (existing?.mileage ?? null);
@@ -1881,7 +1882,7 @@ export const vehicleRepo = {
 
 export const invoiceRepo = {
   async create(inv: Omit<AutoCareInvoice, 'id' | 'createdAt' | 'updatedAt'>): Promise<AutoCareInvoice> {
-    const id = crypto.randomUUID();
+    const id = safeUUID();
     const now = Date.now();
 
     if (isSupabaseConfigured()) {
@@ -2033,7 +2034,7 @@ export async function completePOSSale(
   const invoiceNumber = await invoiceRepo.nextInvoiceNumber(tenantId);
 
   const invoiceItems: ServiceJobItem[] = input.items.map((item) => ({
-    id: crypto.randomUUID(),
+    id: safeUUID(),
     jobId: '',
     type: 'part' as const,
     name: item.name,

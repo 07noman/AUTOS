@@ -34,6 +34,7 @@ import { BusinessShell } from './features/business/BusinessShell';
 import { MasterDashboard, MasterPOS, MasterInventory, MasterOrders } from './components/master-template';
 import { resolveBusinessType } from './lib/businessTypes';
 import { AccountActionsPage } from './features/account-actions/AccountActionsPage';
+import { ExpensesPage } from './features/expenses/ExpensesPage';
 
 function App() {
   const { isAuthenticated, validateSession } = useAuth();
@@ -127,6 +128,7 @@ function App() {
         <Route path="parts" element={<Products />} />
         <Route path="orders" element={<POSOrdersPage />} />
         <Route path="reports" element={<AutoCareReportsPage />} />
+        <Route path="expenses" element={<ExpensesPage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="settings/receipt-branding" element={<ReceiptBrandingPage />} />
         <Route path="settings/receipt" element={<ReceiptBrandingPage />} />
@@ -155,10 +157,14 @@ function App() {
         <Route path="parts" element={<Products />} />
         <Route path="orders" element={<MasterOrders />} />
         <Route path="reports" element={<AutoCareReportsPage />} />
+        <Route path="expenses" element={<ExpensesPage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="settings/receipt-branding" element={<ReceiptBrandingPage />} />
         <Route path="settings/receipt" element={<ReceiptBrandingPage />} />
       </Route>
+
+      {/* Global Expenses Route (accessible directly or via sidebar/launcher) */}
+      <Route path="/expenses" element={<ExpensesPage />} />
 
       {/* All standard business types use the unified Master Template UI */}
       <Route

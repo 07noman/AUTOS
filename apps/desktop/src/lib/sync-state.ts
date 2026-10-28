@@ -1,4 +1,5 @@
 import { getDatabase, getCurrentTenantId } from './db';
+import { safeUUID } from './uuid';
 import type { SyncState } from '@genx/types/sync';
 
 export const syncStateRepo = {
@@ -40,7 +41,7 @@ export const syncStateRepo = {
         [cursor, now, tenantId, deviceId, scope]
       );
     } else {
-      const id = crypto.randomUUID();
+      const id = safeUUID();
       await db.execute(
         'INSERT INTO sync_state (id, tenant_id, device_id, scope, cursor, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
         [id, tenantId, deviceId, scope, cursor, now]
