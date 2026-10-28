@@ -80,6 +80,7 @@ export function SalesReport() {
     cashRevenue,
     creditRevenue,
     avgOrderValue,
+    netProfit,
     dailySummary,
   } = useMemo(() => {
     const totalOrders = filteredSales.length;
@@ -114,8 +115,8 @@ export function SalesReport() {
 
     const dailySummary = Object.values(groups).sort((a, b) => b.date.localeCompare(a.date));
 
-    return { totalOrders, totalRevenue, cashRevenue, creditRevenue, avgOrderValue, dailySummary };
-  }, [filteredSales]);
+    return { totalOrders, totalRevenue, cashRevenue, creditRevenue, avgOrderValue, netProfit, dailySummary };
+  }, [filteredSales, totalExpenses]);
 
   const exportCSV = () => {
     if (filteredSales.length === 0) return;
