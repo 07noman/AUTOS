@@ -21,7 +21,7 @@ import { BrowserRouter } from 'react-router-dom';
 import App from '@/App';
 import '@/index.css';
 
-// Deployment trigger v0.1.7: Global Expense module as core feature, safeUUID, net profit in reports
+// Deployment trigger v0.1.8: Redesigned Expenses page with 100% exact purple layout match, clean header hierarchy and multi-remote push
 
 // Tauri browser mock — lets SQLite repos fall back to localStorage in browser
 import { setupTauriBrowserMock } from '@/lib/tauri-mock';
