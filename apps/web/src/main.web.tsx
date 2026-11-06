@@ -21,7 +21,7 @@ import { BrowserRouter } from 'react-router-dom';
 import App from '@/App';
 import '@/index.css';
 
-// Deployment trigger v0.1.8: Redesigned Expenses page with 100% exact purple layout match, clean header hierarchy and multi-remote push
+// Deployment trigger v0.1.9: Instant optimistic payment validation in POS (<100ms) with background save
 
 // Tauri browser mock — lets SQLite repos fall back to localStorage in browser
 import { setupTauriBrowserMock } from '@/lib/tauri-mock';

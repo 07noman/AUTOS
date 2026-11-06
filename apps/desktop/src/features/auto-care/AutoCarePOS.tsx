@@ -429,7 +429,7 @@ export function AutoCarePOS() {
   // ── handlePOSPayment (Idempotent POS Payment Submission) ─────────────────
   const handlePOSPayment = async (data: PaymentData) => {
     const now = Date.now();
-    if (isSubmittingPaymentRef.current || (now - lastPaymentTimestampRef.current < 3500)) {
+    if (isSubmittingPaymentRef.current || (now - lastPaymentTimestampRef.current < 500)) {
       console.warn('[pos] Payment submission already in progress or debounced, ignoring duplicate call');
       return;
     }
@@ -564,9 +564,7 @@ export function AutoCarePOS() {
       console.error("Atomic POS sale failed in SQLite:", e);
       throw e;
     } finally {
-      setTimeout(() => {
-        isSubmittingPaymentRef.current = false;
-      }, 2000);
+      isSubmittingPaymentRef.current = false;
     }
   };
 
@@ -669,13 +667,15 @@ export function AutoCarePOS() {
           onPayment={handlePOSPayment}
           onNewSale={() => setShowPayment(false)}
           onPaymentSuccess={(data, change) => {
-            // This is called ONLY after a real successful DB write.
-            // data.total is the genuine total — NEVER hard-coded.
+            const orderNumStr = currentOrderNumber
+              ? String(currentOrderNumber).padStart(4, "0")
+              : (data.orderId || "0001");
+
             setSuccessData({
               amount: data.total,
               change,
               method: data.paymentMethod,
-              invoiceNumber: lastInvoiceNumberRef.current || `INV-${Math.floor(Math.random() * 90000 + 10000)}`,
+              invoiceNumber: lastInvoiceNumberRef.current || orderNumStr || `INV-${Math.floor(Math.random() * 90000 + 10000)}`,
               customerName: vehicleDetails?.customerName || data.customer?.name,
               vehicle: vehicleDetails ? {
                 makeModel: `${vehicleDetails.make} ${vehicleDetails.model}`.trim(),
@@ -689,7 +689,7 @@ export function AutoCarePOS() {
               taxRatePercent,
               total: data.total,
               paidAmount: data.paidAmount,
-              orderId: data.orderId,
+              orderId: data.orderId || orderNumStr,
             });
             lastInvoiceNumberRef.current = undefined;
           }}

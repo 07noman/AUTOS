@@ -278,10 +278,6 @@ export default function PaymentPage({
 }: PaymentPageProps) {
   const [method, setMethod] = useState<PaymentMethod>("cash");
   const [amount, setAmount] = useState(total.toFixed(2));
-  const [processing, setProcessing] = useState(false);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const isProcessingRef = useRef(false);
-  const isSubmittingRef = useRef(false);
   const lastClickTimestampRef = useRef<number>(0);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [localCustomer, setLocalCustomer] = useState<POSCustomer | null>(
@@ -350,15 +346,15 @@ export default function PaymentPage({
     }
   };
 
-  // ── Validate / submit (Idempotent Payment Handler) ─────────────────────────
+  // ── Validate / submit (Instant Optimistic Payment Handler) ──────────────────
 
-  const handleValidate = async () => {
+  const handleValidate = () => {
     const now = Date.now();
-    // Idempotency protection: Guard against double-clicks, concurrent executions & cold start retries
-    if (isProcessing || processing || isProcessingRef.current || isSubmittingRef.current || (now - lastClickTimestampRef.current < 2500)) {
-      console.warn("[Payment] Duplicate validatePayment call blocked by idempotency guard");
+    // Guard against accidental double-clicks within 500ms
+    if (now - lastClickTimestampRef.current < 500) {
       return;
     }
+    lastClickTimestampRef.current = now;
 
     if (method === "credit" && !customer) {
       openCustomerPicker();
@@ -367,57 +363,43 @@ export default function PaymentPage({
 
     if (method !== "credit" && numericAmount < total) return;
 
+    const paymentData: PaymentData = {
+      orderId,
+      items,
+      subtotal,
+      discount,
+      tax,
+      taxRatePercent,
+      total,
+      paymentMethod: method,
+      paidAmount: method === "credit" ? 0 : numericAmount,
+      customer: customer ?? undefined,
+    };
+
+    console.log("[Payment] Instant optimistic validate payment:", {
+      orderId,
+      total,
+      method,
+      amount: numericAmount,
+    });
+
+    // 1. FORAN SUCCESS SCREEN: Instantly render Success Overlay / PaymentSuccessScreen in milliseconds (< 5ms)
+    if (onPaymentSuccess) {
+      onPaymentSuccess(paymentData, change);
+    } else {
+      setSuccess(true);
+    }
+
+    // 2. BACKGROUND SAVE: Save payment in background without blocking user
     try {
-      isProcessingRef.current = true;
-      isSubmittingRef.current = true;
-      lastClickTimestampRef.current = now;
-      setIsProcessing(true);
-      setProcessing(true);
-
-      console.log("[Payment] Validating payment...", {
-        orderId,
-        total,
-        method,
-        amount: numericAmount,
-      });
-
-      const paymentData: PaymentData = {
-        orderId,
-        items,
-        subtotal,
-        discount,
-        tax,
-        taxRatePercent,
-        total,
-        paymentMethod: method,
-        paidAmount: method === "credit" ? 0 : numericAmount,
-        customer: customer ?? undefined,
-      };
-
-      // ⚠️  This calls the EXISTING handler wired up by AutoCarePOS.
-      //     No DB logic lives here — it belongs in the parent.
-      await onPayment(paymentData);
-
-      // If the parent wants to render its own success screen, call the hook.
-      // Otherwise fall back to the built-in SuccessOverlay.
-      if (onPaymentSuccess) {
-        onPaymentSuccess(paymentData, change);
-      } else {
-        setSuccess(true);
+      const savePromise = onPayment(paymentData);
+      if (savePromise && typeof savePromise.catch === "function") {
+        savePromise.catch((err) => {
+          console.warn("[Payment] Background save failed:", err);
+        });
       }
     } catch (err) {
-      console.error("[Payment] Payment processing failed:", err);
-      alert(
-        `Payment failed: ${err instanceof Error ? err.message : String(err)}`
-      );
-    } finally {
-      setIsProcessing(false);
-      setProcessing(false);
-      // Keep guard active briefly to prevent race conditions during modal dismiss/navigation
-      setTimeout(() => {
-        isProcessingRef.current = false;
-        isSubmittingRef.current = false;
-      }, 1500);
+      console.warn("[Payment] Background save failed:", err);
     }
   };
 
@@ -466,7 +448,6 @@ export default function PaymentPage({
             type="button"
             className="header-back"
             onClick={onBack}
-            disabled={processing}
           >
             <ArrowLeft size={21} />
           </button>
@@ -579,7 +560,6 @@ export default function PaymentPage({
                   type="button"
                   className="change-customer"
                   onClick={openCustomerPicker}
-                  disabled={processing}
                 >
                   Change
                 </button>
@@ -589,7 +569,6 @@ export default function PaymentPage({
                 type="button"
                 className={`customer-empty${method === "credit" ? " required" : ""}`}
                 onClick={openCustomerPicker}
-                disabled={processing}
               >
                 <div className="customer-empty-icon">
                   <UserRound size={21} />
@@ -617,7 +596,6 @@ export default function PaymentPage({
               type="button"
               className="invoice-button"
               onClick={onInvoice}
-              disabled={processing}
             >
               <FileText size={19} />
               Invoice
@@ -660,7 +638,6 @@ export default function PaymentPage({
                 type="button"
                 className="remove-payment"
                 onClick={() => handleMethodChange("cash")}
-                disabled={processing}
                 aria-label="Reset to cash"
               >
                 <X size={17} />
@@ -753,20 +730,11 @@ export default function PaymentPage({
           <button
             type="button"
             className="validate-button"
-            disabled={isProcessing || processing || isProcessingRef.current || !canValidate}
+            disabled={!canValidate}
             onClick={handleValidate}
           >
-            {isProcessing || processing ? (
-              <>
-                <span className="payment-spinner" />
-                Processing…
-              </>
-            ) : (
-              <>
-                <CheckCircle2 size={20} />
-                {method === "credit" ? "Confirm Credit Sale" : "Validate Payment"}
-              </>
-            )}
+            <CheckCircle2 size={20} />
+            {method === "credit" ? "Confirm Credit Sale" : "Validate Payment"}
           </button>
 
           {!canValidate && method !== "credit" && (

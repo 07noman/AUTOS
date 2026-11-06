@@ -734,11 +734,11 @@ export function MasterPOS({ businessType: propType }: MasterPOSProps) {
             type: c.type,
           }))}
           onBack={() => setShowPayment(false)}
-          onPayment={async (data) => {
+          onPaymentSuccess={(data, change) => {
             setShowPayment(false);
             setSuccessData({
-              amount: data.paidAmount,
-              change: Math.max(0, data.paidAmount - total),
+              amount: data.paidAmount || data.total,
+              change,
               method: data.paymentMethod,
               invoiceNumber: `INV-${Date.now().toString().slice(-6)}`,
               customerName: customer,
@@ -749,8 +749,12 @@ export function MasterPOS({ businessType: propType }: MasterPOSProps) {
               taxRatePercent,
               total,
               paidAmount: data.paidAmount,
+              orderId: data.orderId,
             });
             clearCart();
+          }}
+          onPayment={async (data) => {
+            // Background save logic (if needed)
           }}
         />
       )}
