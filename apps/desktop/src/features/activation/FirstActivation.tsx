@@ -24,6 +24,7 @@ export type BusinessType =
   | "furniture"
   | "bar"
   | "auto-parts"
+  | "pharmacy"
   | "general";
 
 interface BusinessOption {
@@ -83,9 +84,9 @@ const BUSINESS_OPTIONS: BusinessOption[] = [
     icon: Store,
   },
   {
-    id: "general",
-    name: "Other Business",
-    description: "A flexible POS setup for your business",
+    id: "pharmacy",
+    name: "Pharmacy",
+    description: "Medicines, batch expiry, inventory and pharmacy sales",
     icon: Package,
   },
 ];

@@ -16,6 +16,8 @@ export function ModuleSelector({ onBack }: { onBack?: () => void }) {
       // If already logged in, navigate to the unified business launcher
       if (businessType === 'auto-parts') {
         navigate('/auto-care');
+      } else if (businessType === 'pharmacy') {
+        navigate('/pharmacy');
       } else {
         navigate(`/business/${businessType}`);
       }

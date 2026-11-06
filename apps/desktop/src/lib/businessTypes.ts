@@ -52,6 +52,7 @@ export type BusinessTypeKey =
   | 'cafe'
   | 'auto-parts'
   | 'bar'
+  | 'pharmacy'
   | 'general';
 
 // ── Per-business UI Config ────────────────────────────────────────────────────
@@ -133,12 +134,19 @@ export const BUSINESS_TYPES: Record<BusinessTypeKey, BusinessConfig> = {
     dbPrefix: 'cafe',
     accentColor: '#00838f',
   },
-  general: {
-    name: 'Other Business',
-    label: 'A flexible POS setup for your business',
+  pharmacy: {
+    name: 'Pharmacy',
+    label: 'Medicines, batch expiry, inventory and pharmacy sales',
     selectorIcon: Package,
-    dbPrefix: 'other',
-    accentColor: '#546e7a',
+    dbPrefix: 'pharmacy',
+    accentColor: '#00897b',
+  },
+  general: {
+    name: 'Pharmacy',
+    label: 'Medicines, batch expiry, inventory and pharmacy sales',
+    selectorIcon: Package,
+    dbPrefix: 'pharmacy',
+    accentColor: '#00897b',
   },
 };
 
@@ -186,7 +194,7 @@ export function getBusinessApps(businessType: BusinessTypeKey): BusinessApp[] {
  * Handles old keys like "auto_care", "bar", "general", etc.
  */
 export function resolveBusinessType(raw: string | null | undefined): BusinessTypeKey {
-  if (!raw) return 'general';
+  if (!raw) return 'pharmacy';
   const map: Record<string, BusinessTypeKey> = {
     auto_care:  'auto-parts',
     'auto-care': 'auto-parts',
@@ -199,8 +207,9 @@ export function resolveBusinessType(raw: string | null | undefined): BusinessTyp
     furniture:  'furniture',
     cafe:       'cafe',
     bar:        'cafe',
-    general:    'general',
-    other:      'general',
+    pharmacy:   'pharmacy',
+    general:    'pharmacy',
+    other:      'pharmacy',
   };
-  return map[raw.toLowerCase()] ?? 'general';
+  return map[raw.toLowerCase()] ?? 'pharmacy';
 }

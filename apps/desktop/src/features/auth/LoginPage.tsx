@@ -24,7 +24,8 @@ const MODULE_LABELS: Record<string, string> = {
   bar: 'Cafe & Bar',
   'auto-parts': 'Business pos & store',
   auto_care: 'Business pos & store',
-  general: 'General',
+  pharmacy: 'Pharmacy',
+  general: 'Pharmacy',
 };
 
 export function LoginPage() {
@@ -80,6 +81,8 @@ export function LoginPage() {
     const current = localStorage.getItem('genx:selectedModule');
     if (current === 'auto-parts' || current === 'auto_care') {
       navigate('/auto-care');
+    } else if (current === 'pharmacy') {
+      navigate('/pharmacy');
     } else if (current) {
       navigate('/pos');
     } else {

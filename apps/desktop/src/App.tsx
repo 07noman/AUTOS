@@ -35,6 +35,19 @@ import { MasterDashboard, MasterPOS, MasterInventory, MasterOrders } from './com
 import { resolveBusinessType } from './lib/businessTypes';
 import { AccountActionsPage } from './features/account-actions/AccountActionsPage';
 import { ExpensesPage } from './features/expenses/ExpensesPage';
+import { PharmacyHome } from './features/pharmacy/PharmacyHome';
+import { PharmacyShell } from './features/pharmacy/PharmacyShell';
+import { PharmacyDashboard } from './features/pharmacy/PharmacyDashboard';
+import { PharmacyMedicines } from './features/pharmacy/PharmacyMedicines';
+import { PharmacyExpiryBatch } from './features/pharmacy/PharmacyExpiryBatch';
+import { PharmacySuppliers } from './features/pharmacy/PharmacySuppliers';
+import { PharmacyPurchases } from './features/pharmacy/PharmacyPurchases';
+import { PharmacyAccounts } from './features/pharmacy/PharmacyAccounts';
+import { PharmacyCustomers } from './features/pharmacy/PharmacyCustomers';
+import { PharmacyExpenses } from './features/pharmacy/PharmacyExpenses';
+import { PharmacyReports } from './features/pharmacy/PharmacyReports';
+import { PharmacyStaff } from './features/pharmacy/PharmacyStaff';
+import { PharmacySettings } from './features/pharmacy/PharmacySettings';
 
 function App() {
   const { isAuthenticated, validateSession } = useAuth();
@@ -163,6 +176,23 @@ function App() {
         <Route path="settings/receipt" element={<ReceiptBrandingPage />} />
       </Route>
 
+      {/* Pharmacy Module Routes — Completely isolated from other business types */}
+      <Route path="/pharmacy" element={<PharmacyHome />} />
+      <Route path="/pharmacy/pos" element={<MasterPOS businessType="pharmacy" />} />
+      <Route path="/pharmacy" element={<PharmacyShell />}>
+        <Route path="dashboard" element={<PharmacyDashboard />} />
+        <Route path="medicines" element={<PharmacyMedicines />} />
+        <Route path="expiry-batch" element={<PharmacyExpiryBatch />} />
+        <Route path="suppliers" element={<PharmacySuppliers />} />
+        <Route path="purchases" element={<PharmacyPurchases />} />
+        <Route path="accounts" element={<PharmacyAccounts />} />
+        <Route path="customers" element={<PharmacyCustomers />} />
+        <Route path="expenses" element={<PharmacyExpenses />} />
+        <Route path="reports" element={<PharmacyReports />} />
+        <Route path="staff" element={<PharmacyStaff />} />
+        <Route path="settings" element={<PharmacySettings />} />
+      </Route>
+
       {/* Global Expenses Route (accessible directly or via sidebar/launcher) */}
       <Route path="/expenses" element={<ExpensesPage />} />
 
@@ -172,6 +202,8 @@ function App() {
         element={
           isAutoCare ? (
             <Navigate to="/auto-care/pos" replace />
+          ) : selectedModule === 'pharmacy' ? (
+            <Navigate to="/pharmacy/pos" replace />
           ) : (
             <Navigate to={`/business/${selectedModule || 'general'}/pos`} replace />
           )
@@ -272,6 +304,8 @@ function App() {
         element={
           isAutoCare ? (
             <Navigate to="/auto-care" replace />
+          ) : selectedModule === 'pharmacy' ? (
+            <Navigate to="/pharmacy" replace />
           ) : selectedModule ? (
             <Navigate to={`/business/${selectedModule}`} replace />
           ) : (
