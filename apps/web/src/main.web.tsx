@@ -21,7 +21,7 @@ import { BrowserRouter } from 'react-router-dom';
 import App from '@/App';
 import '@/index.css';
 
-// Deployment trigger v0.1.9: Instant optimistic payment validation in POS (<100ms) with background save
+// Deployment trigger v0.2.0: Replaced Other Business with Pharmacy business type & 11-module suite
 
 // Tauri browser mock — lets SQLite repos fall back to localStorage in browser
 import { setupTauriBrowserMock } from '@/lib/tauri-mock';
