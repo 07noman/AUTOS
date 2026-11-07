@@ -37,6 +37,17 @@ interface Props {
 export function BusinessHome({ businessType: propType }: Props) {
   const navigate = useNavigate();
   const params = useParams<{ businessType?: string }>();
+
+  useEffect(() => {
+    if (params.businessType === 'pharmacy' || propType === 'pharmacy') {
+      navigate('/pharmacy', { replace: true });
+    }
+  }, [params.businessType, propType, navigate]);
+
+  if (params.businessType === 'pharmacy' || propType === 'pharmacy') {
+    return null;
+  }
+
   const activeType = resolveBusinessType(propType || params.businessType || localStorage.getItem('genx:selectedModule'));
   const { user, logout } = useAuth();
   const [showMenu, setShowMenu] = useState(false);

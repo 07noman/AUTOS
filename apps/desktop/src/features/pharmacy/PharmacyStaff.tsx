@@ -130,8 +130,15 @@ export function PharmacyStaff() {
               </tr>
             </thead>
             <tbody className="divide-y divide-white/[0.04]">
-              {staff.map((u) => (
-                <tr key={u.id} className="hover:bg-white/[0.02] transition">
+              {staff.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="py-10 text-center text-slate-400">
+                    No staff members added yet. Click '+ Add Staff Member' to configure staff roles.
+                  </td>
+                </tr>
+              ) : (
+                staff.map((u) => (
+                  <tr key={u.id} className="hover:bg-white/[0.02] transition">
                   <td className="py-3 px-4">
                     <div className="font-semibold text-white">{u.name}</div>
                     <div className="text-[11px] text-slate-400">{u.email}</div>
@@ -169,7 +176,8 @@ export function PharmacyStaff() {
                     )}
                   </td>
                 </tr>
-              ))}
+              ))
+            )}
             </tbody>
           </table>
         </div>

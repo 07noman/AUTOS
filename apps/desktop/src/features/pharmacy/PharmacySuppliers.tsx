@@ -141,8 +141,13 @@ export function PharmacySuppliers() {
       </div>
 
       {/* Supplier Cards Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {filtered.map((sup) => (
+      {filtered.length === 0 ? (
+        <div className="bg-[#1b1c24] border border-white/[0.07] rounded-2xl p-12 text-center text-slate-400">
+          No distributors found. Click '+ Add New Distributor' to add a supplier.
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {filtered.map((sup) => (
           <div
             key={sup.id}
             className="bg-[#1b1c24] border border-white/[0.07] rounded-2xl p-5 flex flex-col justify-between shadow-lg"
@@ -198,7 +203,8 @@ export function PharmacySuppliers() {
             </div>
           </div>
         ))}
-      </div>
+        </div>
+      )}
 
       {/* Add Supplier Modal */}
       {modalOpen && (

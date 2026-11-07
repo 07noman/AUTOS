@@ -114,29 +114,37 @@ export function PharmacyExpenses() {
               </tr>
             </thead>
             <tbody className="divide-y divide-white/[0.04]">
-              {expenses.map((e) => (
-                <tr key={e.id} className="hover:bg-white/[0.02] transition">
-                  <td className="py-3 px-4 text-slate-400">{e.date}</td>
-                  <td className="py-3 px-4">
-                    <span className="px-2 py-0.5 rounded-md bg-white/[0.04] text-[11px] font-medium border border-white/[0.06] text-white">
-                      {e.category}
-                    </span>
-                  </td>
-                  <td className="py-3 px-4 text-slate-300 max-w-sm">{e.notes}</td>
-                  <td className="py-3 px-4 text-slate-400">{e.method}</td>
-                  <td className="py-3 px-4 text-slate-400">{e.loggedBy}</td>
-                  <td className="py-3 px-4 font-bold text-rose-400">Rs. {e.amount.toLocaleString()}</td>
-                  <td className="py-3 px-4 text-right">
-                    <button
-                      type="button"
-                      onClick={() => handleDelete(e.id)}
-                      className="p-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 transition"
-                    >
-                      <Trash2 size={13} />
-                    </button>
+              {expenses.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="py-10 text-center text-slate-400">
+                    No operating expenses recorded yet. Click '+ Add Expense' to log costs.
                   </td>
                 </tr>
-              ))}
+              ) : (
+                expenses.map((e) => (
+                  <tr key={e.id} className="hover:bg-white/[0.02] transition">
+                    <td className="py-3 px-4 text-slate-400">{e.date}</td>
+                    <td className="py-3 px-4">
+                      <span className="px-2 py-0.5 rounded-md bg-white/[0.04] text-[11px] font-medium border border-white/[0.06] text-white">
+                        {e.category}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 text-slate-300 max-w-sm">{e.notes}</td>
+                    <td className="py-3 px-4 text-slate-400">{e.method}</td>
+                    <td className="py-3 px-4 text-slate-400">{e.loggedBy}</td>
+                    <td className="py-3 px-4 font-bold text-rose-400">Rs. {e.amount.toLocaleString()}</td>
+                    <td className="py-3 px-4 text-right">
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(e.id)}
+                        className="p-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 transition"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>

@@ -35,6 +35,16 @@ export function BusinessShell() {
   const location = useLocation();
   const { businessType: rawType } = useParams<{ businessType: string }>();
 
+  useEffect(() => {
+    if (rawType === 'pharmacy') {
+      navigate('/pharmacy', { replace: true });
+    }
+  }, [rawType, navigate]);
+
+  if (rawType === 'pharmacy') {
+    return null;
+  }
+
   const businessType: BusinessTypeKey = resolveBusinessType(rawType);
   const config = BUSINESS_TYPES[businessType] ?? BUSINESS_TYPES['general'];
 

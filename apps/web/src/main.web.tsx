@@ -21,7 +21,7 @@ import { BrowserRouter } from 'react-router-dom';
 import App from '@/App';
 import '@/index.css';
 
-// Deployment trigger v0.2.0: Replaced Other Business with Pharmacy business type & 11-module suite
+// Deployment trigger v0.2.1: Purged all mock data & hardened Pharmacy POS routing persistence
 
 // Tauri browser mock — lets SQLite repos fall back to localStorage in browser
 import { setupTauriBrowserMock } from '@/lib/tauri-mock';

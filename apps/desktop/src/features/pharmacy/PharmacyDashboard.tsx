@@ -11,6 +11,7 @@ import {
   DollarSign,
   ArrowUpRight,
   ShieldAlert,
+  Inbox,
 } from 'lucide-react';
 import { pharmacyStorage } from './pharmacyData';
 
@@ -19,13 +20,20 @@ export function PharmacyDashboard() {
   const [medicines] = useState(() => pharmacyStorage.getMedicines());
   const [suppliers] = useState(() => pharmacyStorage.getSuppliers());
   const [expenses] = useState(() => pharmacyStorage.getExpenses());
+  const [accounts] = useState(() => pharmacyStorage.getAccounts());
 
-  // Metrics computation
+  // Metrics computation from real user data only
   const metrics = useMemo(() => {
     const totalMedicines = medicines.length;
-    const totalUnits = medicines.reduce((sum, m) => sum + m.stock, 0);
-    const inventoryValuation = medicines.reduce((sum, m) => sum + (m.stock * m.purchasePrice), 0);
-    const potentialSalesValue = medicines.reduce((sum, m) => sum + (m.stock * m.sellingPrice), 0);
+    const totalUnits = medicines.reduce((sum, m) => sum + (Number(m.stock) || 0), 0);
+    const inventoryValuation = medicines.reduce(
+      (sum, m) => sum + (Number(m.stock) || 0) * (Number(m.purchasePrice) || 0),
+      0
+    );
+    const potentialSalesValue = medicines.reduce(
+      (sum, m) => sum + (Number(m.stock) || 0) * (Number(m.sellingPrice) || 0),
+      0
+    );
 
     const lowStockItems = medicines.filter((m) => m.stock > 0 && m.stock <= m.minStockLevel);
     const outOfStockItems = medicines.filter((m) => m.stock <= 0);
@@ -35,17 +43,29 @@ export function PharmacyDashboard() {
     ninetyDays.setDate(now.getDate() + 90);
 
     const nearExpiryItems = medicines.filter((m) => {
+      if (!m.expiryDate) return false;
       const exp = new Date(m.expiryDate);
       return exp > now && exp <= ninetyDays;
     });
 
     const expiredItems = medicines.filter((m) => {
+      if (!m.expiryDate) return false;
       const exp = new Date(m.expiryDate);
       return exp <= now;
     });
 
-    const totalPayables = suppliers.reduce((sum, s) => sum + s.outstandingBalance, 0);
-    const totalMonthlyExpense = expenses.reduce((sum, e) => sum + e.amount, 0);
+    const totalPayables = suppliers.reduce((sum, s) => sum + (Number(s.outstandingBalance) || 0), 0);
+    const totalMonthlyExpense = expenses.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+
+    // Real daily sales from accounts
+    const todayStr = new Date().toISOString().split('T')[0];
+    const todaySales = accounts
+      .filter((a) => a.type === 'Customer Payment' && a.date === todayStr)
+      .reduce((sum, a) => sum + (Number(a.amount) || 0), 0);
+
+    const todayOrderCount = accounts.filter(
+      (a) => a.type === 'Customer Payment' && a.date === todayStr
+    ).length;
 
     return {
       totalMedicines,
@@ -60,8 +80,10 @@ export function PharmacyDashboard() {
       totalMonthlyExpense,
       nearExpiryItems,
       lowStockItems,
+      todaySales,
+      todayOrderCount,
     };
-  }, [medicines, suppliers, expenses]);
+  }, [medicines, suppliers, expenses, accounts]);
 
   return (
     <div className="space-y-6">
@@ -118,10 +140,11 @@ export function PharmacyDashboard() {
             </span>
           </div>
           <div className="mt-3">
-            <h3 className="text-2xl font-bold text-white">Rs. 18,450.00</h3>
-            <p className="text-[11px] text-emerald-400 mt-1 flex items-center gap-1">
-              <ArrowUpRight size={13} />
-              <span>+14.2% vs yesterday (42 orders)</span>
+            <h3 className="text-2xl font-bold text-white">
+              Rs. {metrics.todaySales.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+            </h3>
+            <p className="text-[11px] text-slate-400 mt-1">
+              {metrics.todayOrderCount} orders logged today
             </p>
           </div>
         </div>
@@ -136,7 +159,7 @@ export function PharmacyDashboard() {
           </div>
           <div className="mt-3">
             <h3 className="text-2xl font-bold text-white">
-              Rs. {metrics.inventoryValuation.toLocaleString()}
+              Rs. {metrics.inventoryValuation.toLocaleString(undefined, { minimumFractionDigits: 2 })}
             </h3>
             <p className="text-[11px] text-slate-400 mt-1">
               {metrics.totalMedicines} Products ({metrics.totalUnits} Units)
@@ -160,7 +183,7 @@ export function PharmacyDashboard() {
               {metrics.nearExpiryCount} Batches
             </h3>
             <p className="text-[11px] text-amber-400/80 mt-1">
-              Requires FEFO clearance
+              {metrics.nearExpiryCount > 0 ? 'Requires FEFO clearance' : 'No near-expiry items'}
             </p>
           </div>
         </div>
@@ -181,7 +204,7 @@ export function PharmacyDashboard() {
               {metrics.lowStockCount + metrics.outOfStockCount} Items
             </h3>
             <p className="text-[11px] text-slate-400 mt-1">
-              Reorder purchase needed
+              {metrics.lowStockCount + metrics.outOfStockCount > 0 ? 'Reorder purchase needed' : 'Stock levels healthy'}
             </p>
           </div>
         </div>
@@ -206,7 +229,10 @@ export function PharmacyDashboard() {
           </div>
 
           {metrics.nearExpiryItems.length === 0 ? (
-            <p className="text-xs text-slate-400 py-6 text-center">No medicines near expiry.</p>
+            <div className="py-8 text-center text-slate-400 flex flex-col items-center">
+              <Inbox className="h-8 w-8 text-slate-600 mb-2" />
+              <p className="text-xs">No medicines near expiry.</p>
+            </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
@@ -262,15 +288,20 @@ export function PharmacyDashboard() {
               <tbody className="divide-y divide-white/[0.04]">
                 {metrics.lowStockItems.length === 0 ? (
                   <tr>
-                    <td colSpan={4} className="py-4 text-center text-slate-400">
-                      All inventory stock levels are healthy.
+                    <td colSpan={4} className="py-8 text-center text-slate-400">
+                      <div className="flex flex-col items-center">
+                        <Inbox className="h-8 w-8 text-slate-600 mb-2" />
+                        <p className="text-xs">All inventory stock levels are healthy.</p>
+                      </div>
                     </td>
                   </tr>
                 ) : (
                   metrics.lowStockItems.map((item) => (
                     <tr key={item.id} className="text-slate-200">
                       <td className="py-2.5 font-medium text-white">{item.name}</td>
-                      <td className="py-2.5 text-slate-400">{item.dosageForm} ({item.strength})</td>
+                      <td className="py-2.5 text-slate-400">
+                        {item.dosageForm} ({item.strength})
+                      </td>
                       <td className="py-2.5 text-rose-400 font-bold">{item.stock}</td>
                       <td className="py-2.5 text-slate-400">{item.minStockLevel}</td>
                     </tr>
@@ -289,7 +320,9 @@ export function PharmacyDashboard() {
             <span>Supplier Payables</span>
             <Truck size={14} className="text-teal-400" />
           </div>
-          <p className="text-lg font-bold text-white mt-2">Rs. {metrics.totalPayables.toLocaleString()}</p>
+          <p className="text-lg font-bold text-white mt-2">
+            Rs. {metrics.totalPayables.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+          </p>
           <p className="text-[11px] text-slate-400 mt-0.5">{suppliers.length} Active distributors</p>
         </div>
 
@@ -298,8 +331,10 @@ export function PharmacyDashboard() {
             <span>Monthly Pharmacy Expenses</span>
             <DollarSign size={14} className="text-rose-400" />
           </div>
-          <p className="text-lg font-bold text-white mt-2">Rs. {metrics.totalMonthlyExpense.toLocaleString()}</p>
-          <p className="text-[11px] text-slate-400 mt-0.5">Rent, power, refrigeration & payroll</p>
+          <p className="text-lg font-bold text-white mt-2">
+            Rs. {metrics.totalMonthlyExpense.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+          </p>
+          <p className="text-[11px] text-slate-400 mt-0.5">{expenses.length} Expense records</p>
         </div>
 
         <div className="bg-[#1b1c24] border border-white/[0.07] rounded-2xl p-4">
@@ -308,7 +343,10 @@ export function PharmacyDashboard() {
             <TrendingUp size={14} className="text-emerald-400" />
           </div>
           <p className="text-lg font-bold text-emerald-400 mt-2">
-            Rs. {(metrics.potentialSalesValue - metrics.inventoryValuation).toLocaleString()}
+            Rs.{' '}
+            {(metrics.potentialSalesValue - metrics.inventoryValuation).toLocaleString(undefined, {
+              minimumFractionDigits: 2,
+            })}
           </p>
           <p className="text-[11px] text-slate-400 mt-0.5">Estimated gross retail margin</p>
         </div>

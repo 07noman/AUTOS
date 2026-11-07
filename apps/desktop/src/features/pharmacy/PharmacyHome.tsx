@@ -3,7 +3,7 @@
  * Displays clean Odoo-style app launcher grid with Pharmacy modules.
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   ShoppingCart,
   LayoutDashboard,
@@ -142,7 +142,13 @@ export function PharmacyHome() {
   const { user, logout } = useAuth();
   const [showMenu, setShowMenu] = useState(false);
 
+  useEffect(() => {
+    localStorage.setItem('genx_businessType', 'pharmacy');
+    localStorage.setItem('genx:selectedModule', 'pharmacy');
+  }, []);
+
   const handleSwitchBusiness = () => {
+    localStorage.removeItem('genx_businessType');
     localStorage.removeItem('genx:selectedModule');
     navigate('/select-module');
   };

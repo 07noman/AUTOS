@@ -147,6 +147,11 @@ function App() {
         <Route path="settings/receipt" element={<ReceiptBrandingPage />} />
       </Route>
 
+      {/* Redirect any legacy /business/pharmacy routes straight to /pharmacy */}
+      <Route path="/business/pharmacy/pos" element={<Navigate to="/pharmacy/pos" replace />} />
+      <Route path="/business/pharmacy/*" element={<Navigate to="/pharmacy" replace />} />
+      <Route path="/business/pharmacy" element={<Navigate to="/pharmacy" replace />} />
+
       {/* Unified Business Master Launcher & Sub-Modules (100% Identical to Auto Parts) */}
       <Route path="/business/:businessType" element={<BusinessHome />} />
       <Route path="/business/:businessType/pos" element={<MasterPOS />} />

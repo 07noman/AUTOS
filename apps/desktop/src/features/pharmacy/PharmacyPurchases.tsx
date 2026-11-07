@@ -18,37 +18,9 @@ import {
 } from './pharmacyData';
 
 export function PharmacyPurchases() {
-  const [purchases, setPurchases] = useState<PurchaseOrder[]>(() => {
-    const list = pharmacyStorage.getPurchases();
-    if (list.length > 0) return list;
-    return [
-      {
-        id: 'po-101',
-        poNumber: 'PO-2026-084',
-        supplierId: 'sup-01',
-        supplierName: 'Premier Pharmaceuticals Distributors',
-        date: '2026-11-02',
-        items: [
-          {
-            medicineId: 'med-01',
-            medicineName: 'Panadol Extra',
-            batchNumber: 'BN-2024-A1',
-            mfgDate: '2024-01-10',
-            expiryDate: '2027-01-10',
-            quantity: 100,
-            unitCost: 42.0,
-            total: 4200.0,
-          },
-        ],
-        subtotal: 4200.0,
-        discount: 200.0,
-        total: 4000.0,
-        paidAmount: 4000.0,
-        paymentStatus: 'paid',
-        notes: 'November primary stock order',
-      },
-    ];
-  });
+  const [purchases, setPurchases] = useState<PurchaseOrder[]>(() =>
+    pharmacyStorage.getPurchases()
+  );
 
   const [medicines, setMedicines] = useState<Medicine[]>(() => pharmacyStorage.getMedicines());
   const [suppliers] = useState<Supplier[]>(() => pharmacyStorage.getSuppliers());
@@ -193,8 +165,15 @@ export function PharmacyPurchases() {
               </tr>
             </thead>
             <tbody className="divide-y divide-white/[0.04]">
-              {purchases.map((po) => (
-                <tr key={po.id} className="hover:bg-white/[0.02] transition">
+              {purchases.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="py-12 text-center text-slate-400">
+                    No purchase orders recorded yet. Click '+ Create Purchase Order' to record incoming medicine stock.
+                  </td>
+                </tr>
+              ) : (
+                purchases.map((po) => (
+                  <tr key={po.id} className="hover:bg-white/[0.02] transition">
                   <td className="py-3 px-4 font-semibold text-teal-400">{po.poNumber}</td>
                   <td className="py-3 px-4 text-white font-medium">{po.supplierName}</td>
                   <td className="py-3 px-4 text-slate-400">{po.date}</td>
@@ -218,7 +197,8 @@ export function PharmacyPurchases() {
                     </span>
                   </td>
                 </tr>
-              ))}
+              ))
+            )}
             </tbody>
           </table>
         </div>

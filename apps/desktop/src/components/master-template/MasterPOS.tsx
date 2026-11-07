@@ -21,8 +21,12 @@ import {
   Tag,
   Percent,
   X,
+  ArrowLeft,
+  LayoutDashboard,
+  Pill,
+  CalendarClock,
 } from "lucide-react";
-import { useNavigate, useSearchParams, useParams } from "react-router-dom";
+import { useNavigate, useSearchParams, useParams, useLocation } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import PaymentPage, { type PaymentData, type POSCustomer, type POSCartItem } from "@/features/auto-care/PaymentPage";
 import PaymentSuccessScreen from "@/features/auto-care/PaymentSuccessScreen";
@@ -71,12 +75,38 @@ interface MasterPOSProps {
 
 export function MasterPOS({ businessType: propType }: MasterPOSProps) {
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const urlParams = useParams<{ businessType?: string }>();
   
-  const bKey = resolveBusinessType(propType || urlParams.businessType);
-  const config = BUSINESS_TYPES[bKey] ?? BUSINESS_TYPES['auto-parts'];
-  const basePath = `/business/${bKey}`;
+  // Read priority: localStorage -> URL param -> propType -> resolveBusinessType
+  const storedType = typeof window !== 'undefined'
+    ? localStorage.getItem('genx_businessType') || localStorage.getItem('genx:selectedModule')
+    : null;
+
+  const isPharmacy =
+    storedType === 'pharmacy' ||
+    location.pathname.startsWith('/pharmacy') ||
+    propType === 'pharmacy' ||
+    urlParams.businessType === 'pharmacy';
+
+  const bKey = isPharmacy
+    ? 'pharmacy'
+    : resolveBusinessType(propType || urlParams.businessType || storedType);
+
+  const config = isPharmacy
+    ? { name: 'Pharmacy' }
+    : (BUSINESS_TYPES[bKey] ?? BUSINESS_TYPES['auto-parts']);
+
+  const basePath = isPharmacy ? '/pharmacy' : `/business/${bKey}`;
+
+  // Persist businessType firmly in localStorage on every POS interaction
+  useEffect(() => {
+    if (isPharmacy) {
+      localStorage.setItem('genx_businessType', 'pharmacy');
+      localStorage.setItem('genx:selectedModule', 'pharmacy');
+    }
+  }, [isPharmacy]);
 
   const { user, logout } = useAuth();
   const queryClient = useQueryClient();
@@ -391,13 +421,25 @@ export function MasterPOS({ businessType: propType }: MasterPOSProps) {
             )}
           </button>
 
+          {/* Back Button */}
           <button
+            type="button"
+            onClick={() => navigate(basePath)}
+            title={`Back to ${config.name}`}
+            className="flex h-[34px] items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 text-[13px] sm:text-[14px] font-medium text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            <span>Back</span>
+          </button>
+
+          <button
+            type="button"
             onClick={() => navigate(basePath)}
             title={`Return to ${config.name} Launcher`}
-            className="flex h-[34px] items-center gap-1.5 rounded-lg border border-[#bce6e9] bg-[#e6f5f6] px-3 text-[13px] sm:text-[14px] font-medium text-[#00878a] hover:bg-[#d8f0f2] transition-colors"
+            className="flex h-[34px] items-center gap-1.5 rounded-lg border border-[#bce6e9] bg-[#e6f5f6] px-3 text-[13px] sm:text-[14px] font-medium text-[#00878a] hover:bg-[#d8f0f2] transition-colors cursor-pointer"
           >
             <LayoutGrid className="h-4 w-4 text-[#00878a]" />
-            <span>Register</span>
+            <span>{isPharmacy ? 'Pharmacy' : 'Register'}</span>
           </button>
 
           <button
@@ -466,23 +508,52 @@ export function MasterPOS({ businessType: propType }: MasterPOSProps) {
                   <LayoutGrid className="h-3.5 w-3.5 text-[#159aa5]" />
                   {config.name} Launcher
                 </button>
-                <button
-                  onClick={() => navigate(`${basePath}/service-jobs`)}
-                  className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 hover:bg-slate-100 font-medium"
-                >
-                  <Wrench className="h-3.5 w-3.5 text-orange-500" />
-                  Service Jobs
-                </button>
-                <button
-                  onClick={() => navigate(`${basePath}/dashboard`)}
-                  className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 hover:bg-slate-100 font-medium"
-                >
-                  <Car className="h-3.5 w-3.5 text-purple-500" />
-                  Dashboard
-                </button>
+                {isPharmacy ? (
+                  <>
+                    <button
+                      onClick={() => navigate('/pharmacy/dashboard')}
+                      className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 hover:bg-slate-100 font-medium"
+                    >
+                      <LayoutDashboard className="h-3.5 w-3.5 text-emerald-500" />
+                      Pharmacy Dashboard
+                    </button>
+                    <button
+                      onClick={() => navigate('/pharmacy/medicines')}
+                      className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 hover:bg-slate-100 font-medium"
+                    >
+                      <Pill className="h-3.5 w-3.5 text-indigo-500" />
+                      Medicines & Inventory
+                    </button>
+                    <button
+                      onClick={() => navigate('/pharmacy/expiry-batch')}
+                      className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 hover:bg-slate-100 font-medium"
+                    >
+                      <CalendarClock className="h-3.5 w-3.5 text-amber-500" />
+                      Expiry & Batches
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      onClick={() => navigate(`${basePath}/service-jobs`)}
+                      className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 hover:bg-slate-100 font-medium"
+                    >
+                      <Wrench className="h-3.5 w-3.5 text-orange-500" />
+                      Service Jobs
+                    </button>
+                    <button
+                      onClick={() => navigate(`${basePath}/dashboard`)}
+                      className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-slate-700 hover:bg-slate-100 font-medium"
+                    >
+                      <Car className="h-3.5 w-3.5 text-purple-500" />
+                      Dashboard
+                    </button>
+                  </>
+                )}
                 <div className="my-1 border-t border-slate-100" />
                 <button
                   onClick={() => {
+                    localStorage.removeItem("genx_businessType");
                     localStorage.removeItem("genx:selectedModule");
                     navigate("/select-module");
                   }}

@@ -17,16 +17,7 @@ export function PharmacyExpiryBatch() {
   const [filterPeriod, setFilterPeriod] = useState<'all' | 'expired' | '30days' | '60days' | '90days'>('all');
   const [disposalLogs, setDisposalLogs] = useState<
     { id: string; medicineName: string; batch: string; qty: number; reason: string; date: string }[]
-  >(() => [
-    {
-      id: 'disp-01',
-      medicineName: 'Amoxil 250mg Suspension',
-      batch: 'BN-2022-K1',
-      qty: 4,
-      reason: 'Expired beyond shelf life',
-      date: '2026-10-15',
-    },
-  ]);
+  >(() => pharmacyStorage.getDisposalLogs());
 
   const [disposalModal, setDisposalModal] = useState<Medicine | null>(null);
   const [disposalQty, setDisposalQty] = useState(1);
@@ -81,7 +72,7 @@ export function PharmacyExpiryBatch() {
     pharmacyStorage.saveMedicines(updated);
 
     // Add log
-    setDisposalLogs([
+    const updatedLogs = [
       {
         id: `disp-${Date.now()}`,
         medicineName: disposalModal.name,
@@ -91,7 +82,9 @@ export function PharmacyExpiryBatch() {
         date: new Date().toISOString().split('T')[0],
       },
       ...disposalLogs,
-    ]);
+    ];
+    setDisposalLogs(updatedLogs);
+    pharmacyStorage.saveDisposalLogs(updatedLogs);
 
     setDisposalModal(null);
   };
@@ -233,7 +226,14 @@ export function PharmacyExpiryBatch() {
               </tr>
             </thead>
             <tbody className="divide-y divide-white/[0.04]">
-              {sortedBatches.map((m, index) => {
+              {sortedBatches.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="py-10 text-center text-slate-400">
+                    No medicine batches found for this filter.
+                  </td>
+                </tr>
+              ) : (
+                sortedBatches.map((m, index) => {
                 const exp = new Date(m.expiryDate);
                 const diffDays = Math.ceil((exp.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
                 const isExpired = diffDays <= 0;
@@ -292,7 +292,8 @@ export function PharmacyExpiryBatch() {
                     </td>
                   </tr>
                 );
-              })}
+              })
+            )}
             </tbody>
           </table>
         </div>
@@ -317,15 +318,23 @@ export function PharmacyExpiryBatch() {
               </tr>
             </thead>
             <tbody className="divide-y divide-white/[0.04]">
-              {disposalLogs.map((log) => (
-                <tr key={log.id} className="text-slate-300">
-                  <td className="py-2.5 text-slate-400">{log.date}</td>
-                  <td className="py-2.5 font-medium text-white">{log.medicineName}</td>
-                  <td className="py-2.5 font-mono">{log.batch}</td>
-                  <td className="py-2.5 text-rose-400 font-bold">{log.qty} Units</td>
-                  <td className="py-2.5 text-slate-300">{log.reason}</td>
+              {disposalLogs.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="py-8 text-center text-slate-400">
+                    No disposal or quarantine records logged yet.
+                  </td>
                 </tr>
-              ))}
+              ) : (
+                disposalLogs.map((log) => (
+                  <tr key={log.id} className="text-slate-300">
+                    <td className="py-2.5 text-slate-400">{log.date}</td>
+                    <td className="py-2.5 font-medium text-white">{log.medicineName}</td>
+                    <td className="py-2.5 font-mono">{log.batch}</td>
+                    <td className="py-2.5 text-rose-400 font-bold">{log.qty} Units</td>
+                    <td className="py-2.5 text-slate-300">{log.reason}</td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>

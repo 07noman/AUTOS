@@ -3,7 +3,7 @@
  * Features [Apps] launcher return button, quick POS jump, and user controls.
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Outlet, useNavigate, useLocation, Link } from 'react-router-dom';
 import {
   LayoutGrid,
@@ -20,6 +20,11 @@ export function PharmacyShell() {
   const location = useLocation();
   const { user, logout } = useAuth();
   const [showMenu, setShowMenu] = useState(false);
+
+  useEffect(() => {
+    localStorage.setItem('genx_businessType', 'pharmacy');
+    localStorage.setItem('genx:selectedModule', 'pharmacy');
+  }, []);
 
   const getModuleTitle = () => {
     const p = location.pathname;
@@ -97,6 +102,7 @@ export function PharmacyShell() {
                 <button
                   type="button"
                   onClick={() => {
+                    localStorage.removeItem('genx_businessType');
                     localStorage.removeItem('genx:selectedModule');
                     navigate('/select-module');
                   }}
