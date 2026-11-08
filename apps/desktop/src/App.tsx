@@ -196,6 +196,7 @@ function App() {
         <Route path="reports" element={<PharmacyReports />} />
         <Route path="staff" element={<PharmacyStaff />} />
         <Route path="settings" element={<PharmacySettings />} />
+        <Route path="orders" element={<MasterOrders businessType="pharmacy" />} />
       </Route>
 
       {/* Global Expenses Route (accessible directly or via sidebar/launcher) */}

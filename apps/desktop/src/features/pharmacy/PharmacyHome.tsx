@@ -135,7 +135,15 @@ const PHARMACY_APPS: PharmacyApp[] = [
     iconBg: 'bg-[#546e7a]',
     href: '/pharmacy/settings',
   },
-];
+    {
+      id: 'orders',
+      name: 'Orders',
+      description: 'All day orders & real‑time updates',
+      icon: ShoppingCart,
+      iconBg: 'bg-[#00897b]',
+      href: '/pharmacy/orders',
+    },
+  ];
 
 export function PharmacyHome() {
   const navigate = useNavigate();
