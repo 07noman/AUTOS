@@ -101,13 +101,13 @@ export function PharmacySuppliers() {
   return (
     <div className="space-y-6">
       {/* Top Banner */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
         <div>
-          <h2 className="text-xl font-bold text-white flex items-center gap-2">
-            <Truck className="text-indigo-400" size={20} />
+          <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+            <Truck className="text-[#00897b]" size={20} />
             <span>Vendors & Pharmaceutical Distributors</span>
           </h2>
-          <p className="text-xs text-slate-400 mt-1">
+          <p className="text-xs text-slate-500 mt-1">
             Maintain authorized medicine distributors, pharmaceutical company reps, and vendor payables.
           </p>
         </div>
@@ -115,7 +115,7 @@ export function PharmacySuppliers() {
         <button
           type="button"
           onClick={handleOpenAdd}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#00897b] hover:bg-[#00897b]/90 text-white text-xs font-semibold shadow-lg shadow-teal-500/10 transition self-start sm:self-auto cursor-pointer"
+          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#00897b] hover:bg-[#00897b]/90 text-white text-xs font-semibold shadow-sm transition self-start sm:self-auto cursor-pointer"
         >
           <Plus size={16} />
           <span>Add New Distributor</span>
@@ -124,17 +124,17 @@ export function PharmacySuppliers() {
 
       {/* Stats Summary */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="bg-[#1b1c24] border border-white/[0.07] rounded-2xl p-4">
-          <span className="text-xs text-slate-400">Total Distributors</span>
-          <h3 className="text-2xl font-bold text-white mt-1">{suppliers.length} Companies</h3>
+        <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
+          <span className="text-xs text-slate-500">Total Distributors</span>
+          <h3 className="text-2xl font-bold text-slate-900 mt-1">{suppliers.length} Companies</h3>
         </div>
-        <div className="bg-[#1b1c24] border border-white/[0.07] rounded-2xl p-4">
-          <span className="text-xs text-slate-400">Total Outstanding Balance</span>
-          <h3 className="text-2xl font-bold text-rose-400 mt-1">Rs. {totalOutstanding.toLocaleString()}</h3>
+        <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
+          <span className="text-xs text-slate-500">Total Outstanding Balance</span>
+          <h3 className="text-2xl font-bold text-rose-700 mt-1">Rs. {totalOutstanding.toLocaleString()}</h3>
         </div>
-        <div className="bg-[#1b1c24] border border-white/[0.07] rounded-2xl p-4">
-          <span className="text-xs text-slate-400">Total Purchases Logged</span>
-          <h3 className="text-2xl font-bold text-teal-400 mt-1">
+        <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
+          <span className="text-xs text-slate-500">Total Purchases Logged</span>
+          <h3 className="text-2xl font-bold text-teal-800 mt-1">
             Rs. {suppliers.reduce((sum, s) => sum + s.totalPurchases, 0).toLocaleString()}
           </h3>
         </div>
@@ -148,13 +148,13 @@ export function PharmacySuppliers() {
           placeholder="Search distributor by company name, contact person, or phone..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-[#1b1c24] border border-white/[0.08] text-xs text-white placeholder-slate-500 focus:outline-none focus:border-teal-500"
+          className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-white border border-slate-200 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-teal-500 shadow-sm"
         />
       </div>
 
       {/* Supplier Cards Grid */}
       {filtered.length === 0 ? (
-        <div className="bg-[#1b1c24] border border-white/[0.07] rounded-2xl p-12 text-center text-slate-400">
+        <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center text-slate-500 shadow-sm">
           No distributors found. Click '+ Add New Distributor' to add a supplier.
         </div>
       ) : (
@@ -162,41 +162,41 @@ export function PharmacySuppliers() {
           {filtered.map((sup) => (
           <div
             key={sup.id}
-            className="bg-[#1b1c24] border border-white/[0.07] rounded-2xl p-5 flex flex-col justify-between shadow-lg"
+            className="bg-white border border-slate-200 rounded-2xl p-5 flex flex-col justify-between shadow-sm hover:border-teal-300 transition"
           >
             <div>
               <div className="flex items-start justify-between gap-2">
-                <h4 className="font-semibold text-white text-sm">{sup.name}</h4>
-                <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-indigo-500/10 text-indigo-300 border border-indigo-500/20">
+                <h4 className="font-semibold text-slate-900 text-sm">{sup.name}</h4>
+                <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
                   Distributor
                 </span>
               </div>
-              <p className="text-xs text-slate-400 mt-1">Contact: {sup.contactPerson}</p>
+              <p className="text-xs text-slate-500 mt-1">Contact: {sup.contactPerson}</p>
 
-              <div className="space-y-1.5 mt-4 text-xs text-slate-300">
-                <div className="flex items-center gap-2 text-slate-400">
-                  <Phone size={13} className="text-teal-400 shrink-0" />
+              <div className="space-y-1.5 mt-4 text-xs text-slate-600">
+                <div className="flex items-center gap-2 text-slate-500">
+                  <Phone size={13} className="text-teal-600 shrink-0" />
                   <span>{sup.phone}</span>
                 </div>
                 {sup.email && (
-                  <div className="flex items-center gap-2 text-slate-400 truncate">
-                    <Mail size={13} className="text-teal-400 shrink-0" />
+                  <div className="flex items-center gap-2 text-slate-500 truncate">
+                    <Mail size={13} className="text-teal-600 shrink-0" />
                     <span>{sup.email}</span>
                   </div>
                 )}
                 {sup.address && (
-                  <div className="flex items-start gap-2 text-slate-400 line-clamp-1">
-                    <MapPin size={13} className="text-teal-400 shrink-0 mt-0.5" />
+                  <div className="flex items-start gap-2 text-slate-500 line-clamp-1">
+                    <MapPin size={13} className="text-teal-600 shrink-0 mt-0.5" />
                     <span>{sup.address}</span>
                   </div>
                 )}
               </div>
             </div>
 
-            <div className="mt-5 pt-4 border-t border-white/[0.06] flex items-center justify-between">
+            <div className="mt-5 pt-4 border-t border-slate-100 flex items-center justify-between">
               <div>
                 <span className="text-[10px] text-slate-400 uppercase tracking-wider block">Payable Balance</span>
-                <span className="text-sm font-bold text-rose-400">
+                <span className="text-sm font-bold text-rose-700">
                   Rs. {sup.outstandingBalance.toLocaleString()}
                 </span>
               </div>
@@ -207,7 +207,7 @@ export function PharmacySuppliers() {
                   setPaymentModal(sup);
                   setPaymentAmount(sup.outstandingBalance);
                 }}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/[0.06] hover:bg-[#00897b] hover:text-white text-slate-300 text-xs font-medium transition cursor-pointer"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-[#00897b] hover:text-white text-slate-700 text-xs font-medium border border-slate-200 transition cursor-pointer"
               >
                 <CreditCard size={13} />
                 <span>Pay Vendor</span>
@@ -220,14 +220,14 @@ export function PharmacySuppliers() {
 
       {/* Add Supplier Modal */}
       {modalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-[#1b1c24] border border-white/[0.1] rounded-2xl w-full max-w-lg p-6 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-white/[0.08] pb-3 mb-4">
-              <h3 className="text-base font-bold text-white">Add New Pharmaceutical Distributor</h3>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-lg p-6 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
+              <h3 className="text-base font-bold text-slate-900">Add New Pharmaceutical Distributor</h3>
               <button
                 type="button"
                 onClick={() => setModalOpen(false)}
-                className="p-1 text-slate-400 hover:text-white"
+                className="p-1 text-slate-400 hover:text-slate-600 transition"
               >
                 <X size={18} />
               </button>
@@ -235,84 +235,84 @@ export function PharmacySuppliers() {
 
             <form onSubmit={handleSave} className="space-y-4 text-xs">
               <div>
-                <label className="block text-slate-400 mb-1">Company / Distributor Name *</label>
+                <label className="block text-slate-700 font-medium mb-1">Company / Distributor Name *</label>
                 <input
                   type="text"
                   required
                   placeholder="e.g. Premier Pharmaceuticals Ltd"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className="w-full px-3 py-2 rounded-xl bg-[#25252d] border border-white/[0.08] text-white focus:outline-none focus:border-teal-500"
+                  className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 focus:bg-white focus:outline-none focus:border-teal-500"
                 />
               </div>
 
               <div>
-                <label className="block text-slate-400 mb-1">Contact Person / Area Rep</label>
+                <label className="block text-slate-700 font-medium mb-1">Contact Person / Area Rep</label>
                 <input
                   type="text"
                   placeholder="e.g. Tariq Mehmood"
                   value={formData.contactPerson}
                   onChange={(e) => setFormData({ ...formData, contactPerson: e.target.value })}
-                  className="w-full px-3 py-2 rounded-xl bg-[#25252d] border border-white/[0.08] text-white focus:outline-none focus:border-teal-500"
+                  className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 focus:bg-white focus:outline-none focus:border-teal-500"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-slate-400 mb-1">Phone Number *</label>
+                  <label className="block text-slate-700 font-medium mb-1">Phone Number *</label>
                   <input
                     type="text"
                     required
                     placeholder="0300-1234567"
                     value={formData.phone}
                     onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                    className="w-full px-3 py-2 rounded-xl bg-[#25252d] border border-white/[0.08] text-white focus:outline-none focus:border-teal-500"
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 focus:bg-white focus:outline-none focus:border-teal-500"
                   />
                 </div>
                 <div>
-                  <label className="block text-slate-400 mb-1">Email</label>
+                  <label className="block text-slate-700 font-medium mb-1">Email</label>
                   <input
                     type="email"
                     placeholder="orders@pharma.pk"
                     value={formData.email}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    className="w-full px-3 py-2 rounded-xl bg-[#25252d] border border-white/[0.08] text-white focus:outline-none focus:border-teal-500"
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 focus:bg-white focus:outline-none focus:border-teal-500"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-slate-400 mb-1">Warehouse / Depot Address</label>
+                <label className="block text-slate-700 font-medium mb-1">Warehouse / Depot Address</label>
                 <textarea
                   rows={2}
                   placeholder="Plot 12, Industrial Area..."
                   value={formData.address}
                   onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                  className="w-full px-3 py-2 rounded-xl bg-[#25252d] border border-white/[0.08] text-white focus:outline-none focus:border-teal-500"
+                  className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 focus:bg-white focus:outline-none focus:border-teal-500"
                 />
               </div>
 
               <div>
-                <label className="block text-slate-400 mb-1">Initial Payable Balance (Rs.)</label>
+                <label className="block text-slate-700 font-medium mb-1">Initial Payable Balance (Rs.)</label>
                 <input
                   type="number"
                   value={formData.outstandingBalance}
                   onChange={(e) => setFormData({ ...formData, outstandingBalance: parseFloat(e.target.value) || 0 })}
-                  className="w-full px-3 py-2 rounded-xl bg-[#25252d] border border-white/[0.08] text-white focus:outline-none focus:border-teal-500"
+                  className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 focus:bg-white focus:outline-none focus:border-teal-500"
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-3 pt-3 border-t border-white/[0.08]">
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => setModalOpen(false)}
-                  className="px-4 py-2 rounded-xl bg-white/[0.06] hover:bg-white/10 text-slate-300"
+                  className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium transition"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-[#00897b] hover:bg-[#00897b]/90 text-white font-semibold"
+                  className="px-5 py-2 rounded-xl bg-[#00897b] hover:bg-[#00897b]/90 text-white font-semibold shadow-sm transition"
                 >
                   Save Distributor
                 </button>
@@ -324,16 +324,16 @@ export function PharmacySuppliers() {
 
       {/* Pay Vendor Modal */}
       {paymentModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-[#1b1c24] border border-white/[0.1] rounded-2xl w-full max-w-md p-6 shadow-2xl">
-            <h3 className="text-base font-bold text-white mb-2">Record Payment to {paymentModal.name}</h3>
-            <p className="text-xs text-slate-400 mb-4">
-              Current Outstanding Balance: <span className="text-rose-400 font-bold">Rs. {paymentModal.outstandingBalance.toLocaleString()}</span>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-md p-6 shadow-2xl">
+            <h3 className="text-base font-bold text-slate-900 mb-2">Record Payment to {paymentModal.name}</h3>
+            <p className="text-xs text-slate-500 mb-4">
+              Current Outstanding Balance: <span className="text-rose-700 font-bold">Rs. {paymentModal.outstandingBalance.toLocaleString()}</span>
             </p>
 
             <form onSubmit={handleMakePayment} className="space-y-4 text-xs">
               <div>
-                <label className="block text-slate-400 mb-1">Payment Amount (Rs.)</label>
+                <label className="block text-slate-700 font-medium mb-1">Payment Amount (Rs.)</label>
                 <input
                   type="number"
                   required
@@ -341,30 +341,30 @@ export function PharmacySuppliers() {
                   max={paymentModal.outstandingBalance || undefined}
                   value={paymentAmount}
                   onChange={(e) => setPaymentAmount(parseFloat(e.target.value) || 0)}
-                  className="w-full px-3 py-2 rounded-xl bg-[#25252d] border border-white/[0.08] text-white focus:outline-none focus:border-teal-500"
+                  className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 focus:bg-white focus:outline-none focus:border-teal-500"
                 />
               </div>
 
               <div>
-                <label className="block text-slate-400 mb-1">Payment Mode</label>
-                <select className="w-full px-3 py-2 rounded-xl bg-[#25252d] border border-white/[0.08] text-white focus:outline-none focus:border-teal-500">
+                <label className="block text-slate-700 font-medium mb-1">Payment Mode</label>
+                <select className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 focus:outline-none focus:border-teal-500">
                   <option>Cash Drawer</option>
                   <option>Bank Online Transfer</option>
                   <option>Cheque / Pay Order</option>
                 </select>
               </div>
 
-              <div className="flex items-center justify-end gap-3 pt-3 border-t border-white/[0.08]">
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => setPaymentModal(null)}
-                  className="px-4 py-2 rounded-xl bg-white/[0.06] hover:bg-white/10 text-slate-300"
+                  className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium transition"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-[#00897b] hover:bg-[#00897b]/90 text-white font-semibold"
+                  className="px-5 py-2 rounded-xl bg-[#00897b] hover:bg-[#00897b]/90 text-white font-semibold shadow-sm transition"
                 >
                   Record Payment
                 </button>

@@ -19,9 +19,43 @@ import {
   XCircle,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { posOrderRepo, type POSOrder, type POSOrderItem } from '../../lib/auto-care-db';
-import { getCurrentTenantId } from '../../lib/db';
+import {
+  pharmacyDb,
+  subscribeToPharmacyRealtime,
+  getAuthBusinessId,
+  type PharmacySale,
+  type PharmacySaleItem,
+} from './pharmacyData';
 import '../auto-care/POSOrdersPage.css';
+
+export interface POSOrderItem {
+  id: string;
+  name: string;
+  quantity: number;
+  price: number;
+  subtotal?: number;
+  type?: string;
+  batchNumber?: string;
+}
+
+export interface POSOrder {
+  id: string;
+  orderNumber: number;
+  invoiceNumber: string;
+  items: POSOrderItem[];
+  subtotal: number;
+  discount?: number;
+  tax: number;
+  total: number;
+  status: 'PAID' | 'COMPLETED' | 'ONGOING' | 'CANCELLED';
+  paymentMethod?: string;
+  paidAmount?: number;
+  customerName?: string;
+  customerPhone?: string;
+  phone?: string;
+  createdAt: number;
+  notes?: string;
+}
 
 type FilterType = 'all' | 'COMPLETED' | 'ONGOING' | 'CANCELLED';
 type DateFilterType = 'today' | 'yesterday' | '7days' | 'month' | 'all' | 'custom';
@@ -365,29 +399,15 @@ function SummaryReportModal({ orders, dateTitle, onClose }: SummaryModalProps) {
 
 export function PharmacyOrders() {
   const navigate = useNavigate();
-  const [orders, setOrders] = useState<POSOrder[]>(() => {
-    try {
-      if (typeof window !== 'undefined') {
-        const tenantId = getCurrentTenantId();
-        const raw = localStorage.getItem(`genx:pos_orders_cache:${tenantId}`);
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            return parsed.filter((o: any) => o && o.tenantId === tenantId);
-          }
-        }
-      }
-    } catch {}
-    return [];
-  });
-  const [loading, setLoading] = useState(() => orders.length === 0);
+  const [orders, setOrders] = useState<POSOrder[]>([]);
+  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<FilterType>('all');
   const [dateFilter, setDateFilter] = useState<DateFilterType>('today');
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
-  const [selected, setSelected] = useState<POSOrder | null>(() => orders[0] ?? null);
+  const [selected, setSelected] = useState<POSOrder | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<POSOrder | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [summaryOpen, setSummaryOpen] = useState(false);
@@ -397,22 +417,49 @@ export function PharmacyOrders() {
 
   const loadOrders = useCallback(async (isManual = false) => {
     if (isManual) setRefreshing(true);
-    const tenantId = getCurrentTenantId();
     try {
-      // 1. Instant local load
-      const local = (await posOrderRepo.findLocal(tenantId)).filter((o) => o.tenantId === tenantId);
-      if (local.length > 0) {
-        setOrders(local);
-        setSelected((prev) => prev ?? local[0] ?? null);
-        setLoading(false);
+      const [sales, allItems] = await Promise.all([
+        pharmacyDb.getSales(),
+        pharmacyDb.getAllSaleItems().catch(() => []),
+      ]);
+
+      const itemsBySale = new Map<string, POSOrderItem[]>();
+      for (const it of allItems) {
+        const list = itemsBySale.get(it.saleId) || [];
+        list.push({
+          id: it.medicineId || it.id,
+          name: it.medicineName,
+          quantity: it.quantity,
+          price: it.unitPrice,
+          subtotal: it.total,
+          batchNumber: it.batchNumber,
+          type: 'product',
+        });
+        itemsBySale.set(it.saleId, list);
       }
 
-      // 2. Background revalidation from database / Supabase
-      const all = (await posOrderRepo.findAll(tenantId)).filter((o) => o.tenantId === tenantId);
-      setOrders(all);
+      const mapped: POSOrder[] = sales.map((s) => ({
+        id: s.id,
+        orderNumber: s.orderNumber || 1,
+        invoiceNumber: s.invoiceNumber,
+        items: itemsBySale.get(s.id) || [],
+        subtotal: s.subtotal,
+        discount: s.discount,
+        tax: s.tax,
+        total: s.totalAmount,
+        status: (s.status === 'cancelled' ? 'CANCELLED' : 'COMPLETED') as any,
+        paymentMethod: s.paymentMethod,
+        paidAmount: s.paidAmount,
+        customerName: s.customerName,
+        customerPhone: s.customerPhone,
+        createdAt: new Date(s.createdAt).getTime(),
+        notes: s.notes,
+      }));
+
+      setOrders(mapped);
       setSelected((prev) => {
-        if (!prev && all.length > 0) return all[0];
-        if (prev) return all.find((o) => o.id === prev.id) ?? all[0] ?? null;
+        if (!prev && mapped.length > 0) return mapped[0];
+        if (prev) return mapped.find((o) => o.id === prev.id) ?? mapped[0] ?? null;
         return null;
       });
     } catch (e) {
@@ -426,8 +473,30 @@ export function PharmacyOrders() {
   useEffect(() => {
     void loadOrders();
     const onFocus = () => void loadOrders();
+    const onOrdersChanged = () => void loadOrders();
+    const onSaleCompleted = () => void loadOrders();
+
     window.addEventListener('focus', onFocus);
-    return () => window.removeEventListener('focus', onFocus);
+    window.addEventListener('pharmacy:orders-changed', onOrdersChanged);
+    window.addEventListener('pharmacy:sale-completed', onSaleCompleted);
+
+    let unsubRealtime: () => void = () => {};
+    void getAuthBusinessId()
+      .then((bId) => {
+        unsubRealtime = subscribeToPharmacyRealtime(bId, (tbl) => {
+          if (tbl === 'pharmacy_sales' || tbl === 'pharmacy_sale_items') {
+            void loadOrders();
+          }
+        });
+      })
+      .catch(() => {});
+
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      window.removeEventListener('pharmacy:orders-changed', onOrdersChanged);
+      window.removeEventListener('pharmacy:sale-completed', onSaleCompleted);
+      unsubRealtime();
+    };
   }, [loadOrders]);
 
   const isCompleted = (status: string) => {
@@ -507,17 +576,17 @@ export function PharmacyOrders() {
   }, [dateFilteredOrders, filter, search]);
 
   const handleCancelOrder = async (order: POSOrder) => {
-    await posOrderRepo.cancel(order.id, getCurrentTenantId());
+    await pharmacyDb.cancelSale(order.id);
     setDeleteTarget(null);
-    setNotification(`Order #${String(order.orderNumber).padStart(4, '0')} marked as cancelled.`);
+    setNotification(`Order #${String(order.invoiceNumber || order.orderNumber).padStart(4, '0')} marked as cancelled & stock restored.`);
     setTimeout(() => setNotification(null), 6000);
     await loadOrders(true);
   };
 
   const handlePermanentDeleteOrder = async (order: POSOrder) => {
-    await posOrderRepo.deleteOrder(order.id, getCurrentTenantId());
+    await pharmacyDb.deleteSale(order.id);
     setDeleteTarget(null);
-    setNotification(`Order #${String(order.orderNumber).padStart(4, '0')} permanently removed from database.`);
+    setNotification(`Order #${String(order.invoiceNumber || order.orderNumber).padStart(4, '0')} permanently removed from database.`);
     setTimeout(() => setNotification(null), 6000);
     await loadOrders(true);
   };
@@ -525,8 +594,7 @@ export function PharmacyOrders() {
   const handleResetAllOrders = async () => {
     setResettingAll(true);
     try {
-      const tenantId = getCurrentTenantId();
-      await posOrderRepo.resetAllOrders(tenantId);
+      await pharmacyDb.deleteAllSales();
       setOrders([]);
       setSelected(null);
       setResetAllOpen(false);

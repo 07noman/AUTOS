@@ -154,13 +154,13 @@ export function PharmacyMedicines() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
         <div>
-          <h2 className="text-xl font-bold text-white flex items-center gap-2">
-            <Pill className="text-teal-400" size={20} />
+          <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+            <Pill className="text-[#00897b]" size={20} />
             <span>Medicines & Drug Inventory</span>
           </h2>
-          <p className="text-xs text-slate-400 mt-1">
+          <p className="text-xs text-slate-500 mt-1">
             Manage pharmaceuticals, brand names, generic formulations, batch numbers, and stock levels.
           </p>
         </div>
@@ -168,7 +168,7 @@ export function PharmacyMedicines() {
         <button
           type="button"
           onClick={handleOpenAdd}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#00897b] hover:bg-[#00897b]/90 text-white text-xs font-semibold shadow-lg shadow-teal-500/10 transition self-start sm:self-auto cursor-pointer"
+          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#00897b] hover:bg-[#00897b]/90 text-white text-xs font-semibold shadow-sm transition self-start sm:self-auto cursor-pointer"
         >
           <Plus size={16} />
           <span>Add New Medicine</span>
@@ -184,7 +184,7 @@ export function PharmacyMedicines() {
             placeholder="Search by brand name, generic name, manufacturer, or barcode..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-[#1b1c24] border border-white/[0.08] text-xs text-white placeholder-slate-500 focus:outline-none focus:border-teal-500 transition"
+            className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-white border border-slate-200 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-teal-500 shadow-sm transition"
           />
         </div>
 
@@ -192,7 +192,7 @@ export function PharmacyMedicines() {
           <select
             value={categoryFilter}
             onChange={(e) => setCategoryFilter(e.target.value)}
-            className="w-full sm:w-48 px-3 py-2.5 rounded-xl bg-[#1b1c24] border border-white/[0.08] text-xs text-slate-300 focus:outline-none focus:border-teal-500"
+            className="w-full sm:w-48 px-3 py-2.5 rounded-xl bg-white border border-slate-200 text-xs text-slate-700 focus:outline-none focus:border-teal-500 shadow-sm"
           >
             {categories.map((c) => (
               <option key={c} value={c}>
@@ -204,11 +204,11 @@ export function PharmacyMedicines() {
       </div>
 
       {/* Medicines Table */}
-      <div className="bg-[#1b1c24] border border-white/[0.07] rounded-2xl overflow-hidden shadow-xl">
+      <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead>
-              <tr className="bg-white/[0.02] text-slate-400 border-b border-white/[0.06]">
+              <tr className="bg-slate-50 text-slate-600 border-b border-slate-200">
                 <th className="py-3 px-4 font-semibold">Medicine / Brand</th>
                 <th className="py-3 px-4 font-semibold">Generic & Strength</th>
                 <th className="py-3 px-4 font-semibold">Category</th>
@@ -218,7 +218,7 @@ export function PharmacyMedicines() {
                 <th className="py-3 px-4 font-semibold text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-white/[0.04]">
+            <tbody className="divide-y divide-slate-100">
               {filteredMedicines.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="py-10 text-center text-slate-400">
@@ -229,28 +229,28 @@ export function PharmacyMedicines() {
                 filteredMedicines.map((med) => {
                   const isLow = med.stock <= med.minStockLevel;
                   return (
-                    <tr key={med.id} className="hover:bg-white/[0.02] transition">
+                    <tr key={med.id} className="hover:bg-slate-50 transition">
                       <td className="py-3 px-4">
-                        <div className="font-semibold text-white">{med.name}</div>
-                        <div className="text-[11px] text-slate-400">{med.manufacturer}</div>
+                        <div className="font-semibold text-slate-900">{med.name}</div>
+                        <div className="text-[11px] text-slate-500">{med.manufacturer}</div>
                       </td>
                       <td className="py-3 px-4">
-                        <div className="text-slate-200">{med.genericName}</div>
-                        <div className="text-[11px] text-teal-400">
+                        <div className="text-slate-800 font-medium">{med.genericName}</div>
+                        <div className="text-[11px] text-[#00897b]">
                           {med.dosageForm} • {med.strength}
                         </div>
                       </td>
-                      <td className="py-3 px-4 text-slate-300">
-                        <span className="px-2 py-0.5 rounded-md bg-white/[0.04] text-[11px] border border-white/[0.06]">
+                      <td className="py-3 px-4 text-slate-600">
+                        <span className="px-2 py-0.5 rounded-md bg-slate-100 text-[11px] border border-slate-200 text-slate-700">
                           {med.category}
                         </span>
                       </td>
                       <td className="py-3 px-4">
-                        <div className="text-slate-300">{med.batchNumber}</div>
-                        <div className="text-[11px] text-slate-400">Exp: {med.expiryDate}</div>
+                        <div className="text-slate-800 font-mono">{med.batchNumber}</div>
+                        <div className="text-[11px] text-slate-500">Exp: {med.expiryDate}</div>
                       </td>
                       <td className="py-3 px-4">
-                        <div className="font-medium text-emerald-400">Rs. {med.sellingPrice.toFixed(2)}</div>
+                        <div className="font-semibold text-[#00897b]">Rs. {med.sellingPrice.toFixed(2)}</div>
                         <div className="text-[10px] text-slate-500">Cost: Rs. {med.purchasePrice.toFixed(2)}</div>
                       </td>
                       <td className="py-3 px-4">
@@ -258,15 +258,15 @@ export function PharmacyMedicines() {
                           <button
                             type="button"
                             onClick={() => handleQuickStockAdjust(med.id, -1)}
-                            className="h-5 w-5 rounded bg-white/[0.06] hover:bg-white/10 text-slate-300 flex items-center justify-center text-xs"
+                            className="h-6 w-6 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center justify-center text-xs font-bold border border-slate-200 transition"
                           >
                             -
                           </button>
                           <span
                             className={`font-bold px-2 py-0.5 rounded ${
                               isLow
-                                ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
-                                : 'bg-emerald-500/10 text-emerald-400'
+                                ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                                : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                             }`}
                           >
                             {med.stock}
@@ -274,13 +274,13 @@ export function PharmacyMedicines() {
                           <button
                             type="button"
                             onClick={() => handleQuickStockAdjust(med.id, 1)}
-                            className="h-5 w-5 rounded bg-white/[0.06] hover:bg-white/10 text-slate-300 flex items-center justify-center text-xs"
+                            className="h-6 w-6 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center justify-center text-xs font-bold border border-slate-200 transition"
                           >
                             +
                           </button>
                         </div>
                         {isLow && (
-                          <div className="text-[10px] text-rose-400 mt-0.5 flex items-center gap-1">
+                          <div className="text-[10px] text-rose-600 mt-0.5 flex items-center gap-1">
                             <AlertCircle size={10} />
                             <span>Min: {med.minStockLevel}</span>
                           </div>
@@ -291,7 +291,7 @@ export function PharmacyMedicines() {
                           <button
                             type="button"
                             onClick={() => handleOpenEdit(med)}
-                            className="p-1.5 rounded-lg bg-white/[0.04] hover:bg-white/10 text-slate-300 transition"
+                            className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 transition"
                             title="Edit Medicine"
                           >
                             <Edit2 size={13} />
@@ -299,7 +299,7 @@ export function PharmacyMedicines() {
                           <button
                             type="button"
                             onClick={() => handleDelete(med.id)}
-                            className="p-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 transition"
+                            className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 transition"
                             title="Delete"
                           >
                             <Trash2 size={13} />
@@ -317,17 +317,17 @@ export function PharmacyMedicines() {
 
       {/* Add / Edit Medicine Modal */}
       {modalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-[#1b1c24] border border-white/[0.1] rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-white/[0.08] pb-3 mb-4">
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
-                <Pill className="text-teal-400" size={18} />
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
+              <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                <Pill className="text-[#00897b]" size={18} />
                 <span>{editingMedicine ? 'Edit Medicine' : 'Add New Medicine'}</span>
               </h3>
               <button
                 type="button"
                 onClick={() => setModalOpen(false)}
-                className="p-1 text-slate-400 hover:text-white"
+                className="p-1 text-slate-400 hover:text-slate-600 transition"
               >
                 <X size={18} />
               </button>
@@ -336,57 +336,57 @@ export function PharmacyMedicines() {
             <form onSubmit={handleSave} className="space-y-4 text-xs">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-slate-400 mb-1">Brand Name *</label>
+                  <label className="block text-slate-700 font-medium mb-1">Brand Name *</label>
                   <input
                     type="text"
                     required
                     placeholder="e.g. Panadol Extra"
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    className="w-full px-3 py-2 rounded-xl bg-[#25252d] border border-white/[0.08] text-white focus:outline-none focus:border-teal-500"
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 focus:bg-white focus:outline-none focus:border-teal-500"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-slate-400 mb-1">Generic Formula *</label>
+                  <label className="block text-slate-700 font-medium mb-1">Generic Formula *</label>
                   <input
                     type="text"
                     required
                     placeholder="e.g. Paracetamol + Caffeine"
                     value={formData.genericName}
                     onChange={(e) => setFormData({ ...formData, genericName: e.target.value })}
-                    className="w-full px-3 py-2 rounded-xl bg-[#25252d] border border-white/[0.08] text-white focus:outline-none focus:border-teal-500"
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 focus:bg-white focus:outline-none focus:border-teal-500"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-slate-400 mb-1">Category</label>
+                  <label className="block text-slate-700 font-medium mb-1">Category</label>
                   <input
                     type="text"
                     placeholder="e.g. Antibiotics, Analgesic"
                     value={formData.category}
                     onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                    className="w-full px-3 py-2 rounded-xl bg-[#25252d] border border-white/[0.08] text-white focus:outline-none focus:border-teal-500"
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 focus:bg-white focus:outline-none focus:border-teal-500"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-slate-400 mb-1">Manufacturer</label>
+                  <label className="block text-slate-700 font-medium mb-1">Manufacturer</label>
                   <input
                     type="text"
                     placeholder="e.g. GSK, Getz Pharma, Abbott"
                     value={formData.manufacturer}
                     onChange={(e) => setFormData({ ...formData, manufacturer: e.target.value })}
-                    className="w-full px-3 py-2 rounded-xl bg-[#25252d] border border-white/[0.08] text-white focus:outline-none focus:border-teal-500"
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 focus:bg-white focus:outline-none focus:border-teal-500"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-slate-400 mb-1">Dosage Form</label>
+                  <label className="block text-slate-700 font-medium mb-1">Dosage Form</label>
                   <select
                     value={formData.dosageForm}
                     onChange={(e) => setFormData({ ...formData, dosageForm: e.target.value as any })}
-                    className="w-full px-3 py-2 rounded-xl bg-[#25252d] border border-white/[0.08] text-white focus:outline-none focus:border-teal-500"
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 focus:bg-white focus:outline-none focus:border-teal-500"
                   >
                     <option value="Tablet">Tablet</option>
                     <option value="Capsule">Capsule</option>
@@ -399,112 +399,112 @@ export function PharmacyMedicines() {
                 </div>
 
                 <div>
-                  <label className="block text-slate-400 mb-1">Strength / Volume</label>
+                  <label className="block text-slate-700 font-medium mb-1">Strength / Volume</label>
                   <input
                     type="text"
                     placeholder="e.g. 500mg, 120ml"
                     value={formData.strength}
                     onChange={(e) => setFormData({ ...formData, strength: e.target.value })}
-                    className="w-full px-3 py-2 rounded-xl bg-[#25252d] border border-white/[0.08] text-white focus:outline-none focus:border-teal-500"
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 focus:bg-white focus:outline-none focus:border-teal-500"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-slate-400 mb-1">Purchase Cost (Rs.)</label>
+                  <label className="block text-slate-700 font-medium mb-1">Purchase Cost (Rs.)</label>
                   <input
                     type="number"
                     step="0.01"
                     value={formData.purchasePrice}
                     onChange={(e) => setFormData({ ...formData, purchasePrice: parseFloat(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 rounded-xl bg-[#25252d] border border-white/[0.08] text-white focus:outline-none focus:border-teal-500"
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 focus:bg-white focus:outline-none focus:border-teal-500"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-slate-400 mb-1">Retail Selling Price (Rs.) *</label>
+                  <label className="block text-slate-700 font-medium mb-1">Retail Selling Price (Rs.) *</label>
                   <input
                     type="number"
                     step="0.01"
                     required
                     value={formData.sellingPrice}
                     onChange={(e) => setFormData({ ...formData, sellingPrice: parseFloat(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 rounded-xl bg-[#25252d] border border-white/[0.08] text-white focus:outline-none focus:border-teal-500"
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 focus:bg-white focus:outline-none focus:border-teal-500"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-slate-400 mb-1">Batch Number</label>
+                  <label className="block text-slate-700 font-medium mb-1">Batch Number</label>
                   <input
                     type="text"
                     value={formData.batchNumber}
                     onChange={(e) => setFormData({ ...formData, batchNumber: e.target.value })}
-                    className="w-full px-3 py-2 rounded-xl bg-[#25252d] border border-white/[0.08] text-white focus:outline-none focus:border-teal-500"
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 focus:bg-white focus:outline-none focus:border-teal-500"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-slate-400 mb-1">Expiry Date</label>
+                  <label className="block text-slate-700 font-medium mb-1">Expiry Date</label>
                   <input
                     type="date"
                     value={formData.expiryDate}
                     onChange={(e) => setFormData({ ...formData, expiryDate: e.target.value })}
-                    className="w-full px-3 py-2 rounded-xl bg-[#25252d] border border-white/[0.08] text-white focus:outline-none focus:border-teal-500"
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 focus:bg-white focus:outline-none focus:border-teal-500"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-slate-400 mb-1">Current Stock (Units)</label>
+                  <label className="block text-slate-700 font-medium mb-1">Current Stock (Units)</label>
                   <input
                     type="number"
                     value={formData.stock}
                     onChange={(e) => setFormData({ ...formData, stock: parseInt(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 rounded-xl bg-[#25252d] border border-white/[0.08] text-white focus:outline-none focus:border-teal-500"
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 focus:bg-white focus:outline-none focus:border-teal-500"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-slate-400 mb-1">Min Stock Reorder Level</label>
+                  <label className="block text-slate-700 font-medium mb-1">Min Stock Reorder Level</label>
                   <input
                     type="number"
                     value={formData.minStockLevel}
                     onChange={(e) => setFormData({ ...formData, minStockLevel: parseInt(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 rounded-xl bg-[#25252d] border border-white/[0.08] text-white focus:outline-none focus:border-teal-500"
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 focus:bg-white focus:outline-none focus:border-teal-500"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-slate-400 mb-1">Barcode / EAN</label>
+                  <label className="block text-slate-700 font-medium mb-1">Barcode / EAN</label>
                   <input
                     type="text"
                     value={formData.barcode}
                     onChange={(e) => setFormData({ ...formData, barcode: e.target.value })}
-                    className="w-full px-3 py-2 rounded-xl bg-[#25252d] border border-white/[0.08] text-white focus:outline-none focus:border-teal-500"
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 focus:bg-white focus:outline-none focus:border-teal-500"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-slate-400 mb-1">Rack / Shelf Location</label>
+                  <label className="block text-slate-700 font-medium mb-1">Rack / Shelf Location</label>
                   <input
                     type="text"
                     placeholder="e.g. Rack B-2, Fridge 1"
                     value={formData.location}
                     onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-                    className="w-full px-3 py-2 rounded-xl bg-[#25252d] border border-white/[0.08] text-white focus:outline-none focus:border-teal-500"
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 focus:bg-white focus:outline-none focus:border-teal-500"
                   />
                 </div>
               </div>
 
-              <div className="flex items-center justify-end gap-3 pt-4 border-t border-white/[0.08]">
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => setModalOpen(false)}
-                  className="px-4 py-2 rounded-xl bg-white/[0.06] hover:bg-white/10 text-slate-300"
+                  className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium transition"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-[#00897b] hover:bg-[#00897b]/90 text-white font-semibold"
+                  className="px-5 py-2 rounded-xl bg-[#00897b] hover:bg-[#00897b]/90 text-white font-semibold shadow-sm transition"
                 >
                   {editingMedicine ? 'Update Medicine' : 'Save Medicine'}
                 </button>

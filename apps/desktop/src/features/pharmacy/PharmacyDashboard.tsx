@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   TrendingUp,
@@ -12,13 +12,18 @@ import {
   ArrowUpRight,
   ShieldAlert,
   Inbox,
+  Users,
 } from 'lucide-react';
 import {
   pharmacyDb,
+  subscribeToPharmacyRealtime,
+  getAuthBusinessId,
   type Medicine,
   type Supplier,
   type PharmacyExpense,
   type PharmacyAccountRecord,
+  type PharmacySale,
+  type PharmacyCustomer,
 } from './pharmacyData';
 
 export function PharmacyDashboard() {
@@ -27,31 +32,65 @@ export function PharmacyDashboard() {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [expenses, setExpenses] = useState<PharmacyExpense[]>([]);
   const [accounts, setAccounts] = useState<PharmacyAccountRecord[]>([]);
+  const [sales, setSales] = useState<PharmacySale[]>([]);
+  const [customers, setCustomers] = useState<PharmacyCustomer[]>([]);
+
+  const loadData = useCallback(async () => {
+    try {
+      const [meds, sups, exps, accs, sls, custs] = await Promise.all([
+        pharmacyDb.getMedicines().catch(() => []),
+        pharmacyDb.getSuppliers().catch(() => []),
+        pharmacyDb.getExpenses().catch(() => []),
+        pharmacyDb.getAccounts().catch(() => []),
+        pharmacyDb.getSales().catch(() => []),
+        pharmacyDb.getCustomers().catch(() => []),
+      ]);
+      setMedicines(meds);
+      setSuppliers(sups);
+      setExpenses(exps);
+      setAccounts(accs);
+      setSales(sls);
+      setCustomers(custs);
+    } catch (err) {
+      console.error('[PharmacyDashboard] Load error:', err);
+    }
+  }, []);
 
   useEffect(() => {
     let mounted = true;
-    Promise.all([
-      pharmacyDb.getMedicines(),
-      pharmacyDb.getSuppliers(),
-      pharmacyDb.getExpenses(),
-      pharmacyDb.getAccounts(),
-    ])
-      .then(([meds, sups, exps, accs]) => {
-        if (mounted) {
-          setMedicines(meds);
-          setSuppliers(sups);
-          setExpenses(exps);
-          setAccounts(accs);
-        }
+    void loadData();
+
+    // Supabase Realtime subscription
+    let unsubRealtime: () => void = () => {};
+    void getAuthBusinessId()
+      .then((bId) => {
+        if (!mounted) return;
+        unsubRealtime = subscribeToPharmacyRealtime(bId, () => {
+          void loadData();
+        });
       })
-      .catch((err) => console.error('[PharmacyDashboard] Load error:', err));
+      .catch(() => {});
+
+    // Listen for custom window events dispatched on sale/medicine actions
+    const handleUpdate = () => void loadData();
+    window.addEventListener('pharmacy:sale-completed', handleUpdate);
+    window.addEventListener('pharmacy:orders-changed', handleUpdate);
+    window.addEventListener('pharmacy:medicine-changed', handleUpdate);
+    window.addEventListener('pharmacy:dashboard-changed', handleUpdate);
+    window.addEventListener('pharmacy:accounts-changed', handleUpdate);
 
     return () => {
       mounted = false;
+      unsubRealtime();
+      window.removeEventListener('pharmacy:sale-completed', handleUpdate);
+      window.removeEventListener('pharmacy:orders-changed', handleUpdate);
+      window.removeEventListener('pharmacy:medicine-changed', handleUpdate);
+      window.removeEventListener('pharmacy:dashboard-changed', handleUpdate);
+      window.removeEventListener('pharmacy:accounts-changed', handleUpdate);
     };
-  }, []);
+  }, [loadData]);
 
-  // Metrics computation from real user data only
+  // Metrics computation from real Supabase cloud data
   const metrics = useMemo(() => {
     const totalMedicines = medicines.length;
     const totalUnits = medicines.reduce((sum, m) => sum + (Number(m.stock) || 0), 0);
@@ -86,15 +125,14 @@ export function PharmacyDashboard() {
     const totalPayables = suppliers.reduce((sum, s) => sum + (Number(s.outstandingBalance) || 0), 0);
     const totalMonthlyExpense = expenses.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
 
-    // Real daily sales from accounts
+    // Live daily sales from pharmacy_sales table
     const todayStr = new Date().toISOString().split('T')[0];
-    const todaySales = accounts
-      .filter((a) => a.type === 'Customer Payment' && a.date === todayStr)
-      .reduce((sum, a) => sum + (Number(a.amount) || 0), 0);
+    const todayCompletedSales = sales.filter(
+      (s) => s.status !== 'cancelled' && s.createdAt?.startsWith(todayStr)
+    );
 
-    const todayOrderCount = accounts.filter(
-      (a) => a.type === 'Customer Payment' && a.date === todayStr
-    ).length;
+    const todaySales = todayCompletedSales.reduce((sum, s) => sum + (Number(s.totalAmount) || 0), 0);
+    const todayOrderCount = todayCompletedSales.length;
 
     return {
       totalMedicines,
@@ -111,8 +149,9 @@ export function PharmacyDashboard() {
       lowStockItems,
       todaySales,
       todayOrderCount,
+      totalCustomers: customers.length,
     };
-  }, [medicines, suppliers, expenses, accounts]);
+  }, [medicines, suppliers, expenses, sales, customers]);
 
   return (
     <div className="space-y-6">
@@ -342,8 +381,8 @@ export function PharmacyDashboard() {
         </div>
       </div>
 
-      {/* Summary Row: Payables & Operating Expenses */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      {/* Summary Row: Payables, Expenses, Customers & Margins */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
         <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
           <div className="flex items-center justify-between text-xs text-slate-500">
             <span>Supplier Payables</span>
@@ -357,13 +396,27 @@ export function PharmacyDashboard() {
 
         <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
           <div className="flex items-center justify-between text-xs text-slate-500">
-            <span>Monthly Pharmacy Expenses</span>
+            <span>Monthly Expenses</span>
             <DollarSign size={14} className="text-rose-600" />
           </div>
           <p className="text-lg font-bold text-slate-900 mt-2">
             Rs. {metrics.totalMonthlyExpense.toLocaleString(undefined, { minimumFractionDigits: 2 })}
           </p>
           <p className="text-[11px] text-slate-500 mt-0.5">{expenses.length} Expense records</p>
+        </div>
+
+        <div
+          onClick={() => navigate('/pharmacy/customers')}
+          className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm cursor-pointer hover:border-teal-300 transition"
+        >
+          <div className="flex items-center justify-between text-xs text-slate-500">
+            <span>Total Patients / Customers</span>
+            <Users size={14} className="text-blue-600" />
+          </div>
+          <p className="text-lg font-bold text-slate-900 mt-2">
+            {metrics.totalCustomers} Registered
+          </p>
+          <p className="text-[11px] text-slate-500 mt-0.5">Live patient records</p>
         </div>
 
         <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">

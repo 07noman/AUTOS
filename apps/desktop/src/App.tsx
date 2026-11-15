@@ -49,6 +49,7 @@ import { PharmacyReports } from './features/pharmacy/PharmacyReports';
 import { PharmacyStaff } from './features/pharmacy/PharmacyStaff';
 import { PharmacySettings } from './features/pharmacy/PharmacySettings';
 import { PharmacyOrders } from './features/pharmacy/PharmacyOrders';
+import { PharmacyPOS } from './features/pharmacy/PharmacyPOS';
 
 function App() {
   const { isAuthenticated, validateSession } = useAuth();
@@ -184,7 +185,7 @@ function App() {
 
       {/* Pharmacy Module Routes — Completely isolated from other business types */}
       <Route path="/pharmacy" element={<PharmacyHome />} />
-      <Route path="/pharmacy/pos" element={<MasterPOS businessType="pharmacy" />} />
+      <Route path="/pharmacy/pos" element={<PharmacyPOS />} />
       <Route path="/pharmacy/orders" element={<PharmacyOrders />} />
       <Route path="/pharmacy" element={<PharmacyShell />}>
         <Route path="dashboard" element={<PharmacyDashboard />} />

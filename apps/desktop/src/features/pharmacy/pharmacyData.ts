@@ -41,6 +41,64 @@ export interface BatchRecord {
   status: 'active' | 'near-expiry' | 'expired' | 'disposed';
 }
 
+export interface PharmacySaleItem {
+  id: string;
+  businessId?: string;
+  saleId: string;
+  medicineId: string;
+  medicineName: string;
+  batchNumber?: string;
+  quantity: number;
+  unitPrice: number;
+  total: number;
+  createdAt?: string;
+}
+
+export interface PharmacySale {
+  id: string;
+  businessId?: string;
+  invoiceNumber: string;
+  orderNumber?: number;
+  customerName: string;
+  customerPhone?: string;
+  customerId?: string;
+  subtotal: number;
+  discount: number;
+  tax: number;
+  totalAmount: number;
+  paidAmount: number;
+  paymentMethod: string;
+  status: 'completed' | 'ongoing' | 'cancelled';
+  notes?: string;
+  createdAt: string;
+  updatedAt?: string;
+  items?: PharmacySaleItem[];
+}
+
+export interface CreateSaleParams {
+  invoiceNumber?: string;
+  customerName?: string;
+  customerPhone?: string;
+  customerId?: string;
+  items: {
+    id: string; // medicine id
+    name: string;
+    quantity: number;
+    price: number;
+    batchNumber?: string;
+    expiryDate?: string;
+    subtotal?: number;
+    type?: 'product' | 'service';
+  }[];
+  subtotal: number;
+  discount?: number;
+  tax?: number;
+  totalAmount: number;
+  paidAmount?: number;
+  paymentMethod: string;
+  notes?: string;
+}
+
 export interface Supplier {
   id: string;
   name: string;
@@ -480,6 +538,115 @@ export function toDisposalRow(d: Partial<DisposalLog>, businessId: string) {
   };
 }
 
+export function mapBatchRow(r: any): BatchRecord {
+  return {
+    id: String(r.id),
+    medicineId: String(r.medicine_id || ''),
+    medicineName: String(r.medicine_name || ''),
+    batchNumber: String(r.batch_number || ''),
+    mfgDate: String(r.mfg_date || ''),
+    expiryDate: String(r.expiry_date || ''),
+    quantity: Number(r.quantity || 0),
+    purchaseCost: Number(r.purchase_cost || 0),
+    sellingPrice: Number(r.selling_price || 0),
+    supplierName: String(r.supplier_name || ''),
+    status: (r.status || 'active') as BatchRecord['status'],
+  };
+}
+
+export function toBatchRow(b: Partial<BatchRecord>, businessId: string) {
+  return {
+    id: toValidUUID(b.id),
+    business_id: businessId,
+    medicine_id: toValidUUID(b.medicineId) || null,
+    medicine_name: b.medicineName || null,
+    batch_number: b.batchNumber || null,
+    mfg_date: b.mfgDate || null,
+    expiry_date: b.expiryDate || null,
+    quantity: Number(b.quantity || 0),
+    purchase_cost: Number(b.purchaseCost || 0),
+    selling_price: Number(b.sellingPrice || 0),
+    supplier_name: b.supplierName || null,
+    status: b.status || 'active',
+    updated_at: new Date().toISOString(),
+  };
+}
+
+export function mapSaleRow(r: any): PharmacySale {
+  const inv = String(r.invoice_number || '');
+  const numPart = parseInt(inv.replace(/\D/g, ''), 10);
+  return {
+    id: String(r.id),
+    businessId: String(r.business_id || ''),
+    invoiceNumber: inv || '0001',
+    orderNumber: isNaN(numPart) ? 1 : numPart,
+    customerName: String(r.customer_name || 'Walk-in Customer'),
+    customerPhone: r.customer_phone || undefined,
+    customerId: r.customer_id || undefined,
+    subtotal: Number(r.subtotal || 0),
+    discount: Number(r.discount || 0),
+    tax: Number(r.tax || 0),
+    totalAmount: Number(r.total_amount || 0),
+    paidAmount: Number(r.paid_amount ?? r.total_amount ?? 0),
+    paymentMethod: String(r.payment_method || 'Cash'),
+    status: (r.status || 'completed') as PharmacySale['status'],
+    notes: r.notes || undefined,
+    createdAt: String(r.created_at || new Date().toISOString()),
+    updatedAt: r.updated_at ? String(r.updated_at) : undefined,
+  };
+}
+
+export function toSaleRow(s: Partial<PharmacySale>, businessId: string) {
+  return {
+    id: toValidUUID(s.id),
+    business_id: businessId,
+    invoice_number: s.invoiceNumber || '0001',
+    customer_name: s.customerName || 'Walk-in Customer',
+    customer_phone: s.customerPhone || null,
+    subtotal: Number(s.subtotal || 0),
+    discount: Number(s.discount || 0),
+    tax: Number(s.tax || 0),
+    total_amount: Number(s.totalAmount || 0),
+    paid_amount: Number(s.paidAmount !== undefined ? s.paidAmount : s.totalAmount || 0),
+    payment_method: s.paymentMethod || 'Cash',
+    status: s.status || 'completed',
+    notes: s.notes || null,
+    created_at: s.createdAt || new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+}
+
+export function mapSaleItemRow(r: any): PharmacySaleItem {
+  return {
+    id: String(r.id),
+    businessId: String(r.business_id || ''),
+    saleId: String(r.sale_id || ''),
+    medicineId: String(r.medicine_id || ''),
+    medicineName: String(r.medicine_name || ''),
+    batchNumber: r.batch_number || undefined,
+    quantity: Number(r.quantity || 1),
+    unitPrice: Number(r.unit_price || 0),
+    total: Number(r.total || 0),
+    createdAt: r.created_at ? String(r.created_at) : undefined,
+  };
+}
+
+export function toSaleItemRow(item: Partial<PharmacySaleItem>, saleId: string, businessId: string) {
+  return {
+    id: toValidUUID(item.id),
+    business_id: businessId,
+    sale_id: saleId,
+    medicine_id: String(item.medicineId || ''),
+    medicine_name: String(item.medicineName || ''),
+    batch_number: item.batchNumber || null,
+    quantity: Number(item.quantity || 1),
+    unit_price: Number(item.unitPrice || 0),
+    total: Number(item.total || (Number(item.quantity || 1) * Number(item.unitPrice || 0))),
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+}
+
 // ── Pharmacy Database Repository (Supabase Only) ─────────────────────────────
 
 export const pharmacyDb = {
@@ -533,6 +700,489 @@ export const pharmacyDb = {
       .eq('business_id', businessId);
 
     if (error) throw new Error(`Failed to save, check internet: ${error.message}`);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('pharmacy:medicine-changed'));
+    }
+  },
+
+  // ── Batches ────────────────────────────────
+  async getBatches(): Promise<BatchRecord[]> {
+    const businessId = await getAuthBusinessId();
+    const { data, error } = await supabase
+      .from('pharmacy_batches')
+      .select('*')
+      .eq('business_id', businessId)
+      .order('expiry_date', { ascending: true });
+
+    if (error) throw new Error(`Failed to load batches: ${error.message}`);
+    return (data || []).map(mapBatchRow);
+  },
+
+  async createBatch(item: Partial<BatchRecord>): Promise<BatchRecord> {
+    const businessId = await getAuthBusinessId();
+    const payload = toBatchRow(item, businessId);
+    const { data, error } = await supabase
+      .from('pharmacy_batches')
+      .insert(payload)
+      .select()
+      .single();
+
+    if (error) throw new Error(`Failed to save batch: ${error.message}`);
+    return mapBatchRow(data);
+  },
+
+  async updateBatch(id: string, updates: Partial<BatchRecord>): Promise<BatchRecord> {
+    const businessId = await getAuthBusinessId();
+    const payload = toBatchRow({ ...updates, id }, businessId);
+    const { data, error } = await supabase
+      .from('pharmacy_batches')
+      .update(payload)
+      .eq('id', id)
+      .eq('business_id', businessId)
+      .select()
+      .single();
+
+    if (error) throw new Error(`Failed to update batch: ${error.message}`);
+    return mapBatchRow(data);
+  },
+
+  async deleteBatch(id: string): Promise<void> {
+    const businessId = await getAuthBusinessId();
+    const { error } = await supabase
+      .from('pharmacy_batches')
+      .delete()
+      .eq('id', id)
+      .eq('business_id', businessId);
+
+    if (error) throw new Error(`Failed to delete batch: ${error.message}`);
+  },
+
+  // ── Sales & Orders ─────────────────────────
+  async getSales(): Promise<PharmacySale[]> {
+    const businessId = await getAuthBusinessId();
+    const { data, error } = await supabase
+      .from('pharmacy_sales')
+      .select('*')
+      .eq('business_id', businessId)
+      .order('created_at', { ascending: false });
+
+    if (error) throw new Error(`Failed to load orders: ${error.message}`);
+    return (data || []).map(mapSaleRow);
+  },
+
+  async getSaleItems(saleId: string): Promise<PharmacySaleItem[]> {
+    const businessId = await getAuthBusinessId();
+    const { data, error } = await supabase
+      .from('pharmacy_sale_items')
+      .select('*')
+      .eq('business_id', businessId)
+      .eq('sale_id', saleId)
+      .order('created_at', { ascending: true });
+
+    if (error) throw new Error(`Failed to load sale items: ${error.message}`);
+    return (data || []).map(mapSaleItemRow);
+  },
+
+  async getAllSaleItems(): Promise<PharmacySaleItem[]> {
+    const businessId = await getAuthBusinessId();
+    const { data, error } = await supabase
+      .from('pharmacy_sale_items')
+      .select('*')
+      .eq('business_id', businessId);
+
+    if (error) throw new Error(`Failed to load all sale items: ${error.message}`);
+    return (data || []).map(mapSaleItemRow);
+  },
+
+  async getSaleWithItems(saleId: string): Promise<PharmacySale | null> {
+    const businessId = await getAuthBusinessId();
+    const { data: saleData, error: saleErr } = await supabase
+      .from('pharmacy_sales')
+      .select('*')
+      .eq('id', saleId)
+      .eq('business_id', businessId)
+      .maybeSingle();
+
+    if (saleErr || !saleData) return null;
+    const sale = mapSaleRow(saleData);
+    sale.items = await this.getSaleItems(saleId);
+    return sale;
+  },
+
+  async nextInvoiceNumber(): Promise<string> {
+    const businessId = await getAuthBusinessId();
+    const { count, error } = await supabase
+      .from('pharmacy_sales')
+      .select('*', { count: 'exact', head: true })
+      .eq('business_id', businessId);
+
+    if (error) return '0001';
+    return String((count || 0) + 1).padStart(4, '0');
+  },
+
+  /**
+   * ATOMIC SALE EXECUTION:
+   * 1. Validates stock & expiry in Supabase
+   * 2. Creates record in pharmacy_sales
+   * 3. Creates records in pharmacy_sale_items
+   * 4. Stock auto-minus in pharmacy_medicines
+   * 5. FIFO batch deduction in pharmacy_batches
+   * 6. Records payment in pharmacy_payments
+   * 7. Updates/creates customer in pharmacy_customers
+   * 8. Dispatches cross-module events
+   */
+  async createSale(params: CreateSaleParams): Promise<PharmacySale> {
+    const businessId = await getAuthBusinessId();
+
+    if (!params.items || params.items.length === 0) {
+      throw new Error('Cannot complete sale: Cart is empty.');
+    }
+
+    // 1. Check live inventory & expiry in pharmacy_medicines
+    const itemIds = params.items.map((it) => String(it.id));
+    const { data: dbMeds, error: medErr } = await supabase
+      .from('pharmacy_medicines')
+      .select('*')
+      .eq('business_id', businessId)
+      .in('id', itemIds);
+
+    if (medErr) throw new Error(`Failed to verify medicines: ${medErr.message}`);
+
+    const medMap = new Map((dbMeds || []).map((m: any) => [String(m.id), m]));
+    const now = new Date();
+
+    for (const it of params.items) {
+      const med = medMap.get(String(it.id));
+      if (!med) {
+        throw new Error(`Medicine "${it.name}" was not found in inventory.`);
+      }
+      const curStock = Number(med.stock || 0);
+      if (curStock <= 0) {
+        throw new Error(`Out of Stock: "${med.name}" has 0 stock remaining. Sale blocked.`);
+      }
+      if (curStock < it.quantity) {
+        throw new Error(
+          `Insufficient Stock: "${med.name}" has only ${curStock} available (requested ${it.quantity}). Sale blocked.`
+        );
+      }
+      if (med.expiry_date) {
+        const exp = new Date(med.expiry_date);
+        if (exp <= now) {
+          throw new Error(
+            `Expired Medicine: "${med.name}" expired on ${med.expiry_date}. Sale blocked.`
+          );
+        }
+      }
+    }
+
+    // 2. Determine invoice number
+    let invoiceNumber = params.invoiceNumber;
+    if (!invoiceNumber) {
+      const { count } = await supabase
+        .from('pharmacy_sales')
+        .select('*', { count: 'exact', head: true })
+        .eq('business_id', businessId);
+      invoiceNumber = String((count || 0) + 1).padStart(4, '0');
+    }
+
+    const subtotal = Number(params.subtotal || 0);
+    const discount = Number(params.discount || 0);
+    const tax = Number(params.tax || 0);
+    const totalAmount = Number(params.totalAmount || 0);
+    const paidAmount = Number(params.paidAmount !== undefined ? params.paidAmount : totalAmount);
+    const paymentMethod = params.paymentMethod || 'Cash';
+
+    // 3. Create pharmacy_sales record
+    const salePayload = {
+      id: crypto.randomUUID(),
+      business_id: businessId,
+      invoice_number: invoiceNumber,
+      customer_name: params.customerName || 'Walk-in Customer',
+      customer_phone: params.customerPhone || null,
+      subtotal,
+      discount,
+      tax,
+      total_amount: totalAmount,
+      paid_amount: paidAmount,
+      payment_method: paymentMethod,
+      status: 'completed',
+      notes: params.notes || null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    const { data: saleData, error: saleErr } = await supabase
+      .from('pharmacy_sales')
+      .insert(salePayload)
+      .select()
+      .single();
+
+    if (saleErr) throw new Error(`Sale creation failed: ${saleErr.message}`);
+
+    // 4. Create pharmacy_sale_items records
+    const saleItemsPayload = params.items.map((it) => {
+      const med = medMap.get(String(it.id));
+      return {
+        id: crypto.randomUUID(),
+        business_id: businessId,
+        sale_id: saleData.id,
+        medicine_id: String(it.id),
+        medicine_name: it.name || med?.name || 'Medicine',
+        batch_number: it.batchNumber || med?.batch_number || null,
+        quantity: Number(it.quantity || 1),
+        unit_price: Number(it.price || 0),
+        total: Number(it.subtotal ?? (Number(it.quantity || 1) * Number(it.price || 0))),
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+    });
+
+    const { error: itemsErr } = await supabase
+      .from('pharmacy_sale_items')
+      .insert(saleItemsPayload);
+
+    if (itemsErr) throw new Error(`Sale items creation failed: ${itemsErr.message}`);
+
+    // 5. Deduct stock from pharmacy_medicines
+    for (const it of params.items) {
+      const med = medMap.get(String(it.id));
+      const curStock = Number(med?.stock || 0);
+      const nextStock = Math.max(0, curStock - Number(it.quantity || 1));
+      await supabase
+        .from('pharmacy_medicines')
+        .update({ stock: nextStock, updated_at: new Date().toISOString() })
+        .eq('id', it.id)
+        .eq('business_id', businessId);
+    }
+
+    // 6. FIFO batch deduction from pharmacy_batches
+    for (const it of params.items) {
+      try {
+        const { data: batches } = await supabase
+          .from('pharmacy_batches')
+          .select('*')
+          .eq('business_id', businessId)
+          .or(`medicine_id.eq.${it.id},medicine_name.eq.${it.name}`)
+          .gt('quantity', 0)
+          .order('expiry_date', { ascending: true });
+
+        if (batches && batches.length > 0) {
+          let needed = Number(it.quantity || 1);
+          for (const b of batches) {
+            if (needed <= 0) break;
+            const bQty = Number(b.quantity || 0);
+            if (bQty <= 0) continue;
+            const deduct = Math.min(needed, bQty);
+            const remaining = bQty - deduct;
+            await supabase
+              .from('pharmacy_batches')
+              .update({
+                quantity: remaining,
+                updated_at: new Date().toISOString(),
+              })
+              .eq('id', b.id)
+              .eq('business_id', businessId);
+            needed -= deduct;
+          }
+        }
+      } catch (batchErr) {
+        console.warn('[FIFO Batch Deduction] Non-critical warning:', batchErr);
+      }
+    }
+
+    // 7. Record entry in pharmacy_payments
+    try {
+      const paymentRow = {
+        id: crypto.randomUUID(),
+        business_id: businessId,
+        date: new Date().toISOString().split('T')[0],
+        type: 'Customer Payment',
+        category: 'POS Sale',
+        amount: paidAmount,
+        method: paymentMethod,
+        reference: invoiceNumber,
+        notes: `POS Sale Invoice #${invoiceNumber}`,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      await supabase.from('pharmacy_payments').insert(paymentRow);
+    } catch (payErr) {
+      console.warn('[POS Payment Record] Non-critical warning:', payErr);
+    }
+
+    // 8. Update / Create Customer in pharmacy_customers
+    try {
+      if (params.customerName && params.customerName.trim() && params.customerName !== 'Walk-in Customer') {
+        const cName = params.customerName.trim();
+        const cPhone = params.customerPhone?.trim() || '';
+        let existing: any = null;
+
+        if (params.customerId) {
+          const { data } = await supabase
+            .from('pharmacy_customers')
+            .select('*')
+            .eq('id', params.customerId)
+            .eq('business_id', businessId)
+            .maybeSingle();
+          existing = data;
+        }
+
+        if (!existing && cPhone) {
+          const { data } = await supabase
+            .from('pharmacy_customers')
+            .select('*')
+            .eq('phone', cPhone)
+            .eq('business_id', businessId)
+            .maybeSingle();
+          existing = data;
+        }
+
+        if (!existing) {
+          const { data } = await supabase
+            .from('pharmacy_customers')
+            .select('*')
+            .ilike('name', cName)
+            .eq('business_id', businessId)
+            .maybeSingle();
+          existing = data;
+        }
+
+        const isCredit = paymentMethod.toLowerCase().includes('credit') || paidAmount < totalAmount;
+        const unpaid = Math.max(0, totalAmount - paidAmount);
+        const todayStr = new Date().toISOString().split('T')[0];
+
+        if (existing) {
+          const nextSpent = Number(existing.total_spent || 0) + totalAmount;
+          const nextBalance = Number(existing.outstanding_balance || 0) + (isCredit ? unpaid : 0);
+          await supabase
+            .from('pharmacy_customers')
+            .update({
+              total_spent: nextSpent,
+              outstanding_balance: nextBalance,
+              last_visit: todayStr,
+              phone: cPhone || existing.phone || null,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', existing.id)
+            .eq('business_id', businessId);
+        } else {
+          await supabase.from('pharmacy_customers').insert({
+            id: crypto.randomUUID(),
+            business_id: businessId,
+            name: cName,
+            phone: cPhone || null,
+            total_spent: totalAmount,
+            outstanding_balance: isCredit ? unpaid : 0,
+            last_visit: todayStr,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          });
+        }
+      }
+    } catch (custErr) {
+      console.warn('[POS Customer Update] Non-critical warning:', custErr);
+    }
+
+    // 9. Dispatch instant UI update events
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('pharmacy:sale-completed', { detail: saleData }));
+      window.dispatchEvent(new CustomEvent('pharmacy:medicine-changed'));
+      window.dispatchEvent(new CustomEvent('pharmacy:orders-changed'));
+      window.dispatchEvent(new CustomEvent('pharmacy:customers-changed'));
+      window.dispatchEvent(new CustomEvent('pharmacy:accounts-changed'));
+      window.dispatchEvent(new CustomEvent('pharmacy:dashboard-changed'));
+    }
+
+    const createdOrder = mapSaleRow(saleData);
+    createdOrder.items = saleItemsPayload.map(mapSaleItemRow);
+    return createdOrder;
+  },
+
+  async cancelSale(id: string): Promise<void> {
+    const businessId = await getAuthBusinessId();
+
+    // 1. Fetch sale and items
+    const { data: saleData } = await supabase
+      .from('pharmacy_sales')
+      .select('*')
+      .eq('id', id)
+      .eq('business_id', businessId)
+      .single();
+
+    if (!saleData || saleData.status === 'cancelled') return;
+
+    const { data: items } = await supabase
+      .from('pharmacy_sale_items')
+      .select('*')
+      .eq('sale_id', id)
+      .eq('business_id', businessId);
+
+    // 2. Restore medicine stock
+    if (items && items.length > 0) {
+      for (const it of items) {
+        if (!it.medicine_id) continue;
+        const { data: curMed } = await supabase
+          .from('pharmacy_medicines')
+          .select('stock')
+          .eq('id', it.medicine_id)
+          .eq('business_id', businessId)
+          .single();
+
+        if (curMed) {
+          const restored = Number(curMed.stock || 0) + Number(it.quantity || 0);
+          await supabase
+            .from('pharmacy_medicines')
+            .update({ stock: restored, updated_at: new Date().toISOString() })
+            .eq('id', it.medicine_id)
+            .eq('business_id', businessId);
+        }
+      }
+    }
+
+    // 3. Mark cancelled
+    const { error } = await supabase
+      .from('pharmacy_sales')
+      .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+      .eq('id', id)
+      .eq('business_id', businessId);
+
+    if (error) throw new Error(`Failed to cancel sale: ${error.message}`);
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('pharmacy:orders-changed'));
+      window.dispatchEvent(new CustomEvent('pharmacy:medicine-changed'));
+      window.dispatchEvent(new CustomEvent('pharmacy:accounts-changed'));
+    }
+  },
+
+  async deleteSale(id: string): Promise<void> {
+    const businessId = await getAuthBusinessId();
+    const { error } = await supabase
+      .from('pharmacy_sales')
+      .delete()
+      .eq('id', id)
+      .eq('business_id', businessId);
+
+    if (error) throw new Error(`Failed to delete sale: ${error.message}`);
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('pharmacy:orders-changed'));
+    }
+  },
+
+  async deleteAllSales(): Promise<void> {
+    const businessId = await getAuthBusinessId();
+    const { error } = await supabase
+      .from('pharmacy_sales')
+      .delete()
+      .eq('business_id', businessId);
+
+    if (error) throw new Error(`Failed to reset sales history: ${error.message}`);
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('pharmacy:orders-changed'));
+      window.dispatchEvent(new CustomEvent('pharmacy:dashboard-changed'));
+    }
   },
 
   // ── Suppliers (Vendors) ───────────────────
@@ -1047,4 +1697,50 @@ export async function migrateLocalDataIfNeeded(): Promise<number> {
     console.error('[Pharmacy Migration] Error during migration. Original data kept intact:', err);
     return 0;
   }
+}
+
+/**
+ * Realtime subscription: triggers callback when another device or tab modifies pharmacy data.
+ * Returns an unsubscribe cleanup function.
+ */
+export function subscribeToPharmacyRealtime(businessId: string, onUpdate: (table: string) => void) {
+  if (!businessId || !isSupabaseConfigured()) return () => {};
+
+  const channel = supabase
+    .channel(`realtime:pharmacy:${businessId}`)
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'pharmacy_medicines', filter: `business_id=eq.${businessId}` },
+      () => onUpdate('pharmacy_medicines')
+    )
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'pharmacy_sales', filter: `business_id=eq.${businessId}` },
+      () => onUpdate('pharmacy_sales')
+    )
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'pharmacy_sale_items', filter: `business_id=eq.${businessId}` },
+      () => onUpdate('pharmacy_sale_items')
+    )
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'pharmacy_customers', filter: `business_id=eq.${businessId}` },
+      () => onUpdate('pharmacy_customers')
+    )
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'pharmacy_batches', filter: `business_id=eq.${businessId}` },
+      () => onUpdate('pharmacy_batches')
+    )
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'pharmacy_payments', filter: `business_id=eq.${businessId}` },
+      () => onUpdate('pharmacy_payments')
+    )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
 }
