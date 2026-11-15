@@ -45,7 +45,7 @@ export function PharmacyShell() {
   };
 
   return (
-    <div className="min-h-screen bg-[#141419] text-slate-100 flex flex-col">
+    <div className="min-h-screen bg-white text-gray-900 flex flex-col">
       {/* Top Bar */}
       <header className="sticky top-0 z-40 flex h-14 items-center justify-between border-b border-white/[0.08] bg-[#1c1c24]/95 px-4 backdrop-blur-md">
         <div className="flex items-center gap-3">

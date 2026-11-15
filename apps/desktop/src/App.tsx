@@ -48,6 +48,7 @@ import { PharmacyExpenses } from './features/pharmacy/PharmacyExpenses';
 import { PharmacyReports } from './features/pharmacy/PharmacyReports';
 import { PharmacyStaff } from './features/pharmacy/PharmacyStaff';
 import { PharmacySettings } from './features/pharmacy/PharmacySettings';
+import { PharmacyOrders } from './features/pharmacy/PharmacyOrders';
 
 function App() {
   const { isAuthenticated, validateSession } = useAuth();
@@ -184,6 +185,7 @@ function App() {
       {/* Pharmacy Module Routes — Completely isolated from other business types */}
       <Route path="/pharmacy" element={<PharmacyHome />} />
       <Route path="/pharmacy/pos" element={<MasterPOS businessType="pharmacy" />} />
+      <Route path="/pharmacy/orders" element={<PharmacyOrders />} />
       <Route path="/pharmacy" element={<PharmacyShell />}>
         <Route path="dashboard" element={<PharmacyDashboard />} />
         <Route path="medicines" element={<PharmacyMedicines />} />
@@ -196,7 +198,7 @@ function App() {
         <Route path="reports" element={<PharmacyReports />} />
         <Route path="staff" element={<PharmacyStaff />} />
         <Route path="settings" element={<PharmacySettings />} />
-        <Route path="orders" element={<MasterOrders businessType="pharmacy" />} />
+        <Route path="orders" element={<PharmacyOrders />} />
       </Route>
 
       {/* Global Expenses Route (accessible directly or via sidebar/launcher) */}

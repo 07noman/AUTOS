@@ -1,6 +1,6 @@
 /**
  * PharmacyHome — Master Launcher for Pharmacy Business Type
- * Displays clean Odoo-style app launcher grid with Pharmacy modules.
+ * Displays clean Odoo-style app launcher grid with Pharmacy modules in Light Theme.
  */
 
 import { useState, useEffect } from 'react';
@@ -135,15 +135,15 @@ const PHARMACY_APPS: PharmacyApp[] = [
     iconBg: 'bg-[#546e7a]',
     href: '/pharmacy/settings',
   },
-    {
-      id: 'orders',
-      name: 'Orders',
-      description: 'All day orders & real‑time updates',
-      icon: ShoppingCart,
-      iconBg: 'bg-[#00897b]',
-      href: '/pharmacy/orders',
-    },
-  ];
+  {
+    id: 'orders',
+    name: 'Orders',
+    description: 'All day orders & real-time updates',
+    icon: ShoppingCart,
+    iconBg: 'bg-[#00897b]',
+    href: '/pharmacy/orders',
+  },
+];
 
 export function PharmacyHome() {
   const navigate = useNavigate();
@@ -162,23 +162,23 @@ export function PharmacyHome() {
   };
 
   return (
-    <div className="relative min-h-screen bg-[#1c1c24] text-white selection:bg-[#00897b]/30 selection:text-white">
+    <div className="relative min-h-screen bg-[#f8fafc] text-slate-800 selection:bg-[#00897b]/20 selection:text-[#00897b]">
       {/* Background glow */}
-      <div className="pointer-events-none absolute left-1/2 top-1/2 h-[650px] w-[650px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#00897b]/[0.035] blur-3xl" />
+      <div className="pointer-events-none absolute left-1/2 top-1/2 h-[650px] w-[650px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#00897b]/[0.025] blur-3xl" />
 
       {/* Top bar */}
-      <header className="relative z-20 flex h-[68px] items-center justify-between border-b border-white/[0.06] px-5 sm:px-8">
+      <header className="relative z-20 flex h-[64px] items-center justify-between border-b border-slate-200 bg-white px-5 sm:px-8 shadow-sm">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-semibold tracking-wide text-white/90">GENX</span>
-          <span className="text-xs text-white/40">/</span>
-          <span className="text-xs text-teal-400 font-medium">Pharmacy Cloud</span>
+          <span className="text-sm font-bold tracking-wide text-slate-900">GENX</span>
+          <span className="text-xs text-slate-400">/</span>
+          <span className="text-xs text-teal-600 font-semibold">Pharmacy Cloud</span>
         </div>
 
         <div className="flex items-center gap-3 sm:gap-4">
           <button
             type="button"
             aria-label="Notifications"
-            className="relative flex h-9 w-9 items-center justify-center rounded-lg text-slate-300 transition hover:bg-white/[0.06] hover:text-white"
+            className="relative flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
           >
             <MessageSquare className="h-[19px] w-[19px]" />
             <span className="absolute right-0 top-0 flex h-[16px] min-w-[16px] items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white">
@@ -189,7 +189,7 @@ export function PharmacyHome() {
           <button
             type="button"
             aria-label="Activity"
-            className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-300 transition hover:bg-white/[0.06] hover:text-white"
+            className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
           >
             <Clock3 className="h-[19px] w-[19px]" />
           </button>
@@ -199,7 +199,7 @@ export function PharmacyHome() {
             <button
               type="button"
               onClick={() => setShowMenu(!showMenu)}
-              className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm text-slate-200 transition hover:bg-white/[0.06]"
+              className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
             >
               <span className="h-2 w-2 rounded-full bg-[#00897b]" />
               Pharmacy
@@ -207,20 +207,20 @@ export function PharmacyHome() {
             </button>
 
             {showMenu && (
-              <div className="absolute right-0 mt-2 w-48 rounded-xl border border-white/10 bg-[#25252d] p-1.5 shadow-2xl z-50">
+              <div className="absolute right-0 mt-2 w-48 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl z-50">
                 <button
                   type="button"
                   onClick={handleSwitchBusiness}
-                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs text-slate-300 transition hover:bg-white/10 hover:text-white"
+                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs text-slate-700 transition hover:bg-slate-100"
                 >
                   <RefreshCw className="h-3.5 w-3.5" />
                   Switch Business Type
                 </button>
-                <div className="my-1 border-t border-white/5" />
+                <div className="my-1 border-t border-slate-100" />
                 <button
                   type="button"
                   onClick={logout}
-                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs text-red-400 transition hover:bg-red-500/10"
+                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs text-red-600 transition hover:bg-red-50"
                 >
                   <LogOut className="h-3.5 w-3.5" />
                   Sign Out
@@ -233,7 +233,7 @@ export function PharmacyHome() {
           <button
             type="button"
             onClick={() => navigate('/account-actions')}
-            className="flex h-9 w-9 items-center justify-center rounded-full bg-[#00897b] text-sm font-bold text-white shadow-lg shadow-[#00897b]/20 cursor-pointer hover:ring-2 hover:ring-white/40 transition"
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-[#00897b] text-sm font-bold text-white shadow-sm cursor-pointer hover:ring-2 hover:ring-teal-500/30 transition"
             title={user?.name || 'Pharmacy Admin'}
           >
             {user?.name?.charAt(0).toUpperCase() || 'P'}
@@ -242,16 +242,16 @@ export function PharmacyHome() {
       </header>
 
       {/* Main Grid */}
-      <section className="relative z-10 mx-auto flex min-h-[calc(100vh-68px)] max-w-[1100px] items-start justify-center px-5 pb-16 pt-10 sm:px-8 sm:pt-14">
+      <section className="relative z-10 mx-auto flex min-h-[calc(100vh-64px)] max-w-[1100px] items-start justify-center px-5 pb-16 pt-10 sm:px-8 sm:pt-14">
         <div className="w-full">
           <div className="mb-10 text-center sm:mb-12">
             <div className="mb-2 text-[12px] font-semibold tracking-[0.2em] text-[#00897b]">
               GENX PHARMACY MANAGEMENT
             </div>
-            <h1 className="text-[26px] font-semibold tracking-tight text-white sm:text-[30px]">
+            <h1 className="text-[26px] font-bold tracking-tight text-slate-900 sm:text-[30px]">
               Pharmacy
             </h1>
-            <p className="mt-1.5 text-xs text-slate-400">
+            <p className="mt-1.5 text-xs text-slate-500">
               Medicines, batch expiry, FEFO inventory and point of sale
             </p>
           </div>
@@ -264,24 +264,24 @@ export function PharmacyHome() {
                   key={app.id}
                   type="button"
                   onClick={() => navigate(app.href)}
-                  className="group relative flex flex-col items-center justify-center rounded-2xl border border-white/[0.07] bg-white/[0.025] p-5 text-center transition-all duration-200 hover:-translate-y-1 hover:border-white/20 hover:bg-white/[0.05] hover:shadow-xl cursor-pointer"
+                  className="group relative flex flex-col items-center justify-center rounded-2xl border border-slate-200 bg-white p-5 text-center shadow-sm transition-all duration-200 hover:-translate-y-1 hover:border-teal-500/30 hover:shadow-md cursor-pointer"
                 >
                   {app.badge && (
-                    <span className="absolute top-2.5 right-2.5 rounded-md bg-[#00897b]/20 px-1.5 py-0.5 text-[10px] font-medium text-teal-300 border border-[#00897b]/30">
+                    <span className="absolute top-2.5 right-2.5 rounded-md bg-[#00897b]/10 px-1.5 py-0.5 text-[10px] font-semibold text-teal-700 border border-[#00897b]/20">
                       {app.badge}
                     </span>
                   )}
 
                   <div
-                    className={`flex h-14 w-14 items-center justify-center rounded-2xl text-white shadow-lg transition-transform duration-200 group-hover:scale-110 ${app.iconBg}`}
+                    className={`flex h-14 w-14 items-center justify-center rounded-2xl text-white shadow-sm transition-transform duration-200 group-hover:scale-110 ${app.iconBg}`}
                   >
                     <Icon className="h-7 w-7" />
                   </div>
 
-                  <span className="mt-3.5 text-sm font-semibold text-white group-hover:text-teal-300 transition-colors">
+                  <span className="mt-3.5 text-sm font-semibold text-slate-800 group-hover:text-teal-700 transition-colors">
                     {app.name}
                   </span>
-                  <span className="mt-1 text-[11px] text-slate-400 line-clamp-1">
+                  <span className="mt-1 text-[11px] text-slate-500 line-clamp-1">
                     {app.description}
                   </span>
                 </button>
