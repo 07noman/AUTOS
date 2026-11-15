@@ -129,12 +129,23 @@ export async function initializeAutoCareSchema(): Promise<void> {
   try {
     await db.execute(`ALTER TABLE pos_orders ADD COLUMN vehicle_mileage TEXT`);
   } catch {}
+  try {
+    await db.execute(`ALTER TABLE pos_orders ADD COLUMN customer_phone TEXT`);
+  } catch {}
+  try {
+    await db.execute(`ALTER TABLE vehicles ADD COLUMN phone TEXT`);
+  } catch {}
 
   await db.execute(`CREATE INDEX IF NOT EXISTS idx_pos_orders_tenant ON pos_orders(tenant_id, status)`);
   await db.execute(`CREATE INDEX IF NOT EXISTS idx_pos_orders_number ON pos_orders(tenant_id, order_number)`);
   await db.execute(`CREATE INDEX IF NOT EXISTS idx_jobs_tenant ON service_jobs(tenant_id, status)`);
   await db.execute(`CREATE INDEX IF NOT EXISTS idx_jobs_number ON service_jobs(job_number)`);
   await db.execute(`CREATE INDEX IF NOT EXISTS idx_vehicles_tenant ON vehicles(tenant_id)`);
+
+  // Safe additive backfill: copy phone from previous orders / customer data where vehicle.phone is missing
+  void backfillVehiclePhoneFromOrders().catch((err) =>
+    console.warn('[db] auto-care vehicle phone backfill skipped:', err)
+  );
 }
 
 // ─── Mappers ─────────────────────────────────────────────────────────────────
@@ -182,12 +193,14 @@ function mapVehicle(r: any): Vehicle {
   let customerName = r.customer_name ?? r.customerName ?? undefined;
   let mileage = (r.mileage != null && r.mileage !== '') ? Number(r.mileage) : undefined;
   let notesStr = r.notes || undefined;
+  let phone = r.phone ?? r.customer_phone ?? r.customerPhone ?? undefined;
 
   if (r.notes) {
     try {
       const parsed = typeof r.notes === 'string' ? JSON.parse(r.notes) : r.notes;
       if (parsed && typeof parsed === 'object') {
         if (!customerName && parsed.customerName) customerName = parsed.customerName;
+        if (!phone && (parsed.phone || parsed.customerPhone)) phone = parsed.phone || parsed.customerPhone;
         if (mileage == null && parsed.mileage != null) mileage = Number(parsed.mileage);
         if (parsed.notes !== undefined) notesStr = parsed.notes || undefined;
       }
@@ -196,11 +209,15 @@ function mapVehicle(r: any): Vehicle {
     }
   }
 
+  const cleanPhone = phone ? String(phone).trim() : undefined;
+
   return {
     id: String(r.id || ''),
     tenantId: String(r.tenant_id ?? r.tenantId ?? ''),
     customerId: r.customer_id ?? r.customerId ?? undefined,
     customerName,
+    phone: cleanPhone,
+    customerPhone: cleanPhone,
     make: String(r.make || ''),
     model: String(r.model || ''),
     year: Number(r.year || 0),
@@ -261,6 +278,8 @@ export interface POSOrder {
   orderNumber: number;
   status: 'ONGOING' | 'PAID' | 'CANCELLED';
   customerName?: string;
+  customerPhone?: string;
+  phone?: string;
   customerId?: string;
   vehiclePlateNumber?: string;
   vehicleMakeModel?: string;
@@ -287,6 +306,7 @@ function mapPOSOrder(r: any): POSOrder {
   // Fallback: If items is empty or vehicle info is stored in notes JSON
   let notesStr = r.notes ?? undefined;
   let vehicleFromNotes: any = null;
+  let phoneFromNotes: string | undefined = undefined;
   if (r.notes) {
     try {
       const parsedNotes = JSON.parse(r.notes);
@@ -295,6 +315,9 @@ function mapPOSOrder(r: any): POSOrder {
       }
       if (parsedNotes?.vehicle) {
         vehicleFromNotes = parsedNotes.vehicle;
+      }
+      if (parsedNotes?.customerPhone || parsedNotes?.phone || parsedNotes?.vehicle?.phone) {
+        phoneFromNotes = parsedNotes.customerPhone || parsedNotes.phone || parsedNotes.vehicle?.phone;
       }
       if (parsedNotes?.notes !== undefined) {
         notesStr = parsedNotes.notes || undefined;
@@ -336,12 +359,24 @@ function mapPOSOrder(r: any): POSOrder {
     vehicleFromNotes?.mileage ??
     undefined;
 
+  const customerPhoneRaw =
+    r.customer_phone ??
+    r.customerPhone ??
+    r.phone ??
+    phoneFromNotes ??
+    vehicleFromNotes?.phone ??
+    vehicleFromNotes?.customerPhone ??
+    undefined;
+  const customerPhone = customerPhoneRaw ? String(customerPhoneRaw).trim() : undefined;
+
   return {
     id: String(r.id),
     tenantId: String(r.tenant_id ?? r.tenantId),
     orderNumber: Number(r.order_number ?? r.orderNumber) || 1,
     status: normalizedStatus,
     customerName: r.customer_name ?? r.customerName ?? undefined,
+    customerPhone,
+    phone: customerPhone,
     customerId: r.customer_id ?? r.customerId ?? undefined,
     vehiclePlateNumber,
     vehicleMakeModel,
@@ -794,6 +829,8 @@ export const posOrderRepo = {
     paidAmount: number;
     paymentMethod: string;
     customerName?: string;
+    customerPhone?: string;
+    phone?: string;
     customerId?: string;
     vehiclePlateNumber?: string;
     vehicleMakeModel?: string;
@@ -806,6 +843,7 @@ export const posOrderRepo = {
     const now = Date.now();
     const db = await getDatabase();
     const deviceId = await getDeviceId();
+    const phoneVal = (input.customerPhone || input.phone || '').trim() || undefined;
 
     let finalOrder: POSOrder | null = null;
     const orderId = input.existingOrderId ?? safeUUID();
@@ -828,6 +866,7 @@ export const posOrderRepo = {
           status: 'PAID',
           customer_name: input.customerName || null,
           customer_id: input.customerId || null,
+          customer_phone: phoneVal || null,
           vehicle_plate_number: input.vehiclePlateNumber || null,
           vehicle_make_model: input.vehicleMakeModel || null,
           vehicle_mileage: input.vehicleMileage != null ? String(input.vehicleMileage) : null,
@@ -861,10 +900,13 @@ export const posOrderRepo = {
               items: input.items,
               notes: input.notes,
               paidAmount: input.paidAmount,
+              customerPhone: phoneVal,
+              phone: phoneVal,
               vehicle: input.vehiclePlateNumber ? {
                 plateNumber: input.vehiclePlateNumber,
                 makeModel: input.vehicleMakeModel,
                 mileage: input.vehicleMileage,
+                phone: phoneVal,
               } : undefined,
             }),
             created_at: now,
@@ -891,10 +933,13 @@ export const posOrderRepo = {
             status: 'completed',
             notes: JSON.stringify({
               notes: input.notes || null,
+              customerPhone: phoneVal,
+              phone: phoneVal,
               vehicle: input.vehiclePlateNumber ? {
                 plateNumber: input.vehiclePlateNumber,
                 makeModel: input.vehicleMakeModel,
                 mileage: input.vehicleMileage,
+                phone: phoneVal,
               } : undefined,
             }),
             created_at: now,
@@ -980,27 +1025,41 @@ export const posOrderRepo = {
       if (input.existingOrderId) {
         try {
           await tx.execute(
-            `UPDATE pos_orders SET status='PAID', payment_method=?, paid_amount=?, subtotal=?, tax=?, total=?, items=?, customer_name=?, customer_id=?, vehicle_plate_number=?, vehicle_make_model=?, vehicle_mileage=?, updated_at=? WHERE id=? AND tenant_id=?`,
+            `UPDATE pos_orders SET status='PAID', payment_method=?, paid_amount=?, subtotal=?, tax=?, total=?, items=?, customer_name=?, customer_id=?, customer_phone=?, vehicle_plate_number=?, vehicle_make_model=?, vehicle_mileage=?, updated_at=? WHERE id=? AND tenant_id=?`,
             [
               input.paymentMethod, input.paidAmount,
               input.subtotal, input.tax, input.total,
               JSON.stringify(input.items),
-              input.customerName ?? null, input.customerId ?? null,
+              input.customerName ?? null, input.customerId ?? null, phoneVal ?? null,
               input.vehiclePlateNumber ?? null, input.vehicleMakeModel ?? null, input.vehicleMileage != null ? String(input.vehicleMileage) : null,
               now, input.existingOrderId, tenantId,
             ]
           );
         } catch {
-          await tx.execute(
-            `UPDATE pos_orders SET status='PAID', payment_method=?, paid_amount=?, subtotal=?, tax=?, total=?, items=?, customer_name=?, customer_id=?, updated_at=? WHERE id=? AND tenant_id=?`,
-            [
-              input.paymentMethod, input.paidAmount,
-              input.subtotal, input.tax, input.total,
-              JSON.stringify(input.items),
-              input.customerName ?? null, input.customerId ?? null,
-              now, input.existingOrderId, tenantId,
-            ]
-          );
+          try {
+            await tx.execute(
+              `UPDATE pos_orders SET status='PAID', payment_method=?, paid_amount=?, subtotal=?, tax=?, total=?, items=?, customer_name=?, customer_id=?, vehicle_plate_number=?, vehicle_make_model=?, vehicle_mileage=?, updated_at=? WHERE id=? AND tenant_id=?`,
+              [
+                input.paymentMethod, input.paidAmount,
+                input.subtotal, input.tax, input.total,
+                JSON.stringify(input.items),
+                input.customerName ?? null, input.customerId ?? null,
+                input.vehiclePlateNumber ?? null, input.vehicleMakeModel ?? null, input.vehicleMileage != null ? String(input.vehicleMileage) : null,
+                now, input.existingOrderId, tenantId,
+              ]
+            );
+          } catch {
+            await tx.execute(
+              `UPDATE pos_orders SET status='PAID', payment_method=?, paid_amount=?, subtotal=?, tax=?, total=?, items=?, customer_name=?, customer_id=?, updated_at=? WHERE id=? AND tenant_id=?`,
+              [
+                input.paymentMethod, input.paidAmount,
+                input.subtotal, input.tax, input.total,
+                JSON.stringify(input.items),
+                input.customerName ?? null, input.customerId ?? null,
+                now, input.existingOrderId, tenantId,
+              ]
+            );
+          }
         }
         const rows = await tx.select<any[]>(
           'SELECT * FROM pos_orders WHERE id = ? AND tenant_id = ?',
@@ -1018,6 +1077,8 @@ export const posOrderRepo = {
           orderNumber,
           status: 'PAID',
           customerName: input.customerName,
+          customerPhone: phoneVal,
+          phone: phoneVal,
           customerId: input.customerId,
           vehiclePlateNumber: input.vehiclePlateNumber,
           vehicleMakeModel: input.vehicleMakeModel,
@@ -1035,11 +1096,11 @@ export const posOrderRepo = {
 
         try {
           await tx.execute(
-            `INSERT INTO pos_orders (id, tenant_id, order_number, status, customer_name, customer_id, vehicle_plate_number, vehicle_make_model, vehicle_mileage, payment_method, subtotal, tax, total, paid_amount, items, notes, created_at, updated_at)
-             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+            `INSERT INTO pos_orders (id, tenant_id, order_number, status, customer_name, customer_id, customer_phone, vehicle_plate_number, vehicle_make_model, vehicle_mileage, payment_method, subtotal, tax, total, paid_amount, items, notes, created_at, updated_at)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
             [
               finalOrder.id, finalOrder.tenantId, finalOrder.orderNumber, finalOrder.status,
-              finalOrder.customerName ?? null, finalOrder.customerId ?? null,
+              finalOrder.customerName ?? null, finalOrder.customerId ?? null, phoneVal ?? null,
               input.vehiclePlateNumber ?? null, input.vehicleMakeModel ?? null, input.vehicleMileage != null ? String(input.vehicleMileage) : null,
               finalOrder.paymentMethod,
               finalOrder.subtotal, finalOrder.tax, finalOrder.total, finalOrder.paidAmount,
@@ -1048,17 +1109,33 @@ export const posOrderRepo = {
             ]
           );
         } catch {
-          await tx.execute(
-            `INSERT INTO pos_orders (id, tenant_id, order_number, status, customer_name, customer_id, payment_method, subtotal, tax, total, paid_amount, items, notes, created_at, updated_at)
-             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-            [
-              finalOrder.id, finalOrder.tenantId, finalOrder.orderNumber, finalOrder.status,
-              finalOrder.customerName ?? null, finalOrder.customerId ?? null, finalOrder.paymentMethod,
-              finalOrder.subtotal, finalOrder.tax, finalOrder.total, finalOrder.paidAmount,
-              JSON.stringify(finalOrder.items), finalOrder.notes ?? null,
-              finalOrder.createdAt, finalOrder.updatedAt,
-            ]
-          );
+          try {
+            await tx.execute(
+              `INSERT INTO pos_orders (id, tenant_id, order_number, status, customer_name, customer_id, vehicle_plate_number, vehicle_make_model, vehicle_mileage, payment_method, subtotal, tax, total, paid_amount, items, notes, created_at, updated_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+              [
+                finalOrder.id, finalOrder.tenantId, finalOrder.orderNumber, finalOrder.status,
+                finalOrder.customerName ?? null, finalOrder.customerId ?? null,
+                input.vehiclePlateNumber ?? null, input.vehicleMakeModel ?? null, input.vehicleMileage != null ? String(input.vehicleMileage) : null,
+                finalOrder.paymentMethod,
+                finalOrder.subtotal, finalOrder.tax, finalOrder.total, finalOrder.paidAmount,
+                JSON.stringify(finalOrder.items), finalOrder.notes ?? null,
+                finalOrder.createdAt, finalOrder.updatedAt,
+              ]
+            );
+          } catch {
+            await tx.execute(
+              `INSERT INTO pos_orders (id, tenant_id, order_number, status, customer_name, customer_id, payment_method, subtotal, tax, total, paid_amount, items, notes, created_at, updated_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+              [
+                finalOrder.id, finalOrder.tenantId, finalOrder.orderNumber, finalOrder.status,
+                finalOrder.customerName ?? null, finalOrder.customerId ?? null, finalOrder.paymentMethod,
+                finalOrder.subtotal, finalOrder.tax, finalOrder.total, finalOrder.paidAmount,
+                JSON.stringify(finalOrder.items), finalOrder.notes ?? null,
+                finalOrder.createdAt, finalOrder.updatedAt,
+              ]
+            );
+          }
         }
       }
     });
@@ -1070,6 +1147,8 @@ export const posOrderRepo = {
         orderNumber,
         status: 'PAID',
         customerName: input.customerName,
+        customerPhone: phoneVal,
+        phone: phoneVal,
         customerId: input.customerId,
         vehiclePlateNumber: input.vehiclePlateNumber,
         vehicleMakeModel: input.vehicleMakeModel,
@@ -1706,6 +1785,7 @@ export const vehicleRepo = {
           const parts = makeModel.split(' ');
           const make = parts[0] || 'Vehicle';
           const model = parts.slice(1).join(' ') || '';
+          const ordPhone = (ord.customerPhone || ord.phone || '').trim() || undefined;
           results.push({
             id: `v-${plate}`,
             tenantId,
@@ -1714,6 +1794,8 @@ export const vehicleRepo = {
             model,
             year: new Date(ord.createdAt).getFullYear(),
             customerName,
+            phone: ordPhone,
+            customerPhone: ordPhone,
             mileage,
             createdAt: ord.createdAt,
             updatedAt: ord.createdAt,
@@ -1725,6 +1807,28 @@ export const vehicleRepo = {
     }
 
     const filtered = results.filter((v) => v.tenantId === tenantId);
+
+    // Fallback: for any vehicle with missing phone, check if any order with matching plate has a phone
+    try {
+      const allOrders = await posOrderRepo.findLocal(tenantId);
+      const platePhoneMap = new Map<string, string>();
+      for (const ord of allOrders) {
+        const p = (ord.customerPhone || ord.phone || '').trim();
+        const plt = (ord.vehiclePlateNumber || '').trim().toUpperCase();
+        if (p && plt && !platePhoneMap.has(plt)) {
+          platePhoneMap.set(plt, p);
+        }
+      }
+      for (const v of filtered) {
+        if (!v.phone) {
+          const matched = platePhoneMap.get(v.licensePlate.trim().toUpperCase());
+          if (matched) {
+            v.phone = matched;
+            v.customerPhone = matched;
+          }
+        }
+      }
+    } catch {}
 
     // Save to cache
     try {
@@ -1757,6 +1861,8 @@ export const vehicleRepo = {
     tenantId?: string;
     customerName?: string;
     customerId?: string;
+    phone?: string;
+    customerPhone?: string;
     make: string;
     model: string;
     year?: number;
@@ -1776,10 +1882,16 @@ export const vehicleRepo = {
     const mileageNum = v.mileage != null && v.mileage !== '' ? Number(v.mileage) : (existing?.mileage ?? null);
     const yr = Number(v.year) || existing?.year || new Date().getFullYear();
 
+    const inputPhone = (v.phone || v.customerPhone || '').trim();
+    const phoneToSave = inputPhone
+      ? inputPhone
+      : (existing?.phone || (existing as any)?.customerPhone || undefined);
+
     const notesPayload = JSON.stringify({
       notes: v.notes || null,
       mileage: mileageNum,
       customerName: v.customerName || existing?.customerName || null,
+      phone: phoneToSave || null,
     });
 
     const updatedVehicle: Vehicle = {
@@ -1787,6 +1899,8 @@ export const vehicleRepo = {
       tenantId,
       customerId: v.customerId || existing?.customerId,
       customerName: v.customerName || existing?.customerName,
+      phone: phoneToSave,
+      customerPhone: phoneToSave,
       make: v.make || existing?.make || 'General',
       model: v.model || existing?.model || 'Vehicle',
       year: yr,
@@ -1811,27 +1925,59 @@ export const vehicleRepo = {
           license_plate: cleanPlate,
           vin: updatedVehicle.vin || null,
           color: updatedVehicle.color || null,
+          phone: phoneToSave || null,
           notes: notesPayload,
           created_at: createdAt,
           updated_at: now,
         });
       } catch (err) {
-        console.warn('[db] Supabase vehicle upsert error:', err);
+        try {
+          await supabase.from('vehicles').upsert({
+            id,
+            tenant_id: tenantId,
+            customer_id: updatedVehicle.customerId || null,
+            make: updatedVehicle.make,
+            model: updatedVehicle.model,
+            year: String(updatedVehicle.year),
+            license_plate: cleanPlate,
+            vin: updatedVehicle.vin || null,
+            color: updatedVehicle.color || null,
+            notes: notesPayload,
+            created_at: createdAt,
+            updated_at: now,
+          });
+        } catch (innerErr) {
+          console.warn('[db] Supabase vehicle upsert error:', innerErr);
+        }
       }
     }
 
     const db = await getDatabase();
     try {
       if (existing && !existing.id.startsWith('v-')) {
-        await db.execute(
-          `UPDATE vehicles SET customer_name = COALESCE(?, customer_name), make = COALESCE(?, make), model = COALESCE(?, model), mileage = COALESCE(?, mileage), notes = ?, updated_at = ? WHERE id = ? AND tenant_id = ?`,
-          [v.customerName || null, v.make || null, v.model || null, mileageNum, notesPayload, now, id, tenantId]
-        );
+        try {
+          await db.execute(
+            `UPDATE vehicles SET customer_name = COALESCE(?, customer_name), make = COALESCE(?, make), model = COALESCE(?, model), mileage = COALESCE(?, mileage), phone = COALESCE(?, phone), notes = ?, updated_at = ? WHERE id = ? AND tenant_id = ?`,
+            [v.customerName || null, v.make || null, v.model || null, mileageNum, phoneToSave || null, notesPayload, now, id, tenantId]
+          );
+        } catch {
+          await db.execute(
+            `UPDATE vehicles SET customer_name = COALESCE(?, customer_name), make = COALESCE(?, make), model = COALESCE(?, model), mileage = COALESCE(?, mileage), notes = ?, updated_at = ? WHERE id = ? AND tenant_id = ?`,
+            [v.customerName || null, v.make || null, v.model || null, mileageNum, notesPayload, now, id, tenantId]
+          );
+        }
       } else {
-        await db.execute(
-          `INSERT INTO vehicles (id, tenant_id, customer_id, customer_name, make, model, year, license_plate, vin, color, mileage, notes, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-          [id, tenantId, updatedVehicle.customerId || null, updatedVehicle.customerName || null, updatedVehicle.make, updatedVehicle.model, yr, cleanPlate, updatedVehicle.vin || null, updatedVehicle.color || null, mileageNum, notesPayload, createdAt, now]
-        );
+        try {
+          await db.execute(
+            `INSERT INTO vehicles (id, tenant_id, customer_id, customer_name, make, model, year, license_plate, vin, color, mileage, phone, notes, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+            [id, tenantId, updatedVehicle.customerId || null, updatedVehicle.customerName || null, updatedVehicle.make, updatedVehicle.model, yr, cleanPlate, updatedVehicle.vin || null, updatedVehicle.color || null, mileageNum, phoneToSave || null, notesPayload, createdAt, now]
+          );
+        } catch {
+          await db.execute(
+            `INSERT INTO vehicles (id, tenant_id, customer_id, customer_name, make, model, year, license_plate, vin, color, mileage, notes, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+            [id, tenantId, updatedVehicle.customerId || null, updatedVehicle.customerName || null, updatedVehicle.make, updatedVehicle.model, yr, cleanPlate, updatedVehicle.vin || null, updatedVehicle.color || null, mileageNum, notesPayload, createdAt, now]
+          );
+        }
       }
     } catch (dbErr) {
       console.warn('[db] Local vehicle upsert error:', dbErr);
@@ -2066,4 +2212,102 @@ export async function completePOSSale(
     status,
     notes: input.notes,
   });
+}
+
+// ─── Backfill Vehicle Phone Numbers ──────────────────────────────────────────
+/**
+ * Safe, idempotent one-time backfill:
+ * For all old orders where phone exists but vehicle.phone is empty,
+ * copy phone from order -> vehicle where Reg No matches.
+ * - Do NOT overwrite existing vehicle phone if it already has a value.
+ * - Do NOT create duplicate vehicles.
+ * - Log how many records were updated.
+ */
+export async function backfillVehiclePhoneFromOrders(
+  tenantId = getCurrentTenantId()
+): Promise<{ updatedCount: number }> {
+  let updatedCount = 0;
+  try {
+    const [vehicles, orders] = await Promise.all([
+      vehicleRepo.findAll(tenantId),
+      posOrderRepo.findAll(tenantId),
+    ]);
+
+    // Build plate -> phone map from orders
+    const plateToPhone = new Map<string, string>();
+    const customerNameToPhone = new Map<string, string>();
+
+    for (const ord of orders) {
+      let phone = (ord.customerPhone || ord.phone || '').trim();
+      let plate = (ord.vehiclePlateNumber || '').trim().toUpperCase();
+
+      if (ord.notes) {
+        try {
+          const parsed = typeof ord.notes === 'string' ? JSON.parse(ord.notes) : ord.notes;
+          if (!plate && (parsed?.vehicle?.plateNumber || parsed?.vehicle?.regNo)) {
+            plate = String(parsed.vehicle.plateNumber || parsed.vehicle.regNo).trim().toUpperCase();
+          }
+          if (!phone && (parsed?.customerPhone || parsed?.phone || parsed?.vehicle?.phone)) {
+            phone = String(parsed.customerPhone || parsed.phone || parsed.vehicle.phone).trim();
+          }
+        } catch {}
+      }
+
+      if (phone) {
+        if (plate && !plateToPhone.has(plate)) {
+          plateToPhone.set(plate, phone);
+        }
+        if (ord.customerName && ord.customerName.trim() && ord.customerName !== 'Walk-in Customer') {
+          const cName = ord.customerName.trim().toLowerCase();
+          if (!customerNameToPhone.has(cName)) {
+            customerNameToPhone.set(cName, phone);
+          }
+        }
+      }
+    }
+
+    // Also look up registered customers in case phone was saved there
+    try {
+      const { customerRepo } = await import('./db');
+      const customers = await customerRepo.findAll(tenantId);
+      for (const c of customers) {
+        if (c.phone && c.phone.trim() && c.name && c.name.trim()) {
+          const cName = c.name.trim().toLowerCase();
+          if (!customerNameToPhone.has(cName)) {
+            customerNameToPhone.set(cName, c.phone.trim());
+          }
+        }
+      }
+    } catch {}
+
+    // Update vehicles where phone is currently missing
+    for (const v of vehicles) {
+      if (v.phone && v.phone.trim().length > 0) {
+        continue; // Do NOT overwrite existing vehicle phone if it already has a value
+      }
+
+      const cleanPlate = v.licensePlate.trim().toUpperCase();
+      let foundPhone = plateToPhone.get(cleanPlate);
+
+      if (!foundPhone && v.customerName && v.customerName.trim() !== 'Walk-in Customer') {
+        foundPhone = customerNameToPhone.get(v.customerName.trim().toLowerCase());
+      }
+
+      if (foundPhone && foundPhone.trim().length > 0) {
+        await vehicleRepo.upsertByPlate({
+          ...v,
+          phone: foundPhone.trim(),
+        });
+        updatedCount++;
+      }
+    }
+
+    if (updatedCount > 0) {
+      console.log(`[AutoCare Backfill] Completed. Updated ${updatedCount} vehicle(s) with phone numbers.`);
+    }
+  } catch (err) {
+    console.warn('[AutoCare Backfill] Backfill error:', err);
+  }
+
+  return { updatedCount };
 }

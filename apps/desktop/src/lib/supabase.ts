@@ -1,3 +1,16 @@
+if (typeof (globalThis as any).WebSocket === 'undefined' && typeof window === 'undefined') {
+  class NodeWebSocketStub {
+    static OPEN = 1;
+    static CLOSED = 3;
+    readyState = 3;
+    send() {}
+    close() {}
+    addEventListener() {}
+    removeEventListener() {}
+  }
+  (globalThis as any).WebSocket = NodeWebSocketStub;
+}
+
 import { createClient } from '@supabase/supabase-js';
 
 const DEFAULT_SUPABASE_URL = 'https://tstuqwqktkjgxnopytmz.supabase.co';

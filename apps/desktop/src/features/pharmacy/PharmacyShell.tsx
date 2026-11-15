@@ -14,6 +14,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
+import { migrateLocalDataIfNeeded } from './pharmacyData';
 
 export function PharmacyShell() {
   const navigate = useNavigate();
@@ -24,6 +25,7 @@ export function PharmacyShell() {
   useEffect(() => {
     localStorage.setItem('genx_businessType', 'pharmacy');
     localStorage.setItem('genx:selectedModule', 'pharmacy');
+    void migrateLocalDataIfNeeded();
   }, []);
 
   const getModuleTitle = () => {

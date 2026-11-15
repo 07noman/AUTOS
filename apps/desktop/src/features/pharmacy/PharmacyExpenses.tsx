@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Wallet,
   Plus,
@@ -9,15 +9,27 @@ import {
   X,
 } from 'lucide-react';
 import {
-  pharmacyStorage,
+  pharmacyDb,
   type PharmacyExpense,
 } from './pharmacyData';
 
 export function PharmacyExpenses() {
-  const [expenses, setExpenses] = useState<PharmacyExpense[]>(() =>
-    pharmacyStorage.getExpenses()
-  );
+  const [expenses, setExpenses] = useState<PharmacyExpense[]>([]);
   const [modalOpen, setModalOpen] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    pharmacyDb
+      .getExpenses()
+      .then((data) => {
+        if (mounted) setExpenses(data);
+      })
+      .catch((err) => console.error('[PharmacyExpenses] Load error:', err));
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const [formData, setFormData] = useState<Partial<PharmacyExpense>>({
     date: new Date().toISOString().split('T')[0],
@@ -30,31 +42,35 @@ export function PharmacyExpenses() {
 
   const totalExpense = expenses.reduce((sum, e) => sum + e.amount, 0);
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.amount || formData.amount <= 0) return;
 
-    const newExp: PharmacyExpense = {
-      id: `exp-${Date.now()}`,
-      date: formData.date || new Date().toISOString().split('T')[0],
-      category: formData.category as any,
-      amount: formData.amount,
-      method: formData.method as any,
-      notes: formData.notes || '',
-      loggedBy: formData.loggedBy || 'Admin',
-    };
+    try {
+      const created = await pharmacyDb.createExpense({
+        date: formData.date || new Date().toISOString().split('T')[0],
+        category: formData.category as any,
+        amount: formData.amount,
+        method: formData.method as any,
+        notes: formData.notes || '',
+        loggedBy: formData.loggedBy || 'Admin',
+      });
 
-    const updated = [newExp, ...expenses];
-    setExpenses(updated);
-    pharmacyStorage.saveExpenses(updated);
-    setModalOpen(false);
+      setExpenses((prev) => [created, ...prev]);
+      setModalOpen(false);
+    } catch (err: any) {
+      alert(err.message || 'Failed to save, check internet');
+    }
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (window.confirm('Delete this expense record?')) {
-      const updated = expenses.filter((e) => e.id !== id);
-      setExpenses(updated);
-      pharmacyStorage.saveExpenses(updated);
+      try {
+        await pharmacyDb.deleteExpense(id);
+        setExpenses((prev) => prev.filter((e) => e.id !== id));
+      } catch (err: any) {
+        alert(err.message || 'Failed to save, check internet');
+      }
     }
   };
 

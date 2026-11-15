@@ -6,6 +6,8 @@ export interface Vehicle {
   tenantId: string;
   customerId?: string;
   customerName?: string;
+  phone?: string;
+  customerPhone?: string;
   make: string;
   model: string;
   year: number;

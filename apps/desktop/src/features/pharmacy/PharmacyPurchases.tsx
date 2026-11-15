@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   FileCheck2,
   Plus,
@@ -10,7 +10,7 @@ import {
   PackagePlus,
 } from 'lucide-react';
 import {
-  pharmacyStorage,
+  pharmacyDb,
   type Medicine,
   type Supplier,
   type PurchaseOrder,
@@ -18,28 +18,53 @@ import {
 } from './pharmacyData';
 
 export function PharmacyPurchases() {
-  const [purchases, setPurchases] = useState<PurchaseOrder[]>(() =>
-    pharmacyStorage.getPurchases()
-  );
-
-  const [medicines, setMedicines] = useState<Medicine[]>(() => pharmacyStorage.getMedicines());
-  const [suppliers] = useState<Supplier[]>(() => pharmacyStorage.getSuppliers());
+  const [purchases, setPurchases] = useState<PurchaseOrder[]>([]);
+  const [medicines, setMedicines] = useState<Medicine[]>([]);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [modalOpen, setModalOpen] = useState(false);
 
+  useEffect(() => {
+    let mounted = true;
+    Promise.all([
+      pharmacyDb.getPurchases(),
+      pharmacyDb.getMedicines(),
+      pharmacyDb.getSuppliers(),
+    ])
+      .then(([pos, meds, sups]) => {
+        if (mounted) {
+          setPurchases(pos);
+          setMedicines(meds);
+          setSuppliers(sups);
+          if (sups.length > 0 && !selectedSupplierId) {
+            setSelectedSupplierId(sups[0].id);
+          }
+          if (meds.length > 0 && !selectedMedId) {
+            setSelectedMedId(meds[0].id);
+            setRowCost(meds[0].purchasePrice || 50);
+          }
+        }
+      })
+      .catch((err) => console.error('[PharmacyPurchases] Load error:', err));
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   // Form State
-  const [selectedSupplierId, setSelectedSupplierId] = useState(suppliers[0]?.id || '');
+  const [selectedSupplierId, setSelectedSupplierId] = useState('');
   const [orderItems, setOrderItems] = useState<PurchaseItem[]>([]);
   const [discount, setDiscount] = useState(0);
   const [paidAmount, setPaidAmount] = useState(0);
   const [notes, setNotes] = useState('');
 
   // Row input state
-  const [selectedMedId, setSelectedMedId] = useState(medicines[0]?.id || '');
+  const [selectedMedId, setSelectedMedId] = useState('');
   const [rowBatch, setRowBatch] = useState('BN-2024-NEW');
   const [rowMfg, setRowMfg] = useState(new Date().toISOString().split('T')[0]);
   const [rowExp, setRowExp] = useState('2027-12-31');
   const [rowQty, setRowQty] = useState(50);
-  const [rowCost, setRowCost] = useState(medicines[0]?.purchasePrice || 50);
+  const [rowCost, setRowCost] = useState(50);
 
   const subtotal = orderItems.reduce((sum, item) => sum + item.total, 0);
   const grandTotal = Math.max(0, subtotal - discount);
@@ -66,63 +91,63 @@ export function PharmacyPurchases() {
     setOrderItems(orderItems.filter((_, i) => i !== index));
   };
 
-  const handleSavePO = (e: React.FormEvent) => {
+  const handleSavePO = async (e: React.FormEvent) => {
     e.preventDefault();
     if (orderItems.length === 0) {
       alert('Please add at least one medicine item to the purchase order.');
       return;
     }
 
-    const supplier = suppliers.find((s) => s.id === selectedSupplierId);
+    try {
+      const supplier = suppliers.find((s) => s.id === selectedSupplierId);
 
-    const paymentStatus: 'paid' | 'partial' | 'unpaid' =
-      paidAmount >= grandTotal ? 'paid' : paidAmount > 0 ? 'partial' : 'unpaid';
+      const paymentStatus: 'paid' | 'partial' | 'unpaid' =
+        paidAmount >= grandTotal ? 'paid' : paidAmount > 0 ? 'partial' : 'unpaid';
 
-    const newPO: PurchaseOrder = {
-      id: `po-${Date.now()}`,
-      poNumber: `PO-2026-${Math.floor(100 + Math.random() * 900)}`,
-      supplierId: selectedSupplierId,
-      supplierName: supplier?.name || 'Authorized Distributor',
-      date: new Date().toISOString().split('T')[0],
-      items: orderItems,
-      subtotal,
-      discount,
-      total: grandTotal,
-      paidAmount,
-      paymentStatus,
-      notes,
-    };
+      const createdPO = await pharmacyDb.createPurchase({
+        supplierId: selectedSupplierId,
+        supplierName: supplier?.name || 'Authorized Distributor',
+        date: new Date().toISOString().split('T')[0],
+        items: orderItems,
+        subtotal,
+        discount,
+        total: grandTotal,
+        paidAmount,
+        paymentStatus,
+        notes,
+      });
 
-    // 1. Save PO
-    const updatedPOs = [newPO, ...purchases];
-    setPurchases(updatedPOs);
-    pharmacyStorage.savePurchases(updatedPOs);
-
-    // 2. Auto Inventory Update: Increment stock of purchased medicines & update batch/expiry
-    const updatedMeds = medicines.map((m) => {
-      const matchItem = orderItems.find((item) => item.medicineId === m.id);
-      if (matchItem) {
-        return {
-          ...m,
-          stock: m.stock + matchItem.quantity,
-          purchasePrice: matchItem.unitCost,
-          batchNumber: matchItem.batchNumber,
-          mfgDate: matchItem.mfgDate,
-          expiryDate: matchItem.expiryDate,
-        };
+      // 2. Auto Inventory Update: Increment stock of purchased medicines & update batch/expiry
+      const updatedMeds = [...medicines];
+      for (const item of orderItems) {
+        const m = updatedMeds.find((x) => x.id === item.medicineId);
+        if (m) {
+          const nextStock = m.stock + item.quantity;
+          await pharmacyDb.updateMedicine(m.id, {
+            stock: nextStock,
+            purchasePrice: item.unitCost,
+            batchNumber: item.batchNumber,
+            mfgDate: item.mfgDate,
+            expiryDate: item.expiryDate,
+          });
+          m.stock = nextStock;
+          m.purchasePrice = item.unitCost;
+          m.batchNumber = item.batchNumber;
+          m.mfgDate = item.mfgDate;
+          m.expiryDate = item.expiryDate;
+        }
       }
-      return m;
-    });
 
-    setMedicines(updatedMeds);
-    pharmacyStorage.saveMedicines(updatedMeds);
-
-    // Reset & close
-    setOrderItems([]);
-    setDiscount(0);
-    setPaidAmount(0);
-    setNotes('');
-    setModalOpen(false);
+      setPurchases((prev) => [createdPO, ...prev]);
+      setMedicines(updatedMeds);
+      setOrderItems([]);
+      setDiscount(0);
+      setPaidAmount(0);
+      setNotes('');
+      setModalOpen(false);
+    } catch (err: any) {
+      alert(err.message || 'Failed to save, check internet');
+    }
   };
 
   return (

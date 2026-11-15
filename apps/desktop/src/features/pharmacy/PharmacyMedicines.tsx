@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   Search,
   Plus,
@@ -10,15 +10,35 @@ import {
   AlertCircle,
   Barcode,
   Layers,
+  Loader2,
 } from 'lucide-react';
-import { pharmacyStorage, type Medicine } from './pharmacyData';
+import { pharmacyDb, type Medicine } from './pharmacyData';
 
 export function PharmacyMedicines() {
-  const [medicines, setMedicines] = useState<Medicine[]>(() => pharmacyStorage.getMedicines());
+  const [medicines, setMedicines] = useState<Medicine[]>([]);
+  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [modalOpen, setModalOpen] = useState(false);
   const [editingMedicine, setEditingMedicine] = useState<Medicine | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    pharmacyDb
+      .getMedicines()
+      .then((data) => {
+        if (mounted) setMedicines(data);
+      })
+      .catch((err) => {
+        console.error('[PharmacyMedicines] Load error:', err);
+      })
+      .finally(() => {
+        if (mounted) setLoading(false);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   // Form state
   const [formData, setFormData] = useState<Partial<Medicine>>({
@@ -88,47 +108,47 @@ export function PharmacyMedicines() {
     setModalOpen(true);
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (window.confirm('Are you sure you want to delete this medicine?')) {
-      const updated = medicines.filter((m) => m.id !== id);
-      setMedicines(updated);
-      pharmacyStorage.saveMedicines(updated);
+      try {
+        await pharmacyDb.deleteMedicine(id);
+        setMedicines((prev) => prev.filter((m) => m.id !== id));
+      } catch (err: any) {
+        alert(err.message || 'Failed to save, check internet');
+      }
     }
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.name || !formData.genericName) return;
 
-    if (editingMedicine) {
-      const updated = medicines.map((m) =>
-        m.id === editingMedicine.id ? ({ ...m, ...formData } as Medicine) : m
-      );
-      setMedicines(updated);
-      pharmacyStorage.saveMedicines(updated);
-    } else {
-      const newMed: Medicine = {
-        ...(formData as Medicine),
-        id: `med-${Date.now()}`,
-      };
-      const updated = [newMed, ...medicines];
-      setMedicines(updated);
-      pharmacyStorage.saveMedicines(updated);
+    try {
+      if (editingMedicine) {
+        const updated = await pharmacyDb.updateMedicine(editingMedicine.id, formData);
+        setMedicines((prev) =>
+          prev.map((m) => (m.id === editingMedicine.id ? updated : m))
+        );
+      } else {
+        const created = await pharmacyDb.createMedicine(formData);
+        setMedicines((prev) => [created, ...prev]);
+      }
+      setModalOpen(false);
+    } catch (err: any) {
+      alert(err.message || 'Failed to save, check internet');
     }
-
-    setModalOpen(false);
   };
 
-  const handleQuickStockAdjust = (id: string, delta: number) => {
-    const updated = medicines.map((m) => {
-      if (m.id === id) {
-        const nextStock = Math.max(0, m.stock + delta);
-        return { ...m, stock: nextStock };
-      }
-      return m;
-    });
-    setMedicines(updated);
-    pharmacyStorage.saveMedicines(updated);
+  const handleQuickStockAdjust = async (id: string, delta: number) => {
+    const med = medicines.find((m) => m.id === id);
+    if (!med) return;
+    const nextStock = Math.max(0, med.stock + delta);
+    try {
+      const updated = await pharmacyDb.updateMedicine(id, { stock: nextStock });
+      setMedicines((prev) => prev.map((m) => (m.id === id ? updated : m)));
+    } catch (err: any) {
+      alert(err.message || 'Failed to save, check internet');
+    }
   };
 
   return (

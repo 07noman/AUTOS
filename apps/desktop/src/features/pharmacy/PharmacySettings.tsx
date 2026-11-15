@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Settings,
   Store,
@@ -10,42 +10,77 @@ import {
   Download,
 } from 'lucide-react';
 import {
-  pharmacyStorage,
+  pharmacyDb,
+  DEFAULT_SETTINGS,
   type PharmacySettingsConfig,
 } from './pharmacyData';
 
 export function PharmacySettings() {
-  const [config, setConfig] = useState<PharmacySettingsConfig>(() =>
-    pharmacyStorage.getSettings()
-  );
+  const [config, setConfig] = useState<PharmacySettingsConfig>(DEFAULT_SETTINGS);
   const [saved, setSaved] = useState(false);
 
-  const handleSave = (e: React.FormEvent) => {
+  useEffect(() => {
+    let mounted = true;
+    pharmacyDb
+      .getSettings()
+      .then((data) => {
+        if (mounted) setConfig(data);
+      })
+      .catch((err) => console.error('[PharmacySettings] Load error:', err));
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    pharmacyStorage.saveSettings(config);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 3000);
+    try {
+      const updated = await pharmacyDb.saveSettings(config);
+      setConfig(updated);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    } catch (err: any) {
+      alert(err.message || 'Failed to save, check internet');
+    }
   };
 
-  const handleBackup = () => {
-    const data = {
-      medicines: pharmacyStorage.getMedicines(),
-      suppliers: pharmacyStorage.getSuppliers(),
-      customers: pharmacyStorage.getCustomers(),
-      expenses: pharmacyStorage.getExpenses(),
-      staff: pharmacyStorage.getStaff(),
-      settings: pharmacyStorage.getSettings(),
-      purchases: pharmacyStorage.getPurchases(),
-      backupDate: new Date().toISOString(),
-    };
+  const handleBackup = async () => {
+    try {
+      const [medicines, suppliers, customers, expenses, staff, settings, purchases] =
+        await Promise.all([
+          pharmacyDb.getMedicines(),
+          pharmacyDb.getSuppliers(),
+          pharmacyDb.getCustomers(),
+          pharmacyDb.getExpenses(),
+          pharmacyDb.getStaff(),
+          pharmacyDb.getSettings(),
+          pharmacyDb.getPurchases(),
+        ]);
 
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `pharmacy-backup-${new Date().toISOString().split('T')[0]}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+      const data = {
+        medicines,
+        suppliers,
+        customers,
+        expenses,
+        staff,
+        settings,
+        purchases,
+        backupDate: new Date().toISOString(),
+      };
+
+      const blob = new Blob([JSON.stringify(data, null, 2)], {
+        type: 'application/json',
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `pharmacy-backup-${new Date().toISOString().split('T')[0]}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      alert(err.message || 'Failed to generate backup, check internet');
+    }
   };
 
   return (

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   ShieldCheck,
   Plus,
@@ -11,13 +11,27 @@ import {
   Trash2,
 } from 'lucide-react';
 import {
-  pharmacyStorage,
+  pharmacyDb,
   type StaffUser,
 } from './pharmacyData';
 
 export function PharmacyStaff() {
-  const [staff, setStaff] = useState<StaffUser[]>(() => pharmacyStorage.getStaff());
+  const [staff, setStaff] = useState<StaffUser[]>([]);
   const [modalOpen, setModalOpen] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    pharmacyDb
+      .getStaff()
+      .then((data) => {
+        if (mounted) setStaff(data);
+      })
+      .catch((err) => console.error('[PharmacyStaff] Load error:', err));
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const [formData, setFormData] = useState<Partial<StaffUser>>({
     name: '',
@@ -27,31 +41,35 @@ export function PharmacyStaff() {
     status: 'Active',
   });
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.name || !formData.email) return;
 
-    const newUser: StaffUser = {
-      id: `staff-${Date.now()}`,
-      name: formData.name,
-      email: formData.email,
-      phone: formData.phone || '',
-      role: formData.role as any,
-      status: formData.status as any,
-      lastLogin: 'Never logged in',
-    };
+    try {
+      const created = await pharmacyDb.createStaff({
+        name: formData.name,
+        email: formData.email,
+        phone: formData.phone || '',
+        role: formData.role as any,
+        status: formData.status as any,
+        lastLogin: 'Never logged in',
+      });
 
-    const updated = [...staff, newUser];
-    setStaff(updated);
-    pharmacyStorage.saveStaff(updated);
-    setModalOpen(false);
+      setStaff((prev) => [created, ...prev]);
+      setModalOpen(false);
+    } catch (err: any) {
+      alert(err.message || 'Failed to save, check internet');
+    }
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (window.confirm('Remove this staff account?')) {
-      const updated = staff.filter((s) => s.id !== id);
-      setStaff(updated);
-      pharmacyStorage.saveStaff(updated);
+      try {
+        await pharmacyDb.deleteStaff(id);
+        setStaff((prev) => prev.filter((s) => s.id !== id));
+      } catch (err: any) {
+        alert(err.message || 'Failed to save, check internet');
+      }
     }
   };
 

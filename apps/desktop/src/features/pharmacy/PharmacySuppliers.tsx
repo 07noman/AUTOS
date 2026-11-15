@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Truck,
   Plus,
@@ -11,14 +11,28 @@ import {
   X,
   CreditCard,
 } from 'lucide-react';
-import { pharmacyStorage, type Supplier } from './pharmacyData';
+import { pharmacyDb, type Supplier } from './pharmacyData';
 
 export function PharmacySuppliers() {
-  const [suppliers, setSuppliers] = useState<Supplier[]>(() => pharmacyStorage.getSuppliers());
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [search, setSearch] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [paymentModal, setPaymentModal] = useState<Supplier | null>(null);
   const [paymentAmount, setPaymentAmount] = useState(0);
+
+  useEffect(() => {
+    let mounted = true;
+    pharmacyDb
+      .getSuppliers()
+      .then((data) => {
+        if (mounted) setSuppliers(data);
+      })
+      .catch((err) => console.error('[PharmacySuppliers] Load error:', err));
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const [formData, setFormData] = useState<Partial<Supplier>>({
     name: '',
@@ -52,38 +66,36 @@ export function PharmacySuppliers() {
     setModalOpen(true);
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.name) return;
 
-    const newSupplier: Supplier = {
-      ...(formData as Supplier),
-      id: `sup-${Date.now()}`,
-    };
-
-    const updated = [newSupplier, ...suppliers];
-    setSuppliers(updated);
-    pharmacyStorage.saveSuppliers(updated);
-    setModalOpen(false);
+    try {
+      const created = await pharmacyDb.createSupplier(formData);
+      setSuppliers((prev) => [created, ...prev]);
+      setModalOpen(false);
+    } catch (err: any) {
+      alert(err.message || 'Failed to save, check internet');
+    }
   };
 
-  const handleMakePayment = (e: React.FormEvent) => {
+  const handleMakePayment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!paymentModal || paymentAmount <= 0) return;
 
-    const updated = suppliers.map((s) => {
-      if (s.id === paymentModal.id) {
-        return {
-          ...s,
-          outstandingBalance: Math.max(0, s.outstandingBalance - paymentAmount),
-        };
-      }
-      return s;
-    });
+    try {
+      const nextBalance = Math.max(0, paymentModal.outstandingBalance - paymentAmount);
+      const updated = await pharmacyDb.updateSupplier(paymentModal.id, {
+        outstandingBalance: nextBalance,
+      });
 
-    setSuppliers(updated);
-    pharmacyStorage.saveSuppliers(updated);
-    setPaymentModal(null);
+      setSuppliers((prev) =>
+        prev.map((s) => (s.id === paymentModal.id ? updated : s))
+      );
+      setPaymentModal(null);
+    } catch (err: any) {
+      alert(err.message || 'Failed to save, check internet');
+    }
   };
 
   return (

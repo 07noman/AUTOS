@@ -196,7 +196,7 @@ export function ThermalReceipt({
               <span className="tr-meta-val">{data.branchName}</span>
             </div>
           )}
-          {settings.showCustomerPhone && data.customer?.phone && (
+          {data.customer?.phone && (
             <div className="tr-meta-row">
               <span className="tr-meta-label">Phone   :</span>
               <span className="tr-meta-val">{data.customer.phone}</span>
@@ -221,13 +221,18 @@ export function ThermalReceipt({
           <>
             <div className="tr-dashed-line" />
             <div className="tr-meta-grid">
-              {settings.showVehicleMakeModel && data.vehicle?.makeModel && (
+              {data.vehicle?.plateNumber && data.vehicle?.makeModel ? (
+                <div className="tr-meta-row">
+                  <span className="tr-meta-label">Vehicle    :</span>
+                  <span className="tr-meta-val">{data.vehicle.plateNumber} - {data.vehicle.makeModel}</span>
+                </div>
+              ) : settings.showVehicleMakeModel && data.vehicle?.makeModel ? (
                 <div className="tr-meta-row">
                   <span className="tr-meta-label">Vehicle    :</span>
                   <span className="tr-meta-val">{data.vehicle.makeModel}</span>
                 </div>
-              )}
-              {settings.showVehiclePlate && data.vehicle?.plateNumber && (
+              ) : null}
+              {!data.vehicle?.makeModel && settings.showVehiclePlate && data.vehicle?.plateNumber && (
                 <div className="tr-meta-row">
                   <span className="tr-meta-label">Plate   :</span>
                   <span className="tr-meta-val">{data.vehicle.plateNumber}</span>

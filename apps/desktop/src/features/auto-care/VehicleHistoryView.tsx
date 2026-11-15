@@ -20,7 +20,7 @@ import {
   AlertCircle,
   Plus,
 } from 'lucide-react';
-import { vehicleRepo, posOrderRepo, type POSOrder } from '@/lib/auto-care-db';
+import { vehicleRepo, posOrderRepo, backfillVehiclePhoneFromOrders, type POSOrder } from '@/lib/auto-care-db';
 import { getCurrentTenantId } from '@/lib/db';
 import type { Vehicle } from '@genx/types/domain/auto-care';
 
@@ -36,6 +36,9 @@ export default function VehicleHistoryView() {
   const loadData = async () => {
     setLoading(true);
     try {
+      // Trigger safe non-destructive backfill of old order phones into vehicles if needed
+      await backfillVehiclePhoneFromOrders(tenantId).catch(() => {});
+
       const [vList, oList] = await Promise.all([
         vehicleRepo.findAll(tenantId),
         posOrderRepo.findAll(tenantId),
@@ -58,16 +61,18 @@ export default function VehicleHistoryView() {
     void loadData();
   }, [tenantId]);
 
-  // Normalize registration plate
+  // Normalize registration plate / search
   const cleanSearch = search.trim().toUpperCase();
 
-  // Filtered vehicles list for search/sidebar
+  // Filtered vehicles list for search/sidebar (searches Plate, Customer Name, Phone, Make, Model)
   const filteredVehicles = useMemo(() => {
     if (!cleanSearch) return vehicles;
     return vehicles.filter(
       (v) =>
         v.licensePlate.toUpperCase().includes(cleanSearch) ||
         (v.customerName && v.customerName.toUpperCase().includes(cleanSearch)) ||
+        (v.phone && v.phone.toUpperCase().includes(cleanSearch)) ||
+        ((v as any).customerPhone && String((v as any).customerPhone).toUpperCase().includes(cleanSearch)) ||
         v.make.toUpperCase().includes(cleanSearch) ||
         v.model.toUpperCase().includes(cleanSearch)
     );
@@ -175,7 +180,7 @@ export default function VehicleHistoryView() {
             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
             <input
               type="text"
-              placeholder="Search Reg No (e.g. LEE 20-5412) or Name..."
+              placeholder="Search Reg No, Name, or Phone (e.g. 0300...)"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="w-full h-11 pl-10 pr-4 rounded-xl border border-slate-300 bg-white text-sm font-medium focus:border-blue-600 focus:outline-none shadow-sm transition-all placeholder:text-slate-400 uppercase"
@@ -228,7 +233,11 @@ export default function VehicleHistoryView() {
                           </span>
                         </div>
                         <div className="text-[11px] text-slate-500 flex items-center gap-2 truncate">
-                          <span className="truncate">{v.customerName || 'Walk-in'}</span>
+                          <span className="truncate">
+                            {v.phone || (v as any).customerPhone
+                              ? `${v.customerName || 'Walk-in'} - ${v.phone || (v as any).customerPhone}`
+                              : (v.customerName || 'Walk-in')}
+                          </span>
                           {v.mileage && (
                             <span className="font-medium text-emerald-700 shrink-0">
                               &bull; {v.mileage.toLocaleString()} km
@@ -283,6 +292,12 @@ export default function VehicleHistoryView() {
                           <User className="h-3.5 w-3.5 text-blue-400" />
                           {selectedVehicle?.customerName || 'Walk-in Customer'}
                         </span>
+                        {(selectedVehicle?.phone || (selectedVehicle as any)?.customerPhone) && (
+                          <span className="flex items-center gap-1 text-emerald-300 font-medium">
+                            <Phone className="h-3.5 w-3.5 text-emerald-400" />
+                            Phone: {selectedVehicle?.phone || (selectedVehicle as any)?.customerPhone}
+                          </span>
+                        )}
                         {selectedVehicle?.color && (
                           <span className="text-slate-400">&bull; {selectedVehicle.color}</span>
                         )}
@@ -397,6 +412,15 @@ export default function VehicleHistoryView() {
                                     hour: '2-digit',
                                     minute: '2-digit',
                                   })}
+                                  {(order.customerPhone || order.phone || selectedVehicle?.phone) && (
+                                    <>
+                                      <span className="text-slate-400">&bull;</span>
+                                      <span className="text-slate-600 flex items-center gap-1 font-semibold">
+                                        <Phone className="h-3 w-3 text-slate-400" />
+                                        {order.customerPhone || order.phone || selectedVehicle?.phone}
+                                      </span>
+                                    </>
+                                  )}
                                 </div>
                               </div>
                             </div>

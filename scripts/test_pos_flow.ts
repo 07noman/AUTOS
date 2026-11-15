@@ -21,12 +21,14 @@ import { getCurrentTenantId } from '../apps/desktop/src/lib/db';
     total: 31.5,
     paidAmount: 31.5,
     paymentMethod: 'cash',
+    customerName: vehicleDetails.customerName,
+    customerPhone: vehicleDetails.phone,
     vehiclePlateNumber: vehicleDetails.regNo,
     vehicleMakeModel: `${vehicleDetails.make} ${vehicleDetails.model}`,
     vehicleMileage: vehicleDetails.mileage,
     tenantId,
   });
-  console.log('Created paid order ID:', paidOrder.id);
+  console.log('Created paid order ID:', paidOrder.id, 'customerPhone:', (paidOrder as any).customerPhone);
 
   // Upsert vehicle record (mirrors handlePOSPayment logic)
   await vehicleRepo.upsertByPlate({
@@ -36,12 +38,14 @@ import { getCurrentTenantId } from '../apps/desktop/src/lib/db';
     model: vehicleDetails.model,
     mileage: vehicleDetails.mileage,
     customerName: vehicleDetails.customerName,
+    phone: vehicleDetails.phone,
     notes: vehicleDetails.notes,
   });
 
-  // Verify vehicle was saved
+  // Verify vehicle was saved with phone
   const vehicles = await vehicleRepo.findAll(tenantId);
   console.log('Vehicle count after upsert:', vehicles.length);
   const added = vehicles.find(v => v.licensePlate === vehicleDetails.regNo);
   console.log('Added vehicle record:', added);
+  console.log('Phone present on vehicle:', added?.phone === vehicleDetails.phone);
 })();

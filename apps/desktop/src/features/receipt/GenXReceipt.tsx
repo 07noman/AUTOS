@@ -300,6 +300,9 @@ export default function GenXReceipt({ order, payment }: GenXReceiptProps) {
         {order?.customer?.name && (
           <div className="ticket-cashier">Customer: {order.customer.name}</div>
         )}
+        {order?.customer?.phone && (
+          <div className="ticket-cashier">Phone: {order.customer.phone}</div>
+        )}
         {order?.vehicle && (order.vehicle.plateNumber || order.vehicle.makeModel) && (
           <div className="ticket-cashier" style={{ fontWeight: 600 }}>
             Vehicle: {[order.vehicle.plateNumber, order.vehicle.makeModel].filter(Boolean).join(" - ")}

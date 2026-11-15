@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   TrendingUp,
@@ -13,14 +13,43 @@ import {
   ShieldAlert,
   Inbox,
 } from 'lucide-react';
-import { pharmacyStorage } from './pharmacyData';
+import {
+  pharmacyDb,
+  type Medicine,
+  type Supplier,
+  type PharmacyExpense,
+  type PharmacyAccountRecord,
+} from './pharmacyData';
 
 export function PharmacyDashboard() {
   const navigate = useNavigate();
-  const [medicines] = useState(() => pharmacyStorage.getMedicines());
-  const [suppliers] = useState(() => pharmacyStorage.getSuppliers());
-  const [expenses] = useState(() => pharmacyStorage.getExpenses());
-  const [accounts] = useState(() => pharmacyStorage.getAccounts());
+  const [medicines, setMedicines] = useState<Medicine[]>([]);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [expenses, setExpenses] = useState<PharmacyExpense[]>([]);
+  const [accounts, setAccounts] = useState<PharmacyAccountRecord[]>([]);
+
+  useEffect(() => {
+    let mounted = true;
+    Promise.all([
+      pharmacyDb.getMedicines(),
+      pharmacyDb.getSuppliers(),
+      pharmacyDb.getExpenses(),
+      pharmacyDb.getAccounts(),
+    ])
+      .then(([meds, sups, exps, accs]) => {
+        if (mounted) {
+          setMedicines(meds);
+          setSuppliers(sups);
+          setExpenses(exps);
+          setAccounts(accs);
+        }
+      })
+      .catch((err) => console.error('[PharmacyDashboard] Load error:', err));
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   // Metrics computation from real user data only
   const metrics = useMemo(() => {

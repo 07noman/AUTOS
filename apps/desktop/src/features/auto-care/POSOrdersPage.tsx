@@ -500,6 +500,8 @@ export function POSOrdersPage() {
         (o) =>
           String(o.orderNumber).padStart(4, '0').includes(q) ||
           (o.customerName ?? '').toLowerCase().includes(q) ||
+          (o.customerPhone ?? o.phone ?? '').toLowerCase().includes(q) ||
+          (o.vehiclePlateNumber ?? '').toLowerCase().includes(q) ||
           (o.paymentMethod ?? '').toLowerCase().includes(q)
       );
     }
@@ -910,7 +912,10 @@ export function POSOrdersPage() {
                   {selected.customerName && (
                     <div className="pos-orders-detail-info-item">
                       <span className="label">Customer</span>
-                      <span className="value">{selected.customerName}</span>
+                      <span className="value">
+                        {selected.customerName}
+                        {(selected.customerPhone || selected.phone) && ` (${selected.customerPhone || selected.phone})`}
+                      </span>
                     </div>
                   )}
                   {selected.paymentMethod && (

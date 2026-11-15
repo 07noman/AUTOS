@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   BarChart3,
   TrendingUp,
@@ -7,13 +7,39 @@ import {
   AlertTriangle,
   Inbox,
 } from 'lucide-react';
-import { pharmacyStorage } from './pharmacyData';
+import {
+  pharmacyDb,
+  type Medicine,
+  type PharmacyExpense,
+  type PharmacyAccountRecord,
+} from './pharmacyData';
 
 export function PharmacyReports() {
   const [activeTab, setActiveTab] = useState<'sales' | 'valuation' | 'expiry' | 'profit-loss'>('sales');
-  const [medicines] = useState(() => pharmacyStorage.getMedicines());
-  const [expenses] = useState(() => pharmacyStorage.getExpenses());
-  const [accounts] = useState(() => pharmacyStorage.getAccounts());
+  const [medicines, setMedicines] = useState<Medicine[]>([]);
+  const [expenses, setExpenses] = useState<PharmacyExpense[]>([]);
+  const [accounts, setAccounts] = useState<PharmacyAccountRecord[]>([]);
+
+  useEffect(() => {
+    let mounted = true;
+    Promise.all([
+      pharmacyDb.getMedicines(),
+      pharmacyDb.getExpenses(),
+      pharmacyDb.getAccounts(),
+    ])
+      .then(([meds, exps, accs]) => {
+        if (mounted) {
+          setMedicines(meds);
+          setExpenses(exps);
+          setAccounts(accs);
+        }
+      })
+      .catch((err) => console.error('[PharmacyReports] Load error:', err));
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   // Real calculations
   const stockValuationCost = medicines.reduce((sum, m) => sum + (Number(m.stock) || 0) * (Number(m.purchasePrice) || 0), 0);

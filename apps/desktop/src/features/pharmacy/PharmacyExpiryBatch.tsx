@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   CalendarClock,
   AlertTriangle,
@@ -10,14 +10,28 @@ import {
   Archive,
   RefreshCw,
 } from 'lucide-react';
-import { pharmacyStorage, type Medicine } from './pharmacyData';
+import { pharmacyDb, type Medicine, type DisposalLog } from './pharmacyData';
 
 export function PharmacyExpiryBatch() {
-  const [medicines, setMedicines] = useState<Medicine[]>(() => pharmacyStorage.getMedicines());
+  const [medicines, setMedicines] = useState<Medicine[]>([]);
   const [filterPeriod, setFilterPeriod] = useState<'all' | 'expired' | '30days' | '60days' | '90days'>('all');
-  const [disposalLogs, setDisposalLogs] = useState<
-    { id: string; medicineName: string; batch: string; qty: number; reason: string; date: string }[]
-  >(() => pharmacyStorage.getDisposalLogs());
+  const [disposalLogs, setDisposalLogs] = useState<DisposalLog[]>([]);
+
+  useEffect(() => {
+    let mounted = true;
+    Promise.all([pharmacyDb.getMedicines(), pharmacyDb.getDisposalLogs()])
+      .then(([meds, disposals]) => {
+        if (mounted) {
+          setMedicines(meds);
+          setDisposalLogs(disposals);
+        }
+      })
+      .catch((err) => console.error('[PharmacyExpiryBatch] Load error:', err));
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const [disposalModal, setDisposalModal] = useState<Medicine | null>(null);
   const [disposalQty, setDisposalQty] = useState(1);
@@ -57,36 +71,32 @@ export function PharmacyExpiryBatch() {
     return { expired, within30, within90 };
   }, [medicines]);
 
-  const handleConfirmDisposal = (e: React.FormEvent) => {
+  const handleConfirmDisposal = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!disposalModal) return;
 
-    // Deduct stock
-    const updated = medicines.map((m) => {
-      if (m.id === disposalModal.id) {
-        return { ...m, stock: Math.max(0, m.stock - disposalQty) };
-      }
-      return m;
-    });
-    setMedicines(updated);
-    pharmacyStorage.saveMedicines(updated);
+    try {
+      const nextStock = Math.max(0, disposalModal.stock - disposalQty);
+      const updatedMed = await pharmacyDb.updateMedicine(disposalModal.id, {
+        stock: nextStock,
+      });
 
-    // Add log
-    const updatedLogs = [
-      {
-        id: `disp-${Date.now()}`,
+      const newLog = await pharmacyDb.createDisposalLog({
         medicineName: disposalModal.name,
         batch: disposalModal.batchNumber,
         qty: disposalQty,
         reason: disposalReason,
         date: new Date().toISOString().split('T')[0],
-      },
-      ...disposalLogs,
-    ];
-    setDisposalLogs(updatedLogs);
-    pharmacyStorage.saveDisposalLogs(updatedLogs);
+      });
 
-    setDisposalModal(null);
+      setMedicines((prev) =>
+        prev.map((m) => (m.id === disposalModal.id ? updatedMed : m))
+      );
+      setDisposalLogs((prev) => [newLog, ...prev]);
+      setDisposalModal(null);
+    } catch (err: any) {
+      alert(err.message || 'Failed to save, check internet');
+    }
   };
 
   return (

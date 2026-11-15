@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Users,
   Plus,
@@ -11,16 +11,28 @@ import {
   CreditCard,
 } from 'lucide-react';
 import {
-  pharmacyStorage,
+  pharmacyDb,
   type PharmacyCustomer,
 } from './pharmacyData';
 
 export function PharmacyCustomers() {
-  const [customers, setCustomers] = useState<PharmacyCustomer[]>(() =>
-    pharmacyStorage.getCustomers()
-  );
+  const [customers, setCustomers] = useState<PharmacyCustomer[]>([]);
   const [search, setSearch] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    pharmacyDb
+      .getCustomers()
+      .then((data) => {
+        if (mounted) setCustomers(data);
+      })
+      .catch((err) => console.error('[PharmacyCustomers] Load error:', err));
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const [formData, setFormData] = useState<Partial<PharmacyCustomer>>({
     name: '',
@@ -50,26 +62,27 @@ export function PharmacyCustomers() {
     setModalOpen(true);
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.name || !formData.phone) return;
 
-    const newCust: PharmacyCustomer = {
-      id: `cust-${Date.now()}`,
-      name: formData.name,
-      phone: formData.phone,
-      email: formData.email,
-      address: formData.address,
-      outstandingBalance: formData.outstandingBalance || 0,
-      totalSpent: 0,
-      prescriptionNotes: formData.prescriptionNotes,
-      lastVisit: new Date().toISOString().split('T')[0],
-    };
+    try {
+      const created = await pharmacyDb.createCustomer({
+        name: formData.name,
+        phone: formData.phone,
+        email: formData.email,
+        address: formData.address,
+        outstandingBalance: formData.outstandingBalance || 0,
+        totalSpent: 0,
+        prescriptionNotes: formData.prescriptionNotes,
+        lastVisit: new Date().toISOString().split('T')[0],
+      });
 
-    const updated = [newCust, ...customers];
-    setCustomers(updated);
-    pharmacyStorage.saveCustomers(updated);
-    setModalOpen(false);
+      setCustomers((prev) => [created, ...prev]);
+      setModalOpen(false);
+    } catch (err: any) {
+      alert(err.message || 'Failed to save, check internet');
+    }
   };
 
   return (

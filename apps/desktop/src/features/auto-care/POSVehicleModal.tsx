@@ -114,6 +114,7 @@ export default function POSVehicleModal({
   const handleSelectVehicle = (v: Vehicle) => {
     setRegNo(v.licensePlate);
     if (v.customerName) setCustomerName(v.customerName);
+    if (v.phone || (v as any).customerPhone) setPhone(v.phone || (v as any).customerPhone || '');
     if (v.make) setMake(v.make);
     if (v.model) setModel(v.model);
     if (v.mileage) {
@@ -238,6 +239,7 @@ export default function POSVehicleModal({
                       </div>
                       <div className="text-[11px] text-slate-600">
                         {v.make} {v.model} &bull; {v.customerName || 'No Name'}
+                        {(v.phone || (v as any).customerPhone) ? ` &bull; ${v.phone || (v as any).customerPhone}` : ''}
                       </div>
                     </div>
                     {v.mileage && (

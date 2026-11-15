@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Landmark,
   Plus,
@@ -9,15 +9,27 @@ import {
   Inbox,
   X,
 } from 'lucide-react';
-import { pharmacyStorage, type PharmacyAccountRecord } from './pharmacyData';
+import { pharmacyDb, type PharmacyAccountRecord } from './pharmacyData';
 
 export function PharmacyAccounts() {
-  const [records, setRecords] = useState<PharmacyAccountRecord[]>(() =>
-    pharmacyStorage.getAccounts()
-  );
+  const [records, setRecords] = useState<PharmacyAccountRecord[]>([]);
   const [modalOpen, setModalOpen] = useState(false);
   const [closingDone, setClosingDone] = useState(false);
   const [closingCash, setClosingCash] = useState(0);
+
+  useEffect(() => {
+    let mounted = true;
+    pharmacyDb
+      .getAccounts()
+      .then((data) => {
+        if (mounted) setRecords(data);
+      })
+      .catch((err) => console.error('[PharmacyAccounts] Load error:', err));
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const [formData, setFormData] = useState<Partial<PharmacyAccountRecord>>({
     date: new Date().toISOString().split('T')[0],
@@ -44,25 +56,26 @@ export function PharmacyAccounts() {
     alert(`Daily Cash Closing Completed! Counted Cash: Rs. ${closingCash.toLocaleString()}`);
   };
 
-  const handleSaveRecord = (e: React.FormEvent) => {
+  const handleSaveRecord = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.amount || formData.amount <= 0) return;
 
-    const newRecord: PharmacyAccountRecord = {
-      id: `acc-${Date.now()}`,
-      date: formData.date || new Date().toISOString().split('T')[0],
-      type: formData.type as any,
-      category: formData.category || 'General',
-      amount: formData.amount,
-      method: formData.method as any,
-      reference: formData.reference || `TXN-${Math.floor(1000 + Math.random() * 9000)}`,
-      notes: formData.notes || '',
-    };
+    try {
+      const created = await pharmacyDb.createAccount({
+        date: formData.date || new Date().toISOString().split('T')[0],
+        type: formData.type as any,
+        category: formData.category || 'General',
+        amount: formData.amount,
+        method: formData.method as any,
+        reference: formData.reference || `TXN-${Math.floor(1000 + Math.random() * 9000)}`,
+        notes: formData.notes || '',
+      });
 
-    const updated = [newRecord, ...records];
-    setRecords(updated);
-    pharmacyStorage.saveAccounts(updated);
-    setModalOpen(false);
+      setRecords((prev) => [created, ...prev]);
+      setModalOpen(false);
+    } catch (err: any) {
+      alert(err.message || 'Failed to save, check internet');
+    }
   };
 
   return (

@@ -206,13 +206,14 @@ export function generateThermalReceiptHtml(data: ReceiptData, settings: ReceiptS
     ${settings.showCashier && data.cashierName ? `<div class="meta-row"><span class="meta-lbl">Cashier :</span><span class="meta-val">${escapeHtml(data.cashierName)}</span></div>` : ''}
     ${settings.showTerminal ? `<div class="meta-row"><span class="meta-lbl">Terminal   :</span><span class="meta-val">${escapeHtml(data.terminalName || 'POS-01')}</span></div>` : ''}
     ${settings.showCustomerName ? `<div class="meta-row"><span class="meta-lbl">Customer:</span><span class="meta-val">${escapeHtml(data.customer?.name || 'Walk-in')}</span></div>` : ''}
+    ${data.customer?.phone ? `<div class="meta-row"><span class="meta-lbl">Phone   :</span><span class="meta-val">${escapeHtml(data.customer.phone)}</span></div>` : ''}
   </div>
 
   ${settings.showVehicleInfo && hasVehicle ? `
     <div class="dashed"></div>
     <div class="meta-grid">
-      ${settings.showVehicleMakeModel && data.vehicle?.makeModel ? `<div class="meta-row"><span class="meta-lbl">Vehicle    :</span><span class="meta-val">${escapeHtml(data.vehicle.makeModel)}</span></div>` : ''}
-      ${settings.showVehiclePlate && data.vehicle?.plateNumber ? `<div class="meta-row"><span class="meta-lbl">Plate   :</span><span class="meta-val">${escapeHtml(data.vehicle.plateNumber)}</span></div>` : ''}
+      ${data.vehicle?.plateNumber && data.vehicle?.makeModel ? `<div class="meta-row"><span class="meta-lbl">Vehicle    :</span><span class="meta-val">${escapeHtml(data.vehicle.plateNumber)} - ${escapeHtml(data.vehicle.makeModel)}</span></div>` : (settings.showVehicleMakeModel && data.vehicle?.makeModel ? `<div class="meta-row"><span class="meta-lbl">Vehicle    :</span><span class="meta-val">${escapeHtml(data.vehicle.makeModel)}</span></div>` : '')}
+      ${!data.vehicle?.makeModel && settings.showVehiclePlate && data.vehicle?.plateNumber ? `<div class="meta-row"><span class="meta-lbl">Plate   :</span><span class="meta-val">${escapeHtml(data.vehicle.plateNumber)}</span></div>` : ''}
       ${settings.showVehicleMileage && data.vehicle?.mileage ? `<div class="meta-row"><span class="meta-lbl">Mileage    :</span><span class="meta-val">${escapeHtml(String(data.vehicle.mileage))}</span></div>` : ''}
       ${settings.showMechanic && (data.vehicle?.advisor || data.vehicle?.mechanic) ? `<div class="meta-row"><span class="meta-lbl">Advisor :</span><span class="meta-val">${escapeHtml(data.vehicle.advisor || data.vehicle.mechanic || '')}</span></div>` : ''}
     </div>

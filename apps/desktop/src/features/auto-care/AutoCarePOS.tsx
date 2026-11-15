@@ -198,6 +198,7 @@ export function AutoCarePOS() {
     method: string;
     invoiceNumber?: string;
     customerName?: string;
+    customerPhone?: string;
     vehicle?: {
       makeModel?: string;
       plateNumber?: string;
@@ -465,6 +466,8 @@ export function AutoCarePOS() {
         paidAmount: data.paidAmount,
         paymentMethod: data.paymentMethod,
         customerName: vehicleDetails?.customerName || data.customer?.name || (customer !== "Walk-in Customer" ? customer : undefined),
+        customerPhone: vehicleDetails?.phone || data.customer?.phone || selectedPOSCustomer?.phone || undefined,
+        phone: vehicleDetails?.phone || data.customer?.phone || selectedPOSCustomer?.phone || undefined,
         customerId: data.customer?.id,
         vehiclePlateNumber: vehicleDetails?.regNo,
         vehicleMakeModel: vehicleDetails ? `${vehicleDetails.make} ${vehicleDetails.model}`.trim() : undefined,
@@ -484,6 +487,7 @@ export function AutoCarePOS() {
           model: vehicleDetails.model,
           mileage: vehicleDetails.mileage,
           customerName: vehicleDetails.customerName,
+          phone: vehicleDetails.phone || undefined,
           notes: vehicleDetails.notes,
         }).catch((err) => console.warn('[pos] Vehicle upsert error:', err));
       }
@@ -677,6 +681,7 @@ export function AutoCarePOS() {
               method: data.paymentMethod,
               invoiceNumber: lastInvoiceNumberRef.current || orderNumStr || `INV-${Math.floor(Math.random() * 90000 + 10000)}`,
               customerName: vehicleDetails?.customerName || data.customer?.name,
+              customerPhone: vehicleDetails?.phone || data.customer?.phone || selectedPOSCustomer?.phone,
               vehicle: vehicleDetails ? {
                 makeModel: `${vehicleDetails.make} ${vehicleDetails.model}`.trim(),
                 plateNumber: vehicleDetails.regNo,
@@ -704,8 +709,11 @@ export function AutoCarePOS() {
               id: successData.orderId,
               invoiceNumber: successData.invoiceNumber,
               ticketNumber: successData.invoiceNumber,
-              customer: successData.customerName
-                ? { name: successData.customerName }
+              customer: (successData.customerName || successData.customerPhone || vehicleDetails?.phone)
+                ? {
+                    name: successData.customerName,
+                    phone: successData.customerPhone || vehicleDetails?.phone,
+                  }
                 : undefined,
               vehicle: successData.vehicle,
               items: (successData.items || []).map((item) => ({
@@ -761,6 +769,7 @@ export function AutoCarePOS() {
 
                 const orderNum = orderArg?.invoiceNumber || orderArg?.orderNumber || successData?.invoiceNumber || `AC-${Date.now()}`;
                 const custName = orderArg?.customer?.name || successData?.customerName;
+                const custPhone = orderArg?.customer?.phone || (orderArg?.customer as any)?.mobile || successData?.customerPhone || vehicleDetails?.phone;
                 const veh = orderArg?.vehicle || successData?.vehicle || (vehicleDetails ? {
                   makeModel: `${vehicleDetails.make} ${vehicleDetails.model}`.trim(),
                   plateNumber: vehicleDetails.regNo,
@@ -779,7 +788,7 @@ export function AutoCarePOS() {
                     date: Date.now(),
                     cashierName: user?.name || user?.email || 'Cashier',
                     terminalName: 'POS-01',
-                    customer: custName ? { name: custName } : undefined,
+                    customer: (custName || custPhone) ? { name: custName, phone: custPhone } : undefined,
                     vehicle: veh,
                     items: printItems,
                     subtotal: subTot,

@@ -225,6 +225,7 @@ export function MasterPOS({ businessType: propType }: MasterPOSProps) {
     method: "cash" | "credit" | "card";
     invoiceNumber: string;
     customerName?: string;
+    customerPhone?: string;
     vehicle?: any;
     items?: any[];
     subtotal?: number;
@@ -807,12 +808,21 @@ export function MasterPOS({ businessType: propType }: MasterPOSProps) {
           onBack={() => setShowPayment(false)}
           onPaymentSuccess={(data, change) => {
             setShowPayment(false);
+            const phone = vehicleDetails?.phone || selectedPOSCustomer?.phone;
             setSuccessData({
               amount: data.paidAmount || data.total,
               change,
               method: data.paymentMethod,
               invoiceNumber: `INV-${Date.now().toString().slice(-6)}`,
-              customerName: customer,
+              customerName: customer !== "Walk-in Customer" ? customer : (vehicleDetails?.customerName || undefined),
+              customerPhone: phone || undefined,
+              vehicle: vehicleDetails
+                ? {
+                    plateNumber: vehicleDetails.regNo,
+                    makeModel: [vehicleDetails.make, vehicleDetails.model].filter(Boolean).join(" "),
+                    mileage: vehicleDetails.mileage ? String(vehicleDetails.mileage) : undefined,
+                  }
+                : undefined,
               items: cart,
               subtotal,
               discount: data.discount ?? discountAmount,
@@ -839,7 +849,13 @@ export function MasterPOS({ businessType: propType }: MasterPOSProps) {
             id: successData.orderId || `ORD-${Date.now()}`,
             invoiceNumber: successData.invoiceNumber,
             ticketNumber: successData.invoiceNumber,
-            customer: successData.customerName ? { name: successData.customerName } : undefined,
+            customer: (successData.customerName || successData.customerPhone)
+              ? {
+                  name: successData.customerName,
+                  phone: successData.customerPhone,
+                }
+              : undefined,
+            vehicle: successData.vehicle,
             items: (successData.items || []).map((item) => ({
               id: item.id,
               name: item.name,

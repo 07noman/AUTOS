@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Car, Plus, Search, Shield, Calendar, User, FileText } from 'lucide-react';
+import { Car, Plus, Search, Shield, Calendar, User, Phone, FileText } from 'lucide-react';
 import { Card, CardContent } from '@genx/ui/Card';
 import { Button } from '@genx/ui/Button';
 import { Badge } from '@genx/ui/Badge';
@@ -19,6 +19,7 @@ export function VehiclesView() {
   const [year, setYear] = useState('2021');
   const [licensePlate, setLicensePlate] = useState('');
   const [customerName, setCustomerName] = useState('');
+  const [phone, setPhone] = useState('');
   const [color, setColor] = useState('White');
   const [mileage, setMileage] = useState('35000');
 
@@ -48,6 +49,7 @@ export function VehiclesView() {
         year: Number(year) || 2021,
         licensePlate,
         customerName: customerName || undefined,
+        phone: phone || undefined,
         color,
         mileage: Number(mileage) || undefined,
       });
@@ -56,6 +58,7 @@ export function VehiclesView() {
       setModel('');
       setLicensePlate('');
       setCustomerName('');
+      setPhone('');
       void reload();
     } catch (err) {
       console.error(err);
@@ -68,7 +71,8 @@ export function VehiclesView() {
       v.make.toLowerCase().includes(search.toLowerCase()) ||
       v.model.toLowerCase().includes(search.toLowerCase()) ||
       v.licensePlate.toLowerCase().includes(search.toLowerCase()) ||
-      (v.customerName && v.customerName.toLowerCase().includes(search.toLowerCase()))
+      (v.customerName && v.customerName.toLowerCase().includes(search.toLowerCase())) ||
+      (v.phone && v.phone.toLowerCase().includes(search.toLowerCase()))
   );
 
   return (
@@ -148,14 +152,25 @@ export function VehiclesView() {
                   />
                 </div>
               </div>
-              <div>
-                <label className="block text-xs font-medium text-text-secondary mb-1">Customer Name</label>
-                <input
-                  value={customerName}
-                  onChange={(e) => setCustomerName(e.target.value)}
-                  placeholder="John Smith"
-                  className="w-full text-sm px-3 py-2 bg-bg border border-border rounded-lg"
-                />
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-text-secondary mb-1">Customer Name</label>
+                  <input
+                    value={customerName}
+                    onChange={(e) => setCustomerName(e.target.value)}
+                    placeholder="John Smith"
+                    className="w-full text-sm px-3 py-2 bg-bg border border-border rounded-lg"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-text-secondary mb-1">Phone (Optional)</label>
+                  <input
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    placeholder="0300-1234567"
+                    className="w-full text-sm px-3 py-2 bg-bg border border-border rounded-lg"
+                  />
+                </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -215,6 +230,12 @@ export function VehiclesView() {
                     <User className="h-3.5 w-3.5 text-text-muted" />
                     <span>Customer: {v.customerName || 'Walk-in'}</span>
                   </div>
+                  {v.phone && (
+                    <div className="flex items-center gap-2">
+                      <Phone className="h-3.5 w-3.5 text-text-muted" />
+                      <span>Phone: {v.phone}</span>
+                    </div>
+                  )}
                   <div className="flex items-center gap-2">
                     <Calendar className="h-3.5 w-3.5 text-text-muted" />
                     <span>Mileage: {v.mileage ? `${v.mileage.toLocaleString()} mi` : 'N/A'}</span>
