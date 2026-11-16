@@ -307,6 +307,14 @@ export default function PaymentSuccessScreen({
 
         <h1 className="pss-title">Payment Successful</h1>
 
+        {/* Offline Badge */}
+        {typeof navigator !== "undefined" && !navigator.onLine && (
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 border border-amber-300 dark:border-amber-700/50 my-1 mx-auto">
+            <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+            Offline - Will Sync
+          </div>
+        )}
+
         {/* Invoice / customer info */}
         {(order?.invoiceNumber || order?.customer?.name) && (
           <div className="pss-meta">

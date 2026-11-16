@@ -21,7 +21,12 @@ import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import { syncEngine } from "@/lib/sync";
-import { getInstallPrompt } from "@/services/pwaInstall";
+import { getInstallPrompt, isAppInstalled, promptInstall, subscribeInstallPrompt } from "@/services/pwaInstall";
+import {
+  getPendingOrdersCount,
+  syncPendingOrders,
+  subscribePendingOrders,
+} from "@/services/pendingOrders";
 import { AddProductModal } from "@/features/auto-care/AddProductModal";
 
 export interface AccountActionsPageProps {
@@ -74,6 +79,11 @@ export function AccountActionsPage({
   const [closingNotes, setClosingNotes] = useState("");
   const expectedCash = 5000; // Standard baseline expected drawer float in PKR
 
+  // PWA Installation & Offline Sync states
+  const [isInstalled, setIsInstalled] = useState<boolean>(() => isAppInstalled());
+  const [pendingOrdersCount, setPendingOrdersCount] = useState<number>(0);
+  const [isSyncingPendingOrders, setIsSyncingPendingOrders] = useState<boolean>(false);
+
   // Toast notifications
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
@@ -105,6 +115,36 @@ export function AccountActionsPage({
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [showAddProductModal, showCashModal, showCloseRegisterModal, onClose, navigate]);
+
+  // Track PWA Installation & Pending Offline Orders
+  useEffect(() => {
+    const updateInstallStatus = () => {
+      setIsInstalled(isAppInstalled());
+    };
+    updateInstallStatus();
+
+    window.addEventListener("appinstalled", updateInstallStatus);
+    window.addEventListener("pwa-app-installed", updateInstallStatus);
+
+    const unsubscribePrompt = subscribeInstallPrompt(() => {
+      updateInstallStatus();
+    });
+
+    const unsubscribePending = subscribePendingOrders(({ syncing, count, toast }) => {
+      setPendingOrdersCount(count);
+      setIsSyncingPendingOrders(syncing);
+      if (toast) {
+        showToast(toast, "success");
+      }
+    });
+
+    return () => {
+      window.removeEventListener("appinstalled", updateInstallStatus);
+      window.removeEventListener("pwa-app-installed", updateInstallStatus);
+      unsubscribePrompt();
+      unsubscribePending();
+    };
+  }, [showToast]);
 
   const handleClose = () => {
     if (onClose) {
@@ -139,26 +179,48 @@ export function AccountActionsPage({
 
   // 3. Install App
   const handleInstallApp = async () => {
-    const event = (window as any).__GENX_INSTALL_PROMPT || getInstallPrompt();
-    if (!event) {
-      showToast(
-        "App installation is not available in this browser or the app is already installed.",
-        "info"
-      );
+    if (isInstalled) {
+      showToast("App is already installed on this device.", "info");
       return;
     }
 
-    try {
-      event.prompt();
-      const choice = await event.userChoice;
-      if (choice && choice.outcome === "accepted") {
-        showToast("GENX Cloud POS app installed successfully!", "success");
-      }
-    } catch (e) {
-      console.error("Installation prompt error:", e);
-      showToast("App installation could not be completed.", "error");
+    const res = await promptInstall();
+    if (res.outcome === "accepted") {
+      setIsInstalled(true);
+      showToast("GENX Cloud POS app installed successfully!", "success");
+    } else if (res.outcome === "dismissed") {
+      showToast("App installation cancelled.", "info");
+    } else {
+      showToast(
+        "To install, tap browser menu (⋮ or Share) and select 'Install app' or 'Add to Home screen'.",
+        "info"
+      );
     }
-    (window as any).__GENX_INSTALL_PROMPT = null;
+  };
+
+  // Manual Sync for Pending Offline Orders
+  const handleSyncPendingOrders = async () => {
+    if (isSyncingPendingOrders) return;
+    setIsSyncingPendingOrders(true);
+    showToast("Syncing offline orders to server...", "info");
+
+    try {
+      const { syncedCount, errors } = await syncPendingOrders();
+      if (syncedCount > 0) {
+        showToast("Synced Successfully", "success");
+      } else if (errors > 0) {
+        showToast("Could not sync some offline orders. Will retry automatically.", "error");
+      } else {
+        showToast("All offline orders are up to date.", "info");
+      }
+      const count = await getPendingOrdersCount();
+      setPendingOrdersCount(count);
+    } catch (e) {
+      console.error("[AccountActions] Sync error:", e);
+      showToast("Sync failed. Operating on local cache.", "error");
+    } finally {
+      setIsSyncingPendingOrders(false);
+    }
   };
 
   // 4. Cash In/Out
@@ -337,6 +399,35 @@ export function AccountActionsPage({
       {/* ── MAIN CONTENT (Odoo-Style Action Grid) ───────────────────────── */}
       <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-10 flex flex-col items-center justify-center">
         <div className="w-full max-w-6xl mx-auto">
+          {/* Offline Orders Sync Alert & Manual Sync Button */}
+          {pendingOrdersCount > 0 && (
+            <div className="mb-6 p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm">
+              <div className="flex items-center gap-3">
+                <RefreshCw className={`w-6 h-6 text-amber-600 dark:text-amber-400 shrink-0 ${isSyncingPendingOrders ? 'animate-spin' : ''}`} />
+                <div>
+                  <p className="text-sm font-semibold text-amber-700 dark:text-amber-300 flex items-center gap-2">
+                    <span>{pendingOrdersCount} Offline Order{pendingOrdersCount > 1 ? 's' : ''} Pending</span>
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-800 dark:text-amber-200">
+                      Offline - Will Sync
+                    </span>
+                  </p>
+                  <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
+                    Saved safely in IndexedDB. Will auto-sync when online, or sync now manually.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleSyncPendingOrders}
+                disabled={isSyncingPendingOrders}
+                className="px-4 py-2 bg-[#004D3B] hover:bg-[#00382B] text-white text-sm font-medium rounded-lg flex items-center justify-center gap-2 transition disabled:opacity-50 cursor-pointer shadow-sm shrink-0"
+              >
+                <RefreshCw className={`w-4 h-4 ${isSyncingPendingOrders ? 'animate-spin' : ''}`} />
+                <span>{isSyncingPendingOrders ? 'Syncing...' : 'Sync Now'}</span>
+              </button>
+            </div>
+          )}
+
           {/* Action Grid: 4 columns x 2 rows on desktop */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 lg:gap-6">
             {/* ── ROW 1 ────────────────────────────────────────── */}
@@ -370,16 +461,35 @@ export function AccountActionsPage({
             </button>
 
             {/* 3. Install App */}
-            <button
-              type="button"
-              onClick={handleInstallApp}
-              className="h-[220px] bg-white dark:bg-[#1f2937] border border-slate-200 dark:border-neutral-700 rounded-lg flex flex-col items-center justify-center p-6 gap-3.5 transition-all hover:border-slate-300 dark:hover:border-neutral-600 hover:bg-slate-50/80 dark:hover:bg-neutral-800/80 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#004D3B] group shadow-sm text-center"
-            >
-              <Download className="h-7 w-7 text-slate-500 dark:text-neutral-400 group-hover:text-slate-700 dark:group-hover:text-neutral-200 transition-colors" />
-              <span className="text-[19px] font-medium text-slate-800 dark:text-slate-100 leading-snug">
-                Install App
-              </span>
-            </button>
+            {isInstalled ? (
+              <div
+                className="h-[220px] bg-emerald-50/70 dark:bg-emerald-950/20 border-2 border-emerald-500/50 dark:border-emerald-600/40 rounded-lg flex flex-col items-center justify-center p-6 gap-3 shadow-sm text-center"
+              >
+                <div className="w-12 h-12 rounded-full bg-emerald-100 dark:bg-emerald-900/50 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
+                  <CheckCircle2 className="h-7 w-7" />
+                </div>
+                <span className="text-[19px] font-semibold text-emerald-800 dark:text-emerald-300 leading-snug">
+                  App Installed
+                </span>
+                <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">
+                  Running standalone
+                </span>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={handleInstallApp}
+                className="h-[220px] bg-white dark:bg-[#1f2937] border border-slate-200 dark:border-neutral-700 rounded-lg flex flex-col items-center justify-center p-6 gap-3.5 transition-all hover:border-slate-300 dark:hover:border-neutral-600 hover:bg-slate-50/80 dark:hover:bg-neutral-800/80 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#004D3B] group shadow-sm text-center"
+              >
+                <Download className="h-7 w-7 text-slate-500 dark:text-neutral-400 group-hover:text-slate-700 dark:group-hover:text-neutral-200 transition-colors" />
+                <span className="text-[19px] font-medium text-slate-800 dark:text-slate-100 leading-snug">
+                  Install App
+                </span>
+                <span className="text-xs text-slate-400 dark:text-neutral-500">
+                  Add to home screen / desktop
+                </span>
+              </button>
+            )}
 
             {/* 4. Cash In/Out */}
             <button

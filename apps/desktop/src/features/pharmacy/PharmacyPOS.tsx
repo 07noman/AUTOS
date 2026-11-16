@@ -33,6 +33,7 @@ import {
   type Medicine,
   type PharmacySettingsConfig,
 } from "./pharmacyData";
+import { savePendingOrder } from "@/services/pendingOrders";
 import { useAuth } from "@/hooks/useAuth";
 import SoftwareMode from "@/components/SoftwareMode";
 
@@ -348,28 +349,74 @@ export function PharmacyPOS() {
       const customerPhone =
         selectedCustomer?.phone || data.customer?.phone || undefined;
 
-      const createdSale = await pharmacyDb.createSale({
-        invoiceNumber: currentOrderNumber,
-        customerName,
-        customerPhone,
-        customerId: selectedCustomer?.id || data.customer?.id,
-        items: cart.map((it) => ({
-          id: it.id,
-          name: it.name,
-          quantity: it.quantity,
-          price: it.price,
-          batchNumber: it.batchNumber,
-          expiryDate: it.expiryDate,
-          subtotal: it.price * it.quantity,
-          type: "product" as const,
-        })),
-        subtotal: data.subtotal,
-        discount: data.discount ?? discountAmount,
-        tax: data.tax,
-        totalAmount: data.total,
-        paidAmount: data.paidAmount,
-        paymentMethod: data.paymentMethod === "cash" ? "Cash" : data.paymentMethod === "credit" ? "Credit" : "Card",
-      });
+      let createdSale: any = null;
+      const isOff = typeof navigator !== "undefined" ? !navigator.onLine : false;
+
+      if (!isOff) {
+        try {
+          createdSale = await pharmacyDb.createSale({
+            invoiceNumber: currentOrderNumber,
+            customerName,
+            customerPhone,
+            customerId: selectedCustomer?.id || data.customer?.id,
+            items: cart.map((it) => ({
+              id: it.id,
+              name: it.name,
+              quantity: it.quantity,
+              price: it.price,
+              batchNumber: it.batchNumber,
+              expiryDate: it.expiryDate,
+              subtotal: it.price * it.quantity,
+              type: "product" as const,
+            })),
+            subtotal: data.subtotal,
+            discount: data.discount ?? discountAmount,
+            tax: data.tax,
+            totalAmount: data.total,
+            paidAmount: data.paidAmount,
+            paymentMethod: data.paymentMethod === "cash" ? "Cash" : data.paymentMethod === "credit" ? "Credit" : "Card",
+          });
+        } catch (serverErr) {
+          console.warn("[PharmacyPOS] Server sale failed, saving offline:", serverErr);
+        }
+      }
+
+      if (!createdSale) {
+        const localInvoiceNumber = currentOrderNumber || `PH-${Date.now().toString().slice(-4)}`;
+        createdSale = {
+          id: `ph-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+          invoiceNumber: localInvoiceNumber,
+          customerName,
+          customerPhone,
+          customerId: selectedCustomer?.id || data.customer?.id,
+          items: cart.map((it) => ({
+            id: it.id,
+            name: it.name,
+            quantity: it.quantity,
+            price: it.price,
+            batchNumber: it.batchNumber,
+            expiryDate: it.expiryDate,
+            subtotal: it.price * it.quantity,
+            type: "product" as const,
+          })),
+          subtotal: data.subtotal,
+          discount: data.discount ?? discountAmount,
+          tax: data.tax,
+          totalAmount: data.total,
+          total: data.total,
+          paidAmount: data.paidAmount,
+          paymentMethod: data.paymentMethod === "cash" ? "Cash" : data.paymentMethod === "credit" ? "Credit" : "Card",
+          createdAt: new Date().toISOString(),
+          status: "pending",
+        };
+
+        void savePendingOrder({
+          ...createdSale,
+          total: data.total,
+          timestamp: Date.now(),
+          status: "pending",
+        }).catch((err) => console.warn('[PharmacyPOS] savePendingOrder error:', err));
+      }
 
       lastInvoiceNumberRef.current = createdSale.invoiceNumber;
 
@@ -377,10 +424,10 @@ export function PharmacyPOS() {
       setCart([]);
       setDiscountValue(0);
       setSelectedCustomer(null);
-      void loadPharmacyData();
+      void loadPharmacyData().catch(() => {});
     } catch (err: any) {
       console.error("[PharmacyPOS] Sale transaction failed:", err);
-      alert(`Sale Failed: ${err.message || "Please check internet connection"}`);
+      alert(`Sale Failed: ${err.message || "Please check connection"}`);
       throw err;
     } finally {
       isSubmittingPaymentRef.current = false;

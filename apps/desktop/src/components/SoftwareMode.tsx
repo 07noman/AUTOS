@@ -36,7 +36,7 @@ export default function SoftwareMode({ className = "", compact = false }: Softwa
       title={online ? "Online Mode: Connected to server" : "Offline Mode: Working from local storage"}
     >
       <span className="mode-dot" />
-      <span>{online ? (compact ? "Online" : "Online Mode") : (compact ? "Offline" : "Offline Mode")}</span>
+      <span>{online ? (compact ? "Online" : "Online Mode") : "Offline - Will Sync"}</span>
     </div>
   );
 }

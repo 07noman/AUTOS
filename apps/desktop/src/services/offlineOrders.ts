@@ -6,6 +6,7 @@ import {
   clearStore,
   OFFLINE_STORES,
 } from "./offlineDB";
+import { savePendingOrder } from "./pendingOrders";
 
 export async function clearOfflineOrdersQueue(): Promise<void> {
   try {
@@ -38,6 +39,21 @@ export async function saveOfflineOrder(order: any): Promise<any> {
   };
 
   await putItem(OFFLINE_STORES.orders, offlineOrder);
+
+  // If offline or pending, ensure it is in pending_orders store as required
+  const isOffline = typeof navigator !== "undefined" ? !navigator.onLine : false;
+  if (isOffline || offlineOrder.syncStatus === "pending_sync" || offlineOrder.status === "pending") {
+    try {
+      await savePendingOrder({
+        ...offlineOrder,
+        id: offlineOrder.id,
+        timestamp: Date.now(),
+        status: "pending",
+      });
+    } catch (e) {
+      console.warn('[offlineOrders] savePendingOrder mirror failed:', e);
+    }
+  }
 
   return offlineOrder;
 }

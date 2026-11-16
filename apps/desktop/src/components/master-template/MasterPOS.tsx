@@ -835,7 +835,26 @@ export function MasterPOS({ businessType: propType }: MasterPOSProps) {
             clearCart();
           }}
           onPayment={async (data) => {
-            // Background save logic (if needed)
+            const onlineNow = typeof navigator !== "undefined" ? navigator.onLine : isOnline();
+            if (!onlineNow) {
+              try {
+                const { savePendingOrder } = await import("@/services/pendingOrders");
+                await savePendingOrder({
+                  items: cart,
+                  subtotal,
+                  discount: data.discount ?? discountAmount,
+                  tax,
+                  total,
+                  paymentMethod: data.paymentMethod,
+                  paidAmount: data.paidAmount,
+                  customer: data.customer,
+                  timestamp: Date.now(),
+                  status: "pending",
+                });
+              } catch (e) {
+                console.warn("[MasterPOS] savePendingOrder error:", e);
+              }
+            }
           }}
         />
       )}

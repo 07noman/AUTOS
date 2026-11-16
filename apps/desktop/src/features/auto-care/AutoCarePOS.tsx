@@ -39,6 +39,7 @@ import { productRepo, customerRepo, getCurrentTenantId } from "../../lib/db";
 
 import { isOnline } from "../../services/connectionManager";
 import { saveOfflineOrder } from "../../services/offlineOrders";
+import { savePendingOrder } from "../../services/pendingOrders";
 import { reduceStock } from "../../services/offlineInventory";
 import SoftwareMode from "../../components/SoftwareMode";
 import UserMenu from "../../components/UserMenu";
@@ -536,7 +537,8 @@ export function AutoCarePOS() {
       }
 
       // Mirror to IndexedDB using strictly identical paidOrder.id and orderNumber so it never creates a duplicate order!
-      void saveOfflineOrder({
+      const onlineNow = typeof navigator !== "undefined" ? navigator.onLine : isOnline();
+      const orderPayload = {
         id: paidOrder.id,
         clientOrderId: paidOrder.id,
         orderNumber: paidOrder.orderNumber,
@@ -549,10 +551,20 @@ export function AutoCarePOS() {
         paidAmount: data.paidAmount,
         customer: data.customer,
         completedAt: new Date().toISOString(),
-        source: isOnline() ? "online" : "offline",
-        syncStatus: "synced",
+        source: onlineNow ? "online" : "offline",
+        syncStatus: onlineNow ? "synced" : "pending",
         tenantId: activeTenant,
-      }).catch(() => {});
+      };
+
+      if (!onlineNow) {
+        void savePendingOrder({
+          ...orderPayload,
+          timestamp: Date.now(),
+          status: "pending",
+        }).catch((err) => console.warn('[pos] savePendingOrder error:', err));
+      }
+
+      void saveOfflineOrder(orderPayload).catch(() => {});
 
       lastInvoiceNumberRef.current = invoiceNumber || (currentOrderNumber ? String(currentOrderNumber).padStart(4, "0") : "0001");
 

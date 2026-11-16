@@ -175,7 +175,7 @@ export function AppShell() {
               ) : (
                 <>
                   <WifiOff className="h-4 w-4 text-offline" />
-                  <span className="text-offline hidden sm:inline">Offline</span>
+                  <span className="text-offline hidden sm:inline">Offline - Will Sync</span>
                 </>
               )}
               {syncStatus === 'syncing' && <Cloud className="h-4 w-4 text-syncing animate-pulse" />}

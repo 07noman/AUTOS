@@ -35,30 +35,24 @@ setupTauriBrowserMock();
 // Setup PWA install banner listener
 setupPwaInstall();
 
-// Clean up any stale service workers or caches from previous desktop/PWA builds
+// Register Service Worker for offline PWA capabilities
 if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
-  navigator.serviceWorker.getRegistrations().then((registrations) => {
-    for (const registration of registrations) {
-      registration.unregister();
-    }
+  window.addEventListener('load', () => {
+    navigator.serviceWorker
+      .register('/sw.js')
+      .then((reg) => {
+        console.log('[PWA] ServiceWorker registered with scope:', reg.scope);
+      })
+      .catch((error) => {
+        console.warn('[PWA] ServiceWorker registration error:', error);
+      });
   });
-  if ('caches' in window) {
-    caches.keys().then((names) => {
-      for (const name of names) {
-        caches.delete(name);
-      }
-    });
-  }
 }
 
 // Initialize database before rendering
 // In the browser, this runs via tauri-mock → localStorage.
 // When Supabase is configured (VITE_SUPABASE_URL), auth & data use the real API.
 import { initializeDatabase } from '@/lib/db';
-import { clearOfflineOrdersQueue } from '@/services/offlineOrders';
-
-// Clear any stale offline orders queue to prevent duplicate sync on startup
-void clearOfflineOrdersQueue();
 
 initializeDatabase()
   .catch((err) => {

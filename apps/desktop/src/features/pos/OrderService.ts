@@ -56,13 +56,28 @@ export async function createOrder(
   // Order + Items + Stock Deduction + Outbox event commit together in one transaction.
   await orderRepo.createAtomicSale(order, dbItems);
 
+  // When offline, save order to IndexedDB "pending_orders" store
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    try {
+      const { savePendingOrder } = await import('@/services/pendingOrders');
+      await savePendingOrder({
+        ...order,
+        clientOrderId: order.orderNumber,
+        timestamp: Date.now(),
+        status: 'pending',
+      });
+    } catch {
+      // offline store fallback ignore
+    }
+  }
+
   // Optional: In non-Tauri browser development mode only, mirror to offline IndexedDB for testing
   if (typeof window !== 'undefined' && !(window as any).__TAURI_INTERNALS__ && !(window as any).__TAURI__) {
     try {
       await saveOfflineOrder({
         ...order,
         clientOrderId: order.orderNumber,
-        syncStatus: 'synced',
+        syncStatus: typeof navigator !== 'undefined' && !navigator.onLine ? 'pending' : 'synced',
       });
     } catch {
       // browser mock ignore

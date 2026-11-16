@@ -812,6 +812,19 @@ export function SettingsPage() {
             >
               Verify Sync Status ({pendingCount} pending)
             </Button>
+
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={async () => {
+                const { syncPendingOrders } = await import('@/services/pendingOrders');
+                await syncPendingOrders();
+                await refreshPending();
+              }}
+              className="w-full flex items-center justify-center gap-2 mt-2"
+            >
+              <RefreshCw className="h-4 w-4" /> Sync Now
+            </Button>
           </CardContent>
         </Card>
       </div>

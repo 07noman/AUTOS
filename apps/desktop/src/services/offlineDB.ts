@@ -1,7 +1,7 @@
 // src/services/offlineDB.ts
 
 const DB_NAME = "genx_cloud_pos";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 export const OFFLINE_STORES = {
   products: "products",
@@ -9,6 +9,7 @@ export const OFFLINE_STORES = {
   taxes: "taxes",
   inventory: "inventory",
   orders: "offline_orders",
+  pendingOrders: "pending_orders",
 } as const;
 
 let dbPromise: Promise<IDBDatabase> | null = null;
@@ -57,6 +58,14 @@ export function openOfflineDB(): Promise<IDBDatabase> {
         });
 
         store.createIndex("syncStatus", "syncStatus", { unique: false });
+      }
+
+      if (!db.objectStoreNames.contains(OFFLINE_STORES.pendingOrders)) {
+        const store = db.createObjectStore(OFFLINE_STORES.pendingOrders, {
+          keyPath: "id",
+        });
+        store.createIndex("status", "status", { unique: false });
+        store.createIndex("timestamp", "timestamp", { unique: false });
       }
     };
 
