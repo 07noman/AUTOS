@@ -11,8 +11,10 @@ import {
   Barcode,
   Layers,
   Loader2,
+  Package,
 } from 'lucide-react';
 import { pharmacyDb, type Medicine } from './pharmacyData';
+import { getDefaultBaseUnit, formatStockWithPacking } from './packingUtils';
 
 export function PharmacyMedicines() {
   const [medicines, setMedicines] = useState<Medicine[]>([]);
@@ -58,6 +60,9 @@ export function PharmacyMedicines() {
     mfgDate: new Date().toISOString().split('T')[0],
     expiryDate: '2027-12-31',
     location: '',
+    baseUnit: 'Tablet',
+    stripSize: 10,
+    boxSize: 10,
   });
 
   const categories = useMemo(() => {
@@ -98,13 +103,21 @@ export function PharmacyMedicines() {
       mfgDate: new Date().toISOString().split('T')[0],
       expiryDate: '2027-12-31',
       location: 'Rack A-1',
+      baseUnit: 'Tablet',
+      stripSize: 10,
+      boxSize: 10,
     });
     setModalOpen(true);
   };
 
   const handleOpenEdit = (med: Medicine) => {
     setEditingMedicine(med);
-    setFormData({ ...med });
+    setFormData({
+      ...med,
+      baseUnit: med.baseUnit || getDefaultBaseUnit(med.dosageForm),
+      stripSize: med.stripSize,
+      boxSize: med.boxSize,
+    });
     setModalOpen(true);
   };
 
@@ -238,6 +251,12 @@ export function PharmacyMedicines() {
                         <div className="text-slate-800 font-medium">{med.genericName}</div>
                         <div className="text-[11px] text-[#00897b]">
                           {med.dosageForm} • {med.strength}
+                          {Boolean(med.stripSize || med.boxSize) && (
+                            <span className="ml-1 text-[10px] text-slate-500 font-normal">
+                              ({med.stripSize ? `${med.stripSize}/${med.baseUnit || 'Strip'}` : ''}
+                              {med.boxSize ? ` • ${med.boxSize}s/Box` : ''})
+                            </span>
+                          )}
                         </div>
                       </td>
                       <td className="py-3 px-4 text-slate-600">
@@ -268,6 +287,7 @@ export function PharmacyMedicines() {
                                 ? 'bg-rose-50 text-rose-700 border border-rose-200'
                                 : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                             }`}
+                            title={formatStockWithPacking(med.stock, med)}
                           >
                             {med.stock}
                           </span>
@@ -278,6 +298,9 @@ export function PharmacyMedicines() {
                           >
                             +
                           </button>
+                        </div>
+                        <div className="text-[10px] text-slate-500 mt-1 font-medium">
+                          {formatStockWithPacking(med.stock, med)}
                         </div>
                         {isLow && (
                           <div className="text-[10px] text-rose-600 mt-0.5 flex items-center gap-1">
@@ -385,7 +408,20 @@ export function PharmacyMedicines() {
                   <label className="block text-slate-700 font-medium mb-1">Dosage Form</label>
                   <select
                     value={formData.dosageForm}
-                    onChange={(e) => setFormData({ ...formData, dosageForm: e.target.value as any })}
+                    onChange={(e) => {
+                      const newDf = e.target.value as any;
+                      const currentBase = formData.baseUnit;
+                      const oldDefault = getDefaultBaseUnit(formData.dosageForm);
+                      const newDefault = getDefaultBaseUnit(newDf);
+                      const isTabletLike = newDf === 'Tablet' || newDf === 'Capsule';
+                      setFormData({
+                        ...formData,
+                        dosageForm: newDf,
+                        baseUnit: (!currentBase || currentBase === oldDefault) ? newDefault : currentBase,
+                        stripSize: formData.stripSize !== undefined ? formData.stripSize : (isTabletLike ? 10 : undefined),
+                        boxSize: formData.boxSize !== undefined ? formData.boxSize : 10,
+                      });
+                    }}
                     className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 focus:bg-white focus:outline-none focus:border-teal-500"
                   >
                     <option value="Tablet">Tablet</option>
@@ -492,6 +528,100 @@ export function PharmacyMedicines() {
                     className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 focus:bg-white focus:outline-none focus:border-teal-500"
                   />
                 </div>
+              </div>
+
+              {/* Task 2: Packing / Units Optional Section */}
+              <div className="pt-4 border-t border-slate-100">
+                <div className="mb-3">
+                  <h4 className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                    <Package className="text-[#00897b]" size={14} />
+                    <span>Packing / Units (Optional)</span>
+                  </h4>
+                  <p className="text-[11px] text-slate-500">
+                    Configure Strip and Box packaging multipliers. Leave empty if medicine is sold as single unit only.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-teal-50/40 p-3.5 rounded-xl border border-teal-100">
+                  <div>
+                    <label className="block text-slate-700 font-medium mb-1">Base Unit</label>
+                    <select
+                      value={formData.baseUnit || getDefaultBaseUnit(formData.dosageForm)}
+                      onChange={(e) => setFormData({ ...formData, baseUnit: e.target.value })}
+                      className="w-full px-2.5 py-1.5 rounded-xl bg-white border border-slate-200 text-slate-900 focus:outline-none focus:border-teal-500"
+                    >
+                      <option value="Tablet">Tablet</option>
+                      <option value="Capsule">Capsule</option>
+                      <option value="Bottle">Bottle</option>
+                      <option value="Tube">Tube</option>
+                      <option value="Ampoule">Ampoule</option>
+                      <option value="Vial">Vial</option>
+                      <option value="Sachet">Sachet</option>
+                      <option value="Piece">Piece</option>
+                      <option value="Pack">Pack</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-700 font-medium mb-1">
+                      Strip Size (Base Units)
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      placeholder="e.g. 10 (1 Strip = 10 Tablets)"
+                      value={formData.stripSize ?? ''}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          stripSize: e.target.value ? parseInt(e.target.value, 10) : undefined,
+                        })
+                      }
+                      className="w-full px-2.5 py-1.5 rounded-xl bg-white border border-slate-200 text-slate-900 focus:outline-none focus:border-teal-500"
+                    />
+                    <span className="text-[10px] text-slate-400 mt-0.5 block">
+                      1 Strip = {formData.stripSize || 10} {formData.baseUnit || 'Tablets'}
+                    </span>
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-700 font-medium mb-1">
+                      Box Size (Strips)
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      placeholder="e.g. 10 (1 Box = 10 Strips)"
+                      value={formData.boxSize ?? ''}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          boxSize: e.target.value ? parseInt(e.target.value, 10) : undefined,
+                        })
+                      }
+                      className="w-full px-2.5 py-1.5 rounded-xl bg-white border border-slate-200 text-slate-900 focus:outline-none focus:border-teal-500"
+                    />
+                    <span className="text-[10px] text-slate-400 mt-0.5 block">
+                      1 Box = {formData.boxSize || 10} {formData.stripSize ? 'Strips' : (formData.baseUnit || 'Tablets')}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Live preview hint */}
+                {Boolean(formData.stripSize || formData.boxSize) && (
+                  <div className="mt-2.5 px-3 py-2 bg-slate-50 rounded-lg border border-slate-200 text-[11px] text-slate-600 flex flex-wrap gap-x-4 gap-y-1">
+                    <span>
+                      <strong>Multipliers:</strong> 1 Strip = {formData.stripSize || 1} {formData.baseUnit || 'Unit'}s | 1 Box = {formData.stripSize ? `${formData.boxSize || 1} Strips (${(formData.boxSize || 1) * (formData.stripSize || 1)} ${formData.baseUnit || 'Unit'}s)` : `${formData.boxSize || 1} ${formData.baseUnit || 'Unit'}s`}
+                    </span>
+                    {Number(formData.sellingPrice || 0) > 0 && (
+                      <span className="text-teal-700 font-medium">
+                        <strong>Prices:</strong> Base: Rs. {Number(formData.sellingPrice || 0)}
+                        {formData.stripSize && ` | Strip: Rs. ${Number(formData.sellingPrice || 0) * formData.stripSize}`}
+                        {formData.boxSize && ` | Box: Rs. ${Number(formData.sellingPrice || 0) * (formData.stripSize ? formData.stripSize * formData.boxSize : formData.boxSize)}`}
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">

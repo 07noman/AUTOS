@@ -25,6 +25,10 @@ export interface Medicine {
   mfgDate: string;
   expiryDate: string;
   location?: string; // Shelf / Rack
+  // Multi-unit packing fields (additive, backward-compatible)
+  baseUnit?: string; // e.g. "Tablet", "Capsule", "Bottle", "Tube", "Ampoule"
+  stripSize?: number; // e.g. 10 (1 Strip = 10 Base Units)
+  boxSize?: number; // e.g. 10 (1 Box = 10 Strips)
 }
 
 export interface BatchRecord {
@@ -89,6 +93,8 @@ export interface CreateSaleParams {
     expiryDate?: string;
     subtotal?: number;
     type?: 'product' | 'service';
+    unit?: string; // e.g. "Tablet", "Strip", "Box"
+    unitMultiplier?: number; // Base unit multiplier e.g. 10 for strip, 100 for box
   }[];
   subtotal: number;
   discount?: number;
@@ -255,6 +261,28 @@ export async function getAuthBusinessId(): Promise<string> {
 // ── Mappers: DB Rows <-> Domain Objects ───────────────────────────────────────
 
 export function mapMedicineRow(r: any): Medicine {
+  // Support both direct columns and fallback metadata inside location
+  let baseUnit = r.base_unit || undefined;
+  let stripSize =
+    r.strip_size !== undefined && r.strip_size !== null ? Number(r.strip_size) : undefined;
+  let boxSize =
+    r.box_size !== undefined && r.box_size !== null ? Number(r.box_size) : undefined;
+
+  let location = r.location || undefined;
+  if (location && location.includes('__PACK:')) {
+    const parts = location.split('__PACK:');
+    location = parts[0].trim() || undefined;
+    const packJson = parts[1];
+    if (packJson) {
+      try {
+        const meta = JSON.parse(packJson);
+        if (!baseUnit && meta.b) baseUnit = meta.b;
+        if (!stripSize && meta.s) stripSize = Number(meta.s);
+        if (!boxSize && meta.x) boxSize = Number(meta.x);
+      } catch {}
+    }
+  }
+
   return {
     id: String(r.id),
     name: String(r.name || ''),
@@ -273,12 +301,26 @@ export function mapMedicineRow(r: any): Medicine {
     minStockLevel: Number(r.min_stock_level || 0),
     mfgDate: String(r.mfg_date || ''),
     expiryDate: String(r.expiry_date || ''),
-    location: r.location || undefined,
+    location,
+    baseUnit,
+    stripSize,
+    boxSize,
   };
 }
 
 export function toMedicineRow(m: Partial<Medicine>, businessId: string) {
-  return {
+  let location = m.location || null;
+  // If multi-unit packing is defined, embed metadata tag into location as safe fallback
+  if (m.baseUnit || m.stripSize || m.boxSize) {
+    const metaTag = JSON.stringify({
+      b: m.baseUnit || '',
+      s: m.stripSize || '',
+      x: m.boxSize || '',
+    });
+    location = location ? `${location} __PACK:${metaTag}` : `__PACK:${metaTag}`;
+  }
+
+  const row: any = {
     id: toValidUUID(m.id),
     business_id: businessId,
     name: m.name || '',
@@ -297,9 +339,16 @@ export function toMedicineRow(m: Partial<Medicine>, businessId: string) {
     min_stock_level: Number(m.minStockLevel || 0),
     mfg_date: m.mfgDate || null,
     expiry_date: m.expiryDate || null,
-    location: m.location || null,
+    location,
     updated_at: new Date().toISOString(),
   };
+
+  // Additive columns
+  if (m.baseUnit !== undefined) row.base_unit = m.baseUnit || null;
+  if (m.stripSize !== undefined) row.strip_size = m.stripSize ? Number(m.stripSize) : null;
+  if (m.boxSize !== undefined) row.box_size = m.boxSize ? Number(m.boxSize) : null;
+
+  return row;
 }
 
 export function mapSupplierRow(r: any): Supplier {
@@ -666,20 +715,33 @@ export const pharmacyDb = {
   async createMedicine(item: Partial<Medicine>): Promise<Medicine> {
     const businessId = await getAuthBusinessId();
     const payload = toMedicineRow(item, businessId);
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from('pharmacy_medicines')
       .insert(payload)
       .select()
       .single();
 
-    if (error) throw new Error(`Failed to save, check internet: ${error.message}`);
+    // Graceful fallback if database schema does not yet have packing columns
+    if (error && (error.code === 'PGRST204' || error.message?.includes('column') || error.message?.includes('base_unit'))) {
+      const { base_unit, strip_size, box_size, ...safePayload } = payload;
+      const retry = await supabase
+        .from('pharmacy_medicines')
+        .insert(safePayload)
+        .select()
+        .single();
+      if (retry.error) throw new Error(`Failed to save, check internet: ${retry.error.message}`);
+      data = retry.data;
+    } else if (error) {
+      throw new Error(`Failed to save, check internet: ${error.message}`);
+    }
+
     return mapMedicineRow(data);
   },
 
   async updateMedicine(id: string, updates: Partial<Medicine>): Promise<Medicine> {
     const businessId = await getAuthBusinessId();
     const payload = toMedicineRow({ ...updates, id }, businessId);
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from('pharmacy_medicines')
       .update(payload)
       .eq('id', id)
@@ -687,7 +749,22 @@ export const pharmacyDb = {
       .select()
       .single();
 
-    if (error) throw new Error(`Failed to save, check internet: ${error.message}`);
+    // Graceful fallback if database schema does not yet have packing columns
+    if (error && (error.code === 'PGRST204' || error.message?.includes('column') || error.message?.includes('base_unit'))) {
+      const { base_unit, strip_size, box_size, ...safePayload } = payload;
+      const retry = await supabase
+        .from('pharmacy_medicines')
+        .update(safePayload)
+        .eq('id', id)
+        .eq('business_id', businessId)
+        .select()
+        .single();
+      if (retry.error) throw new Error(`Failed to save, check internet: ${retry.error.message}`);
+      data = retry.data;
+    } else if (error) {
+      throw new Error(`Failed to save, check internet: ${error.message}`);
+    }
+
     return mapMedicineRow(data);
   },
 
@@ -860,9 +937,12 @@ export const pharmacyDb = {
       if (curStock <= 0) {
         throw new Error(`Out of Stock: "${med.name}" has 0 stock remaining. Sale blocked.`);
       }
-      if (curStock < it.quantity) {
+      // Critical: Convert sold quantity to Base Units for stock verification
+      const unitMultiplier = Number(it.unitMultiplier || 1);
+      const neededBaseQty = Number(it.quantity || 1) * unitMultiplier;
+      if (curStock < neededBaseQty) {
         throw new Error(
-          `Insufficient Stock: "${med.name}" has only ${curStock} available (requested ${it.quantity}). Sale blocked.`
+          `Insufficient Stock: "${med.name}" has only ${curStock} available (requested ${it.quantity} ${it.unit || 'units'} = ${neededBaseQty} base units). Sale blocked.`
         );
       }
       if (med.expiry_date) {
@@ -943,11 +1023,13 @@ export const pharmacyDb = {
 
     if (itemsErr) throw new Error(`Sale items creation failed: ${itemsErr.message}`);
 
-    // 5. Deduct stock from pharmacy_medicines
+    // 5. Deduct stock from pharmacy_medicines (always converted to Base Units)
     for (const it of params.items) {
       const med = medMap.get(String(it.id));
       const curStock = Number(med?.stock || 0);
-      const nextStock = Math.max(0, curStock - Number(it.quantity || 1));
+      const unitMultiplier = Number(it.unitMultiplier || 1);
+      const baseQtyToDeduct = Number(it.quantity || 1) * unitMultiplier;
+      const nextStock = Math.max(0, curStock - baseQtyToDeduct);
       await supabase
         .from('pharmacy_medicines')
         .update({ stock: nextStock, updated_at: new Date().toISOString() })
@@ -955,7 +1037,7 @@ export const pharmacyDb = {
         .eq('business_id', businessId);
     }
 
-    // 6. FIFO batch deduction from pharmacy_batches
+    // 6. FIFO batch deduction from pharmacy_batches (in Base Units)
     for (const it of params.items) {
       try {
         const { data: batches } = await supabase
@@ -967,7 +1049,8 @@ export const pharmacyDb = {
           .order('expiry_date', { ascending: true });
 
         if (batches && batches.length > 0) {
-          let needed = Number(it.quantity || 1);
+          const unitMultiplier = Number(it.unitMultiplier || 1);
+          let needed = Number(it.quantity || 1) * unitMultiplier;
           for (const b of batches) {
             if (needed <= 0) break;
             const bQty = Number(b.quantity || 0);
@@ -1123,13 +1206,23 @@ export const pharmacyDb = {
         if (!it.medicine_id) continue;
         const { data: curMed } = await supabase
           .from('pharmacy_medicines')
-          .select('stock')
+          .select('stock, strip_size, box_size')
           .eq('id', it.medicine_id)
           .eq('business_id', businessId)
           .single();
 
         if (curMed) {
-          const restored = Number(curMed.stock || 0) + Number(it.quantity || 0);
+          let restoreQty = Number(it.quantity || 0);
+          const medName = String(it.medicine_name || '');
+          if (medName.includes('(Strip)') || medName.includes(' - Strip')) {
+            const stripSize = curMed.strip_size ? Number(curMed.strip_size) : 10;
+            restoreQty *= stripSize;
+          } else if (medName.includes('(Box)') || medName.includes(' - Box')) {
+            const stripSize = curMed.strip_size ? Number(curMed.strip_size) : 10;
+            const boxSize = curMed.box_size ? Number(curMed.box_size) : 10;
+            restoreQty *= (stripSize * boxSize);
+          }
+          const restored = Number(curMed.stock || 0) + restoreQty;
           await supabase
             .from('pharmacy_medicines')
             .update({ stock: restored, updated_at: new Date().toISOString() })

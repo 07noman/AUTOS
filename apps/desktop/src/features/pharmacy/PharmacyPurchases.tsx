@@ -16,6 +16,7 @@ import {
   type PurchaseOrder,
   type PurchaseItem,
 } from './pharmacyData';
+import { getAvailableUnits, toBaseUnits, type UnitType } from './packingUtils';
 
 export function PharmacyPurchases() {
   const [purchases, setPurchases] = useState<PurchaseOrder[]>([]);
@@ -60,6 +61,7 @@ export function PharmacyPurchases() {
 
   // Row input state
   const [selectedMedId, setSelectedMedId] = useState('');
+  const [rowUnit, setRowUnit] = useState<UnitType>('base');
   const [rowBatch, setRowBatch] = useState('BN-2024-NEW');
   const [rowMfg, setRowMfg] = useState(new Date().toISOString().split('T')[0]);
   const [rowExp, setRowExp] = useState('2027-12-31');
@@ -73,15 +75,25 @@ export function PharmacyPurchases() {
     const med = medicines.find((m) => m.id === selectedMedId);
     if (!med || rowQty <= 0) return;
 
+    // Task 2: Allow adding in Box / Strip / Base Unit, convert and save as Base Units
+    const available = getAvailableUnits(med);
+    const chosenUnit = available.find((u) => u.unit === rowUnit) || available[0];
+    const baseQuantity = toBaseUnits(rowQty, rowUnit, med.stripSize, med.boxSize);
+    const lineTotal = rowQty * rowCost;
+    const costPerBaseUnit = baseQuantity > 0 ? lineTotal / baseQuantity : rowCost;
+
+    const unitSuffix =
+      chosenUnit.multiplier > 1 ? ` (${rowQty} ${chosenUnit.label}s = ${baseQuantity} ${med.baseUnit || 'Tablets'})` : '';
+
     const newItem: PurchaseItem = {
       medicineId: med.id,
-      medicineName: med.name,
+      medicineName: `${med.name}${unitSuffix}`,
       batchNumber: rowBatch,
       mfgDate: rowMfg,
       expiryDate: rowExp,
-      quantity: rowQty,
-      unitCost: rowCost,
-      total: rowQty * rowCost,
+      quantity: baseQuantity, // Converted to Base Units for accurate inventory tracking
+      unitCost: Number(costPerBaseUnit.toFixed(2)),
+      total: lineTotal,
     };
 
     setOrderItems([...orderItems, newItem]);
@@ -267,78 +279,136 @@ export function PharmacyPurchases() {
               {/* Add Item Card */}
               <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
                 <span className="text-xs font-semibold text-teal-800 block">Add Medicine to Order</span>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div>
-                    <label className="block text-slate-700 font-medium mb-1">Medicine *</label>
-                    <select
-                      value={selectedMedId}
-                      onChange={(e) => {
-                        setSelectedMedId(e.target.value);
-                        const m = medicines.find((x) => x.id === e.target.value);
-                        if (m) setRowCost(m.purchasePrice);
-                      }}
-                      className="w-full px-2.5 py-1.5 rounded-lg bg-white border border-slate-200 text-slate-900"
-                    >
-                      {medicines.map((m) => (
-                        <option key={m.id} value={m.id}>
-                          {m.name} ({m.genericName})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                {(() => {
+                  const currentMed = medicines.find((x) => x.id === (selectedMedId || medicines[0]?.id));
+                  const availableUnits = currentMed ? getAvailableUnits(currentMed) : [];
+                  const chosenUnitOpt = availableUnits.find((u) => u.unit === rowUnit) || availableUnits[0];
+                  const totalBaseQty = currentMed
+                    ? toBaseUnits(rowQty, rowUnit, currentMed.stripSize, currentMed.boxSize)
+                    : rowQty;
+                  const effectiveCostPerBase = totalBaseQty > 0 ? (rowQty * rowCost) / totalBaseQty : rowCost;
 
-                  <div>
-                    <label className="block text-slate-700 font-medium mb-1">Batch # *</label>
-                    <input
-                      type="text"
-                      value={rowBatch}
-                      onChange={(e) => setRowBatch(e.target.value)}
-                      className="w-full px-2.5 py-1.5 rounded-lg bg-white border border-slate-200 text-slate-900"
-                    />
-                  </div>
+                  return (
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div>
+                        <label className="block text-slate-700 font-medium mb-1">Medicine *</label>
+                        <select
+                          value={selectedMedId}
+                          onChange={(e) => {
+                            setSelectedMedId(e.target.value);
+                            const m = medicines.find((x) => x.id === e.target.value);
+                            if (m) {
+                              setRowCost(m.purchasePrice);
+                              setRowUnit('base');
+                            }
+                          }}
+                          className="w-full px-2.5 py-1.5 rounded-lg bg-white border border-slate-200 text-slate-900"
+                        >
+                          {medicines.map((m) => (
+                            <option key={m.id} value={m.id}>
+                              {m.name} ({m.genericName})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
 
-                  <div>
-                    <label className="block text-slate-700 font-medium mb-1">Expiry Date *</label>
-                    <input
-                      type="date"
-                      value={rowExp}
-                      onChange={(e) => setRowExp(e.target.value)}
-                      className="w-full px-2.5 py-1.5 rounded-lg bg-white border border-slate-200 text-slate-900"
-                    />
-                  </div>
+                      {/* Task 2: Purchasing Unit (Tablet / Strip / Box) */}
+                      <div>
+                        <label className="block text-slate-700 font-medium mb-1">Purchasing In Unit</label>
+                        <select
+                          value={rowUnit}
+                          onChange={(e) => {
+                            const newU = e.target.value as UnitType;
+                            setRowUnit(newU);
+                            if (currentMed) {
+                              const mult = toBaseUnits(1, newU, currentMed.stripSize, currentMed.boxSize);
+                              setRowCost(Number((currentMed.purchasePrice * mult).toFixed(2)));
+                            }
+                          }}
+                          className="w-full px-2.5 py-1.5 rounded-lg bg-white border border-slate-200 text-slate-900"
+                        >
+                          {availableUnits.map((u) => (
+                            <option key={u.unit} value={u.unit}>
+                              {u.label} {u.multiplier > 1 ? `(${u.multiplier} Base Units)` : ''}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
 
-                  <div>
-                    <label className="block text-slate-700 font-medium mb-1">Quantity (Units) *</label>
-                    <input
-                      type="number"
-                      min="1"
-                      value={rowQty}
-                      onChange={(e) => setRowQty(parseInt(e.target.value) || 1)}
-                      className="w-full px-2.5 py-1.5 rounded-lg bg-white border border-slate-200 text-slate-900"
-                    />
-                  </div>
+                      <div>
+                        <label className="block text-slate-700 font-medium mb-1">Batch # *</label>
+                        <input
+                          type="text"
+                          value={rowBatch}
+                          onChange={(e) => setRowBatch(e.target.value)}
+                          className="w-full px-2.5 py-1.5 rounded-lg bg-white border border-slate-200 text-slate-900"
+                        />
+                      </div>
 
-                  <div>
-                    <label className="block text-slate-700 font-medium mb-1">Unit Cost Price (Rs.) *</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={rowCost}
-                      onChange={(e) => setRowCost(parseFloat(e.target.value) || 0)}
-                      className="w-full px-2.5 py-1.5 rounded-lg bg-white border border-slate-200 text-slate-900"
-                    />
-                  </div>
+                      <div>
+                        <label className="block text-slate-700 font-medium mb-1">Expiry Date *</label>
+                        <input
+                          type="date"
+                          value={rowExp}
+                          onChange={(e) => setRowExp(e.target.value)}
+                          className="w-full px-2.5 py-1.5 rounded-lg bg-white border border-slate-200 text-slate-900"
+                        />
+                      </div>
 
-                  <div className="flex items-end">
-                    <button
-                      type="button"
-                      onClick={handleAddItem}
-                      className="w-full py-2 rounded-lg bg-[#00897b] hover:bg-[#00897b]/90 text-white font-medium shadow-sm transition"
-                    >
-                      + Add to List
-                    </button>
-                  </div>
-                </div>
+                      <div>
+                        <label className="block text-slate-700 font-medium mb-1">
+                          Quantity ({chosenUnitOpt?.label || 'Units'}) *
+                        </label>
+                        <input
+                          type="number"
+                          min="1"
+                          value={rowQty}
+                          onChange={(e) => setRowQty(parseInt(e.target.value) || 1)}
+                          className="w-full px-2.5 py-1.5 rounded-lg bg-white border border-slate-200 text-slate-900"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-slate-700 font-medium mb-1">
+                          Cost per {chosenUnitOpt?.label || 'Unit'} (Rs.) *
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={rowCost}
+                          onChange={(e) => setRowCost(parseFloat(e.target.value) || 0)}
+                          className="w-full px-2.5 py-1.5 rounded-lg bg-white border border-slate-200 text-slate-900"
+                        />
+                      </div>
+
+                      {/* Conversion Preview */}
+                      {currentMed && (
+                        <div className="col-span-full text-[11px] text-teal-800 bg-teal-50 px-3 py-1.5 rounded-lg border border-teal-100 flex flex-wrap items-center justify-between gap-2">
+                          <span>
+                            <strong>Inventory Stock Addition:</strong> {rowQty} {chosenUnitOpt?.label || 'Unit'}(s) ={' '}
+                            <strong className="text-teal-900">
+                              +{totalBaseQty} {currentMed.baseUnit || 'Tablets'}
+                            </strong>{' '}
+                            will be added to database stock.
+                          </span>
+                          <span>
+                            Effective Cost: <strong>Rs. {effectiveCostPerBase.toFixed(2)}</strong> / {currentMed.baseUnit || 'Tablet'}
+                          </span>
+                        </div>
+                      )}
+
+                      <div className="col-span-full flex justify-end pt-1">
+                        <button
+                          type="button"
+                          onClick={handleAddItem}
+                          className="py-2 px-6 rounded-lg bg-[#00897b] hover:bg-[#00897b]/90 text-white font-medium shadow-sm transition"
+                        >
+                          + Add to List
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* Order Items Table */}

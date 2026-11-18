@@ -36,6 +36,14 @@ import {
 import { savePendingOrder } from "@/services/pendingOrders";
 import { useAuth } from "@/hooks/useAuth";
 import SoftwareMode from "@/components/SoftwareMode";
+import { CartQtyModal, CartPriceModal } from "./CartItemModals";
+import {
+  getAvailableUnits,
+  calculateUnitPrice,
+  formatStockWithPacking,
+  getDefaultBaseUnit,
+  type UnitType,
+} from "./packingUtils";
 
 type Category = {
   id: string;
@@ -44,19 +52,27 @@ type Category = {
 };
 
 type CartItem = {
-  id: string;
+  id: string; // Unique cart line identifier: `${medicineId}-${unit}`
+  medicineId: string;
   name: string;
   genericName?: string;
+  basePrice: number;
   price: number;
   category: string;
   dosageForm?: string;
   strength?: string;
-  stock: number;
+  stock: number; // Base unit stock
   batchNumber?: string;
   expiryDate?: string;
   barcode?: string;
   sku?: string;
   quantity: number;
+  baseUnit: string;
+  stripSize?: number;
+  boxSize?: number;
+  selectedUnit: UnitType;
+  unitLabel: string;
+  unitMultiplier: number;
 };
 
 export function PharmacyPOS() {
@@ -105,6 +121,41 @@ export function PharmacyPOS() {
   const [discountValue, setDiscountValue] = useState<number>(0);
   const [isDiscountModalOpen, setIsDiscountModalOpen] = useState(false);
   const [taxRatePercent, setTaxRatePercent] = useState<number>(0);
+
+  // Cart selection & inline editing state (Task 1: Qty and Price buttons)
+  const [selectedCartItemId, setSelectedCartItemId] = useState<string | null>(null);
+  const [isQtyModalOpen, setIsQtyModalOpen] = useState(false);
+  const [isPriceModalOpen, setIsPriceModalOpen] = useState(false);
+
+  // Active selected cart item (falls back to last item in cart if none selected)
+  const activeCartItem = useMemo(() => {
+    if (cart.length === 0) return null;
+    return cart.find((i) => i.id === selectedCartItemId) || cart[cart.length - 1] || null;
+  }, [cart, selectedCartItemId]);
+
+  // Keyboard shortcuts: Q opens Qty popup, P opens Price override popup
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const activeEl = document.activeElement;
+      const isInput =
+        activeEl instanceof HTMLInputElement ||
+        activeEl instanceof HTMLTextAreaElement ||
+        activeEl instanceof HTMLSelectElement;
+
+      if (isInput) return;
+
+      if ((e.key === "q" || e.key === "Q") && cart.length > 0) {
+        e.preventDefault();
+        setIsQtyModalOpen(true);
+      } else if ((e.key === "p" || e.key === "P") && cart.length > 0) {
+        e.preventDefault();
+        setIsPriceModalOpen(true);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [cart.length]);
 
   // Load medicines and settings LIVE from Supabase
   const loadPharmacyData = useCallback(async () => {
@@ -223,8 +274,8 @@ export function PharmacyPOS() {
   const tax = (discountedSubtotal * Math.max(0, taxRatePercent)) / 100;
   const total = discountedSubtotal + tax;
 
-  // Cart operations
-  const addToCart = (med: Medicine) => {
+  // Cart operations (Task 1 & Task 2)
+  const addToCart = (med: Medicine, unitToSelect?: UnitType) => {
     // Check out of stock
     if (Number(med.stock || 0) <= 0) {
       alert(`Out of Stock: "${med.name}" has 0 stock remaining. Sale is blocked.`);
@@ -237,27 +288,45 @@ export function PharmacyPOS() {
       return;
     }
 
+    const available = getAvailableUnits(med);
+    const chosenUnitOption =
+      (unitToSelect && available.find((u) => u.unit === unitToSelect)) ||
+      available[0];
+
+    const chosenUnit = chosenUnitOption.unit;
+    const unitMultiplier = chosenUnitOption.multiplier;
+    const unitPrice = calculateUnitPrice(med.sellingPrice, chosenUnit, med.stripSize, med.boxSize);
+    const lineId = `${med.id}-${chosenUnit}`;
+
     setCart((current) => {
-      const existing = current.find((item) => String(item.id) === String(med.id));
+      const existing = current.find((item) => item.id === lineId);
       if (existing) {
-        if (existing.quantity >= med.stock) {
-          alert(`Stock Limit Reached: Only ${med.stock} units of "${med.name}" are in stock.`);
+        const nextBaseUnits = (existing.quantity + 1) * existing.unitMultiplier;
+        if (nextBaseUnits > med.stock) {
+          alert(`Stock Limit Reached: Only ${med.stock} base units of "${med.name}" are in stock.`);
           return current;
         }
         return current.map((item) =>
-          String(item.id) === String(med.id)
-            ? { ...item, quantity: item.quantity + 1 }
-            : item
+          item.id === lineId ? { ...item, quantity: item.quantity + 1 } : item
         );
+      }
+
+      if (unitMultiplier > med.stock) {
+        alert(
+          `Insufficient Stock: 1 ${chosenUnitOption.label} requires ${unitMultiplier} base units, but only ${med.stock} are available.`
+        );
+        return current;
       }
 
       return [
         ...current,
         {
-          id: med.id,
+          id: lineId,
+          medicineId: med.id,
           name: med.name,
           genericName: med.genericName,
-          price: med.sellingPrice,
+          basePrice: med.sellingPrice,
+          price: unitPrice,
           category: med.category || "General",
           dosageForm: med.dosageForm,
           strength: med.strength,
@@ -267,17 +336,88 @@ export function PharmacyPOS() {
           barcode: med.barcode,
           sku: med.sku,
           quantity: 1,
+          baseUnit: med.baseUnit || getDefaultBaseUnit(med.dosageForm),
+          stripSize: med.stripSize,
+          boxSize: med.boxSize,
+          selectedUnit: chosenUnit,
+          unitLabel: chosenUnitOption.label,
+          unitMultiplier,
         },
       ];
+    });
+
+    setSelectedCartItemId(lineId);
+  };
+
+  const handleUnitChange = (cartItemId: string, newUnit: UnitType) => {
+    setCart((current) => {
+      const target = current.find((item) => item.id === cartItemId);
+      if (!target) return current;
+
+      const available = getAvailableUnits(target);
+      const chosenUnitOption = available.find((u) => u.unit === newUnit) || available[0];
+      const newMultiplier = chosenUnitOption.multiplier;
+      const newPrice = calculateUnitPrice(
+        target.basePrice,
+        newUnit,
+        target.stripSize,
+        target.boxSize
+      );
+
+      const neededBaseQty = target.quantity * newMultiplier;
+      if (neededBaseQty > target.stock) {
+        alert(
+          `Stock Limit: ${target.quantity} ${chosenUnitOption.label}(s) requires ${neededBaseQty} base units, but only ${target.stock} are available.`
+        );
+        return current;
+      }
+
+      const newLineId = `${target.medicineId}-${newUnit}`;
+      const existingSameUnit = current.find(
+        (it) => it.id === newLineId && it.id !== cartItemId
+      );
+
+      if (existingSameUnit) {
+        const mergedQty = existingSameUnit.quantity + target.quantity;
+        if (mergedQty * newMultiplier > target.stock) {
+          alert(`Stock Limit Reached: Cannot merge units beyond available stock.`);
+          return current;
+        }
+        return current
+          .filter((it) => it.id !== cartItemId)
+          .map((it) => (it.id === newLineId ? { ...it, quantity: mergedQty } : it));
+      }
+
+      return current.map((it) =>
+        it.id === cartItemId
+          ? {
+              ...it,
+              id: newLineId,
+              selectedUnit: newUnit,
+              unitLabel: chosenUnitOption.label,
+              unitMultiplier: newMultiplier,
+              price: newPrice,
+            }
+          : it
+      );
+    });
+
+    setSelectedCartItemId((prev) => {
+      const target = cart.find((item) => item.id === cartItemId);
+      if (target && prev === cartItemId) {
+        return `${target.medicineId}-${newUnit}`;
+      }
+      return prev;
     });
   };
 
   const increaseQuantity = (id: string) => {
     setCart((current) =>
       current.map((item) => {
-        if (String(item.id) === String(id)) {
-          if (item.quantity >= item.stock) {
-            alert(`Stock Limit: Only ${item.stock} units available in inventory.`);
+        if (item.id === id) {
+          const nextBaseQty = (item.quantity + 1) * item.unitMultiplier;
+          if (nextBaseQty > item.stock) {
+            alert(`Stock Limit: Only ${item.stock} base units available in inventory.`);
             return item;
           }
           return { ...item, quantity: item.quantity + 1 };
@@ -291,25 +431,28 @@ export function PharmacyPOS() {
     setCart((current) =>
       current
         .map((item) =>
-          String(item.id) === String(id)
-            ? { ...item, quantity: item.quantity - 1 }
-            : item
+          item.id === id ? { ...item, quantity: item.quantity - 1 } : item
         )
         .filter((item) => item.quantity > 0)
     );
   };
 
   const removeItem = (id: string) => {
-    setCart((current) => current.filter((item) => String(item.id) !== String(id)));
+    setCart((current) => current.filter((item) => item.id !== id));
+    if (selectedCartItemId === id) {
+      setSelectedCartItemId(null);
+    }
   };
 
   const clearCart = () => {
     setCart([]);
+    setSelectedCartItemId(null);
     setDiscountValue(0);
   };
 
   const handleNewOrder = async () => {
     setCart([]);
+    setSelectedCartItemId(null);
     setDiscountValue(0);
     setSelectedCustomer(null);
     try {
@@ -320,13 +463,44 @@ export function PharmacyPOS() {
     }
   };
 
+  // Task 1: Update Qty from Modal
+  const handleConfirmQty = (newQty: number) => {
+    if (!activeCartItem) return;
+    setCart((current) =>
+      current.map((item) =>
+        item.id === activeCartItem.id ? { ...item, quantity: newQty } : item
+      )
+    );
+  };
+
+  // Task 1: Update Price from Modal
+  const handleConfirmPrice = (newPrice: number) => {
+    if (!activeCartItem) return;
+    setCart((current) =>
+      current.map((item) =>
+        item.id === activeCartItem.id ? { ...item, price: newPrice } : item
+      )
+    );
+  };
+
+  // Task 1: Keypad press handler with working Qty and Price
   const handleKeypadPress = (key: string) => {
     if (cart.length === 0) return;
-    const lastItem = cart[cart.length - 1];
-    if (key === "⌫") {
-      decreaseQuantity(lastItem.id);
+    const target = activeCartItem || cart[cart.length - 1];
+    if (!target) return;
+
+    if (key === "Qty") {
+      setIsQtyModalOpen(true);
+    } else if (key === "Price") {
+      setIsPriceModalOpen(true);
+    } else if (key === "%") {
+      setIsDiscountModalOpen(true);
+    } else if (key === "⌫") {
+      decreaseQuantity(target.id);
     } else if (key === "+/-") {
-      increaseQuantity(lastItem.id);
+      increaseQuantity(target.id);
+    } else if (/^[0-9.]$/.test(key)) {
+      setIsQtyModalOpen(true);
     }
   };
 
@@ -360,14 +534,16 @@ export function PharmacyPOS() {
             customerPhone,
             customerId: selectedCustomer?.id || data.customer?.id,
             items: cart.map((it) => ({
-              id: it.id,
-              name: it.name,
+              id: it.medicineId || it.id,
+              name: it.unitLabel ? `${it.name} - ${it.unitLabel}` : it.name,
               quantity: it.quantity,
               price: it.price,
               batchNumber: it.batchNumber,
               expiryDate: it.expiryDate,
               subtotal: it.price * it.quantity,
               type: "product" as const,
+              unit: it.unitLabel,
+              unitMultiplier: it.unitMultiplier || 1,
             })),
             subtotal: data.subtotal,
             discount: data.discount ?? discountAmount,
@@ -390,14 +566,16 @@ export function PharmacyPOS() {
           customerPhone,
           customerId: selectedCustomer?.id || data.customer?.id,
           items: cart.map((it) => ({
-            id: it.id,
-            name: it.name,
+            id: it.medicineId || it.id,
+            name: it.unitLabel ? `${it.name} - ${it.unitLabel}` : it.name,
             quantity: it.quantity,
             price: it.price,
             batchNumber: it.batchNumber,
             expiryDate: it.expiryDate,
             subtotal: it.price * it.quantity,
             type: "product" as const,
+            unit: it.unitLabel,
+            unitMultiplier: it.unitMultiplier || 1,
           })),
           subtotal: data.subtotal,
           discount: data.discount ?? discountAmount,
@@ -436,8 +614,8 @@ export function PharmacyPOS() {
 
   // Build typed cart items for PaymentPage
   const paymentItems: POSCartItem[] = cart.map((item) => ({
-    id: String(item.id),
-    name: item.name,
+    id: String(item.medicineId || item.id),
+    name: item.unitLabel ? `${item.name} - ${item.unitLabel}` : item.name,
     quantity: item.quantity,
     price: item.price,
     type: "product" as const,
@@ -814,57 +992,115 @@ export function PharmacyPOS() {
               </div>
             ) : (
               <div className="divide-y divide-[#f0f0f0]">
-                {cart.map((item) => (
-                  <div
-                    key={item.id}
-                    className="flex min-h-[36px] items-center px-3 py-1.5 hover:bg-[#eef7f8]/50 transition-colors text-[13px]"
-                  >
-                    <div className="w-6 shrink-0 text-center font-bold text-slate-900 text-xs">
-                      {item.quantity}
-                    </div>
+                {cart.map((item) => {
+                  const isSelected = item.id === (activeCartItem?.id);
+                  const availableUnits = getAvailableUnits(item);
+                  const hasPacking = availableUnits.length > 1;
 
-                    <div className="min-w-0 flex-1 px-2">
-                      <div className="truncate text-xs sm:text-[13px] font-medium text-slate-900 leading-tight">
-                        {item.name}
+                  return (
+                    <div
+                      key={item.id}
+                      onClick={() => setSelectedCartItemId(item.id)}
+                      className={`
+                        flex min-h-[42px] items-center px-3 py-1.5 transition-colors text-[13px] cursor-pointer
+                        ${isSelected ? "bg-[#e6f5f6]/80 ring-1 ring-[#00897b]/50 border-l-4 border-l-[#00897b]" : "hover:bg-[#eef7f8]/50"}
+                      `}
+                    >
+                      {/* Qty Button (clickable to open Qty modal) */}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedCartItemId(item.id);
+                          setIsQtyModalOpen(true);
+                        }}
+                        className="w-7 h-7 shrink-0 text-center font-bold text-slate-900 text-xs bg-slate-100 hover:bg-[#00897b] hover:text-white rounded-lg border border-slate-200 transition-colors flex items-center justify-center cursor-pointer"
+                        title="Click to change quantity (or press Q)"
+                      >
+                        {item.quantity}
+                      </button>
+
+                      {/* Unit Selector: Dropdown if packing defined, otherwise base unit badge */}
+                      <div className="ml-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+                        {hasPacking ? (
+                          <select
+                            value={item.selectedUnit}
+                            onChange={(e) => handleUnitChange(item.id, e.target.value as UnitType)}
+                            className="h-6 px-1.5 py-0 text-[11px] font-semibold bg-teal-50 border border-teal-200 text-teal-800 rounded-md focus:outline-none cursor-pointer"
+                            title="Select Unit (Tablet / Strip / Box)"
+                          >
+                            {availableUnits.map((u) => (
+                              <option key={u.unit} value={u.unit}>
+                                {u.label}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <span className="inline-block px-1.5 py-0.5 text-[10px] font-medium bg-slate-100 text-slate-600 rounded border border-slate-200">
+                            {item.unitLabel}
+                          </span>
+                        )}
                       </div>
-                      <div className="text-[10px] text-teal-700 flex items-center gap-1">
-                        <span>{item.dosageForm || "Med"}</span>
-                        {item.strength && <span>• {item.strength}</span>}
+
+                      {/* Name, unit and clickable unit price */}
+                      <div className="min-w-0 flex-1 px-2">
+                        <div className="truncate text-xs sm:text-[13px] font-medium text-slate-900 leading-tight">
+                          {item.name} - <span className="font-semibold text-teal-800">{item.unitLabel}</span>
+                        </div>
+                        <div className="text-[10px] text-slate-500 flex items-center gap-1.5 mt-0.5">
+                          <span>{item.dosageForm || "Med"}</span>
+                          {item.strength && <span>• {item.strength}</span>}
+                          <span>•</span>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedCartItemId(item.id);
+                              setIsPriceModalOpen(true);
+                            }}
+                            className="text-teal-700 hover:text-teal-900 font-semibold underline decoration-dotted cursor-pointer"
+                            title="Click to override selling price (or press P)"
+                          >
+                            Rs. {item.price.toLocaleString()}
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Line Total */}
+                      <div className="shrink-0 text-right text-xs sm:text-[13px] font-semibold text-slate-900 pr-2">
+                        Rs. {(item.price * item.quantity).toLocaleString()}
+                      </div>
+
+                      {/* Minus, Plus, Delete buttons */}
+                      <div className="flex items-center gap-0.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          type="button"
+                          onClick={() => decreaseQuantity(item.id)}
+                          className="flex h-5 w-5 items-center justify-center rounded border border-slate-200 text-slate-600 hover:bg-slate-100"
+                          title="Decrease"
+                        >
+                          <Minus className="h-2.5 w-2.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => increaseQuantity(item.id)}
+                          className="flex h-5 w-5 items-center justify-center rounded border border-slate-200 text-slate-600 hover:bg-slate-100"
+                          title="Increase"
+                        >
+                          <Plus className="h-2.5 w-2.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => removeItem(item.id)}
+                          className="flex h-5 w-5 items-center justify-center rounded hover:bg-red-50 hover:text-red-500 text-slate-400 ml-0.5"
+                          title="Remove"
+                        >
+                          <Trash2 className="h-2.5 w-2.5" />
+                        </button>
                       </div>
                     </div>
-
-                    <div className="shrink-0 text-right text-xs sm:text-[13px] font-semibold text-slate-900 pr-2">
-                      Rs. {(item.price * item.quantity).toLocaleString()}
-                    </div>
-
-                    <div className="flex items-center gap-0.5 shrink-0">
-                      <button
-                        type="button"
-                        onClick={() => decreaseQuantity(item.id)}
-                        className="flex h-5 w-5 items-center justify-center rounded border border-slate-200 text-slate-600 hover:bg-slate-100"
-                        title="Decrease"
-                      >
-                        <Minus className="h-2.5 w-2.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => increaseQuantity(item.id)}
-                        className="flex h-5 w-5 items-center justify-center rounded border border-slate-200 text-slate-600 hover:bg-slate-100"
-                        title="Increase"
-                      >
-                        <Plus className="h-2.5 w-2.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => removeItem(item.id)}
-                        className="flex h-5 w-5 items-center justify-center rounded hover:bg-red-50 hover:text-red-500 text-slate-400 ml-0.5"
-                        title="Remove"
-                      >
-                        <Trash2 className="h-2.5 w-2.5" />
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -1124,8 +1360,9 @@ export function PharmacyPOS() {
                                   ? "bg-amber-100 text-amber-800 border border-amber-200"
                                   : "bg-emerald-50 text-emerald-700 border border-emerald-200"
                               }`}
+                              title={formatStockWithPacking(med.stock, med)}
                             >
-                              Stock: {med.stock}
+                              Stock: {formatStockWithPacking(med.stock, med)}
                             </span>
                           )}
                         </div>
@@ -1202,6 +1439,28 @@ export function PharmacyPOS() {
           setDiscountType('percent');
           setDiscountValue(0);
         }}
+      />
+
+      {/* Task 1: Qty Change Modal */}
+      <CartQtyModal
+        isOpen={isQtyModalOpen}
+        onClose={() => setIsQtyModalOpen(false)}
+        itemName={activeCartItem?.name || "Medicine"}
+        unitLabel={activeCartItem?.unitLabel || "Unit"}
+        currentQty={activeCartItem?.quantity || 1}
+        maxStockInBaseUnits={activeCartItem?.stock}
+        unitMultiplier={activeCartItem?.unitMultiplier || 1}
+        onConfirm={handleConfirmQty}
+      />
+
+      {/* Task 1: Price Override Modal */}
+      <CartPriceModal
+        isOpen={isPriceModalOpen}
+        onClose={() => setIsPriceModalOpen(false)}
+        itemName={activeCartItem?.name || "Medicine"}
+        unitLabel={activeCartItem?.unitLabel || "Unit"}
+        currentPrice={activeCartItem?.price || 0}
+        onConfirm={handleConfirmPrice}
       />
     </div>
   );
