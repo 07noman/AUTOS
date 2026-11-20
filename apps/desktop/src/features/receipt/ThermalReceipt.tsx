@@ -4,6 +4,22 @@ import { ReceiptData, ReceiptSettings, PaperWidth } from './types';
 import { generateBarcodeSvg } from './utils/barcode';
 import './ThermalReceipt.css';
 
+/* FIX #3 & #4: Read Cashier Name from localStorage, never garbled text */
+function getCashierName(dataCashier?: string): string {
+  if (typeof window !== 'undefined') {
+    const stored = localStorage.getItem('cashierName');
+    if (stored === 'orgpyurgenal') {
+      try { localStorage.removeItem('cashierName'); } catch {}
+    } else if (stored && stored.trim()) {
+      return stored.trim();
+    }
+  }
+  if (dataCashier && dataCashier.trim() && dataCashier.trim() !== 'orgpyurgenal') {
+    return dataCashier.trim();
+  }
+  return '-';
+}
+
 export interface ThermalReceiptProps {
   data: ReceiptData;
   settings: ReceiptSettings;
@@ -150,10 +166,10 @@ export function ThermalReceipt({
           </div>
         </div>
 
-        {/* ── B. TRANSACTION & METADATA GRID ──────────────────────────────────── */}
+        {/* ── B. TRANSACTION & METADATA — FIX #7: Single-column stacked full-width rows ── */}
         <div className="tr-dashed-line" />
 
-        <div className="tr-meta-grid">
+        <div className="tr-meta-stack">
           {settings.showInvoiceNumber && (
             <div className="tr-meta-row">
               <span className="tr-meta-label">Receipt No :</span>
@@ -172,10 +188,10 @@ export function ThermalReceipt({
               <span className="tr-meta-val">{timeStr}</span>
             </div>
           )}
-          {settings.showCashier && data.cashierName && (
+          {settings.showCashier && (
             <div className="tr-meta-row">
               <span className="tr-meta-label">Cashier :</span>
-              <span className="tr-meta-val">{data.cashierName}</span>
+              <span className="tr-meta-val">{getCashierName(data.cashierName)}</span>
             </div>
           )}
           {settings.showTerminal && (
@@ -203,8 +219,8 @@ export function ThermalReceipt({
             </div>
           )}
           {settings.showCustomerAddress && data.customer?.address && (
-            <div className="tr-meta-row" style={{ gridColumn: 'span 2' }}>
-              <span className="tr-meta-label">Address    :</span>
+            <div className="tr-meta-row">
+              <span className="tr-meta-label">Address :</span>
               <span className="tr-meta-val">{data.customer.address}</span>
             </div>
           )}
@@ -220,39 +236,39 @@ export function ThermalReceipt({
         {settings.showVehicleInfo && hasVehicleData && (
           <>
             <div className="tr-dashed-line" />
-            <div className="tr-meta-grid">
+            {/* FIX #1 & #2: Vehicle and Mileage on SEPARATE full-width lines, mileage never cut */}
+            <div className="tr-vehicle-block">
               {data.vehicle?.plateNumber && data.vehicle?.makeModel ? (
-                <div className="tr-meta-row">
-                  <span className="tr-meta-label">Vehicle    :</span>
+                <div className="tr-meta-row-full">
+                  <span className="tr-meta-label">Vehicle :</span>
                   <span className="tr-meta-val">{data.vehicle.plateNumber} - {data.vehicle.makeModel}</span>
                 </div>
+              ) : data.vehicle?.plateNumber ? (
+                <div className="tr-meta-row-full">
+                  <span className="tr-meta-label">Vehicle :</span>
+                  <span className="tr-meta-val">{data.vehicle.plateNumber}</span>
+                </div>
               ) : settings.showVehicleMakeModel && data.vehicle?.makeModel ? (
-                <div className="tr-meta-row">
-                  <span className="tr-meta-label">Vehicle    :</span>
+                <div className="tr-meta-row-full">
+                  <span className="tr-meta-label">Vehicle :</span>
                   <span className="tr-meta-val">{data.vehicle.makeModel}</span>
                 </div>
               ) : null}
-              {!data.vehicle?.makeModel && settings.showVehiclePlate && data.vehicle?.plateNumber && (
-                <div className="tr-meta-row">
-                  <span className="tr-meta-label">Plate   :</span>
-                  <span className="tr-meta-val">{data.vehicle.plateNumber}</span>
-                </div>
-              )}
               {settings.showVehicleMileage && data.vehicle?.mileage && (
-                <div className="tr-meta-row">
-                  <span className="tr-meta-label">Mileage    :</span>
-                  <span className="tr-meta-val">{data.vehicle.mileage}</span>
+                <div className="tr-meta-row-full">
+                  <span className="tr-meta-label">Mileage :</span>
+                  <span className="tr-meta-val" style={{ whiteSpace: 'normal', wordBreak: 'break-word' }}>{String(data.vehicle.mileage)}</span>
                 </div>
               )}
               {settings.showMechanic && (data.vehicle?.advisor || data.vehicle?.mechanic) && (
-                <div className="tr-meta-row">
+                <div className="tr-meta-row-full">
                   <span className="tr-meta-label">Advisor :</span>
                   <span className="tr-meta-val">{data.vehicle.advisor || data.vehicle.mechanic}</span>
                 </div>
               )}
               {settings.showJobNumber && data.vehicle?.jobNumber && (
-                <div className="tr-meta-row">
-                  <span className="tr-meta-label">Job No     :</span>
+                <div className="tr-meta-row-full">
+                  <span className="tr-meta-label">Job No  :</span>
                   <span className="tr-meta-val">{data.vehicle.jobNumber}</span>
                 </div>
               )}
@@ -264,11 +280,10 @@ export function ThermalReceipt({
         <div className="tr-dashed-line" />
 
         {paperWidth === '80mm' ? (
-          /* Standard 80mm Table View */
+          /* Standard 80mm Table View — FIX #6: 42% Item Name, 10% Qty, 24% Price, 24% Amount, subtext inside same cell */
           <table className="tr-items-table">
             <thead>
               <tr className="tr-items-header">
-                <th className="tr-col-idx">#</th>
                 <th className="tr-col-name">Item Name</th>
                 <th className="tr-col-qty">Qty</th>
                 <th className="tr-col-price">Price</th>
@@ -285,23 +300,19 @@ export function ThermalReceipt({
                 ].filter(Boolean);
 
                 return (
-                  <React.Fragment key={item.id || idx}>
-                    <tr className="tr-item-row">
-                      <td className="tr-col-idx">{idx + 1}</td>
-                      <td className="tr-col-name">{item.name}</td>
-                      <td className="tr-col-qty">{item.quantity}</td>
-                      <td className="tr-col-price">{fmtMoney(item.price)}</td>
-                      <td className="tr-col-amount">{fmtMoney(item.total)}</td>
-                    </tr>
-                    {subMeta.length > 0 && (
-                      <tr>
-                        <td />
-                        <td colSpan={4} className="tr-item-subtext">
+                  <tr className="tr-item-row" key={item.id || idx}>
+                    <td className="tr-col-name">
+                      <div className="tr-item-name-text">{item.name}</div>
+                      {subMeta.length > 0 && (
+                        <div className="tr-item-subtext">
                           {subMeta.join(' · ')}
-                        </td>
-                      </tr>
-                    )}
-                  </React.Fragment>
+                        </div>
+                      )}
+                    </td>
+                    <td className="tr-col-qty">{item.quantity}</td>
+                    <td className="tr-col-price">{fmtMoney(item.price)}</td>
+                    <td className="tr-col-amount">{fmtMoney(item.total)}</td>
+                  </tr>
                 );
               })}
             </tbody>
@@ -371,15 +382,18 @@ export function ThermalReceipt({
 
           <div className="tr-dashed-line" />
 
-          {/* Payment & Change / Credit Details */}
+          {/* Payment & Change / Credit Details — FIX #5: No duplicate "Credit" */}
           {settings.showPaymentMethod && (
             <div className="tr-total-row">
-              <span>Payment Method : <strong style={{ textTransform: 'capitalize' }}>{data.paymentMethod}</strong></span>
-              {data.paymentMethod.toLowerCase() === 'credit' ? (
-                <span>Credit</span>
-              ) : (
-                <span>{fmtMoney(data.amountPaid ?? data.total)}</span>
-              )}
+              <span>Payment Method</span>
+              <span><strong style={{ textTransform: 'capitalize' }}>{data.paymentMethod}</strong></span>
+            </div>
+          )}
+
+          {settings.showPaymentMethod && data.paymentMethod.toLowerCase() !== 'credit' && (
+            <div className="tr-total-row">
+              <span>Amount Paid</span>
+              <span>{fmtMoney(data.amountPaid ?? data.total)}</span>
             </div>
           )}
 

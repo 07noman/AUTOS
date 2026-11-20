@@ -140,6 +140,30 @@ export function ReceiptBrandingPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [, startTransition] = useTransition();
 
+  // FIX #3 & #4: Cashier Name saved in localStorage
+  const [cashierName, setCashierName] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('cashierName');
+      if (stored === 'orgpyurgenal') {
+        try { localStorage.removeItem('cashierName'); } catch {}
+        return '';
+      }
+      return stored || '';
+    }
+    return '';
+  });
+
+  const handleCashierNameChange = (val: string) => {
+    setCashierName(val);
+    if (typeof window !== 'undefined') {
+      if (val.trim()) {
+        localStorage.setItem('cashierName', val);
+      } else {
+        localStorage.removeItem('cashierName');
+      }
+    }
+  };
+
   // Load tenant settings
   useEffect(() => {
     const tenantId = user?.tenantId || 'default';
@@ -241,7 +265,10 @@ export function ReceiptBrandingPage() {
   };
 
   const handlePrintTest = async () => {
-    await printThermalReceipt(SAMPLE_PREVIEW_DATA, {
+    await printThermalReceipt({
+      ...SAMPLE_PREVIEW_DATA,
+      cashierName: cashierName || '-',
+    }, {
       ...settings,
       paperWidth: previewWidth,
     });
@@ -640,16 +667,28 @@ export function ReceiptBrandingPage() {
                         <option value="ESTIMATE / QUOTATION">ESTIMATE / QUOTATION</option>
                       </select>
                     </div>
+                    {/* FIX #4: Cashier Name Input in Receipt Content */}
                     <div>
-                      <label className="block text-xs font-medium text-text-secondary mb-1">Social Media Handle</label>
+                      <label className="block text-xs font-medium text-text-secondary mb-1">Cashier Name</label>
                       <input
                         type="text"
-                        value={settings.socialMedia || ''}
-                        onChange={(e) => updateSetting('socialMedia', e.target.value)}
-                        placeholder="@autocarepk"
-                        className="w-full text-xs px-3 py-2 bg-bg border border-border rounded-lg"
+                        value={cashierName}
+                        onChange={(e) => handleCashierNameChange(e.target.value)}
+                        placeholder="Cashier ka naam likhen"
+                        className="w-full text-xs px-3 py-2 bg-bg border border-border rounded-lg focus:outline-none focus:ring-1 focus:ring-primary"
                       />
                     </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-text-secondary mb-1">Social Media Handle</label>
+                    <input
+                      type="text"
+                      value={settings.socialMedia || ''}
+                      onChange={(e) => updateSetting('socialMedia', e.target.value)}
+                      placeholder="@autocarepk"
+                      className="w-full text-xs px-3 py-2 bg-bg border border-border rounded-lg"
+                    />
                   </div>
 
                   <div>
@@ -943,7 +982,10 @@ export function ReceiptBrandingPage() {
           {/* Thermal Receipt Visual Card */}
           <div className="p-4 bg-slate-100 dark:bg-slate-900/60 rounded-2xl border border-border flex justify-center overflow-x-auto min-h-[500px]">
             <ThermalReceipt
-              data={SAMPLE_PREVIEW_DATA}
+              data={{
+                ...SAMPLE_PREVIEW_DATA,
+                cashierName: cashierName || '-',
+              }}
               settings={settings}
               paperWidthOverride={previewWidth}
               preview={true}

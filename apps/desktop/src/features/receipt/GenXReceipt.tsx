@@ -182,17 +182,31 @@ export default function GenXReceipt({ order, payment }: GenXReceiptProps) {
     order?.order_number ||
     "262-1-000001";
 
-  const cashierName =
-    order?.cashierName ||
-    order?.cashier_name ||
-    order?.userName ||
-    order?.user_name ||
-    "noman53000@gmail.com";
+  const getCleanCashierName = (): string => {
+    if (typeof window !== "undefined") {
+      const stored = localStorage.getItem("cashierName");
+      if (stored === "orgpyurgenal") {
+        try { localStorage.removeItem("cashierName"); } catch {}
+      } else if (stored && stored.trim()) {
+        return stored.trim();
+      }
+    }
+    const fallback =
+      order?.cashierName ||
+      order?.cashier_name ||
+      order?.userName ||
+      order?.user_name;
+    if (fallback && fallback.trim() && fallback.trim() !== "orgpyurgenal") {
+      return fallback.trim();
+    }
+    return "-";
+  };
+
+  const cashierName = getCleanCashierName();
 
   const storeEmail =
     order?.storeEmail ||
     order?.store_email ||
-    cashierName ||
     "noman53000@gmail.com";
 
   const saleDate =
@@ -296,17 +310,22 @@ export default function GenXReceipt({ order, payment }: GenXReceiptProps) {
             : `Ticket ${ticketNumber}`}
         </div>
         <div className="ticket-date">{formatDateTime(saleDate)}</div>
-        <div className="ticket-cashier">Served by: {cashierName}</div>
+        <div className="ticket-cashier">Cashier: {cashierName}</div>
         {order?.customer?.name && (
           <div className="ticket-cashier">Customer: {order.customer.name}</div>
         )}
         {order?.customer?.phone && (
           <div className="ticket-cashier">Phone: {order.customer.phone}</div>
         )}
+        {/* FIX #1 & #2: Vehicle and Mileage on 2 SEPARATE lines */}
         {order?.vehicle && (order.vehicle.plateNumber || order.vehicle.makeModel) && (
           <div className="ticket-cashier" style={{ fontWeight: 600 }}>
             Vehicle: {[order.vehicle.plateNumber, order.vehicle.makeModel].filter(Boolean).join(" - ")}
-            {order.vehicle.mileage ? ` | ${order.vehicle.mileage} km` : ""}
+          </div>
+        )}
+        {order?.vehicle?.mileage && (
+          <div className="ticket-cashier" style={{ fontWeight: 600 }}>
+            Mileage: {String(order.vehicle.mileage)}
           </div>
         )}
       </div>
@@ -378,9 +397,15 @@ export default function GenXReceipt({ order, payment }: GenXReceiptProps) {
         </div>
 
         <div className="receipt-total-row receipt-payment">
-          <span>{paymentMethod}</span>
-          <span>{money(amountPaid)}</span>
+          <span>Payment Method</span>
+          <span style={{ textTransform: "capitalize", fontWeight: 700 }}>{paymentMethod}</span>
         </div>
+        {paymentMethod.toLowerCase() !== "credit" && (
+          <div className="receipt-total-row">
+            <span>Amount Paid</span>
+            <span>{money(amountPaid)}</span>
+          </div>
+        )}
       </div>
 
       {/* TOTAL ITEMS */}

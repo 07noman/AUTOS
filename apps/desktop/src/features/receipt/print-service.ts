@@ -1,9 +1,26 @@
 import { ReceiptData, ReceiptSettings } from './types';
 import { generateBarcodeSvg } from './utils/barcode';
 
+/* FIX #3 & #4: Read Cashier Name from localStorage, never garbled text */
+function getCashierNameForPrint(dataCashier?: string): string {
+  if (typeof window !== 'undefined') {
+    const stored = localStorage.getItem('cashierName');
+    if (stored === 'orgpyurgenal') {
+      try { localStorage.removeItem('cashierName'); } catch {}
+    } else if (stored && stored.trim()) {
+      return stored.trim();
+    }
+  }
+  if (dataCashier && dataCashier.trim() && dataCashier.trim() !== 'orgpyurgenal') {
+    return dataCashier.trim();
+  }
+  return '-';
+}
+
 
 /**
  * Generates self-contained, print-ready HTML for thermal receipt printing.
+ * FIX #1-#11 applied to printed output.
  */
 export function generateThermalReceiptHtml(data: ReceiptData, settings: ReceiptSettings): string {
   const paperWidth = settings.paperWidth || '80mm';
@@ -47,138 +64,229 @@ export function generateThermalReceiptHtml(data: ReceiptData, settings: ReceiptS
         data.vehicle.jobNumber)
   );
 
+  /* FIX #3 & #4: Use clean cashier name from localStorage */
+  const cashierName = getCashierNameForPrint(data.cashierName);
+
   return `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8" />
   <title>Receipt ${data.orderNumber}</title>
   <style>
+    /* FIX #10: Strict 80mm page sizing */
     @page {
       size: ${paperWidth} auto;
-      margin: 0mm;
+      margin: 0;
     }
     * {
       box-sizing: border-box;
       margin: 0;
       padding: 0;
+      /* FIX #11: Force exact color reproduction */
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+      color-adjust: exact !important;
     }
     body {
-      background: #ffffff;
-      color: #000000;
-      font-family: ${settings.fontFamily === 'sans-serif' ? 'Arial, sans-serif' : "'Courier New', Courier, monospace"};
+      background: #fff;
+      color: #000 !important;
+      /* FIX #11: Courier New monospace for sharp thermal */
+      font-family: 'Courier New', Courier, monospace !important;
       font-size: ${settings.fontSize === 'compact' ? '10px' : settings.fontSize === 'large' ? '13px' : '11.5px'};
+      font-weight: 600;
       line-height: ${settings.lineSpacing === 'compact' ? '1.15' : settings.lineSpacing === 'relaxed' ? '1.4' : '1.25'};
+      /* FIX #10: Width constraints */
       width: ${paperWidth};
       max-width: ${paperWidth};
-      padding: ${paperWidth === '58mm' ? '2mm 3mm 4mm 3mm' : '4mm 5mm 6mm 5mm'};
+      padding: 2mm 2mm;
       margin: 0 auto;
       text-align: left;
+      overflow-x: hidden;
     }
+    /* FIX #8: CSS dashed lines, 1.2px dark */
     .dashed {
-      border-bottom: 1px dashed #000000;
-      margin: 5px 0;
+      border: none;
+      border-top: 1.2px dashed #000;
+      margin: 4px 0;
+      width: 100%;
+      height: 0;
     }
     .double-dashed {
-      border-bottom: 2px dashed #000000;
-      margin: 5px 0;
+      border: none;
+      border-top: 2px dashed #000;
+      margin: 4px 0;
+      width: 100%;
+      height: 0;
     }
     .header {
       text-align: center;
       margin-bottom: 5px;
     }
+    /* FIX #11: Logo dark and sharp */
     .logo {
       display: block;
       margin: ${settings.logoAlignment === 'left' ? '0 auto 5px 0' : settings.logoAlignment === 'right' ? '0 0 5px auto' : '0 auto 5px auto'};
       width: ${settings.logoWidth || 180}px;
-      max-width: 100%;
+      max-width: 45mm;
       height: auto;
+      filter: contrast(1.2) brightness(0.9);
     }
     .tagline {
       font-size: 9.5px;
-      font-weight: bold;
+      font-weight: 800;
       letter-spacing: 0.5px;
       text-transform: uppercase;
       margin-bottom: 3px;
+      color: #000 !important;
     }
+    /* FIX #11: Store name extra bold */
     .store-name {
       font-size: 15px;
       font-weight: 800;
       line-height: 1.2;
       margin-bottom: 2px;
+      color: #000 !important;
     }
     .brand-title {
       font-size: 12px;
-      font-weight: bold;
+      font-weight: 800;
       text-transform: uppercase;
       margin-bottom: 2px;
+      color: #000 !important;
     }
     .contact-info {
       font-size: 10px;
       line-height: 1.3;
+      color: #000 !important;
     }
-    .meta-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      column-gap: 6px;
-      row-gap: 2px;
-      font-size: 10px;
+    /* FIX #7: Single-column stacked meta rows */
+    .meta-stack {
+      display: flex;
+      flex-direction: column;
+      width: 100%;
+      font-size: 11px;
+      color: #000 !important;
     }
     .meta-row {
       display: flex;
+      justify-content: space-between;
+      width: 100%;
+      font-size: 11px;
+      color: #000 !important;
     }
     .meta-lbl {
-      width: 72px;
       flex-shrink: 0;
+      font-weight: 600;
+      color: #000 !important;
+      margin-right: 4px;
     }
     .meta-val {
-      font-weight: bold;
+      font-weight: 600;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+      color: #000 !important;
     }
-    table {
+    /* FIX #1 & #2: Vehicle block — each row full width */
+    .vehicle-block {
+      display: flex;
+      flex-direction: column;
       width: 100%;
+      font-size: 11px;
+      color: #000 !important;
+    }
+    .meta-row-full {
+      display: flex;
+      justify-content: space-between;
+      width: 100%;
+      font-size: 11px;
+      color: #000 !important;
+    }
+    /* FIX #6: Items table — fixed layout, correct widths */
+    table {
+      width: 100% !important;
+      table-layout: fixed;
       border-collapse: collapse;
       font-size: 11px;
+      color: #000 !important;
     }
     th {
-      font-weight: bold;
+      font-weight: 700;
       border-bottom: 1px solid #000;
       padding-bottom: 2px;
+      color: #000 !important;
     }
     td {
       padding: 2.5px 0 1px 0;
       vertical-align: top;
+      color: #000 !important;
     }
-    .col-idx { width: 14px; }
-    .col-qty { width: 30px; text-align: center; }
-    .col-price { width: 55px; text-align: right; }
-    .col-amount { width: 60px; text-align: right; font-weight: bold; }
+    .col-name { width: 42%; text-align: left; word-break: break-word; overflow-wrap: break-word; white-space: normal; }
+    .col-qty { width: 10%; text-align: center; white-space: nowrap; }
+    .col-price { width: 24%; text-align: right; white-space: nowrap; }
+    .col-amount { width: 24%; text-align: right; font-weight: 700; white-space: nowrap; }
     .subtext {
-      font-size: 9px;
-      color: #000;
-      padding-left: 1px;
+      font-size: 9px !important;
+      color: #000 !important;
+      padding-left: 0;
+      line-height: 1.2;
+      word-break: break-word;
+      overflow-wrap: break-word;
+      white-space: normal;
     }
     .total-row {
       display: flex;
       justify-content: space-between;
       padding: 1.5px 0;
+      color: #000 !important;
     }
+    /* FIX #11: Grand total bold and large */
     .grand-total {
-      font-size: 14.5px;
-      font-weight: 900;
+      font-size: 14px;
+      font-weight: 800;
       padding: 3px 0;
+      color: #000 !important;
     }
+    /* FIX #9: Footer — full width, centered, word-break */
     .footer {
       text-align: center;
       font-size: 10px;
       margin-top: 6px;
       line-height: 1.35;
+      width: 100%;
+      word-break: break-word;
+      hyphens: none;
+      color: #000 !important;
     }
+    .footer-policy {
+      font-size: 10px;
+      width: 100%;
+      text-align: center;
+      word-break: break-word;
+      hyphens: none;
+      margin-top: 3px;
+    }
+    /* FIX #11: Barcode sharp and dark */
     .barcode-wrap {
       display: flex;
       justify-content: center;
       margin: 6px 0;
+      background: #fff;
+      padding: 2mm;
+    }
+    .barcode-wrap svg {
+      image-rendering: pixelated;
+    }
+    .barcode-wrap text {
+      font-weight: 700 !important;
+      font-size: 11px !important;
+      letter-spacing: 1px;
+      fill: #000 !important;
+    }
+    /* FIX #11: No shadows, no opacity in print */
+    @media print {
+      * { -webkit-print-color-adjust: exact !important; }
+      body { box-shadow: none !important; }
     }
   </style>
 </head>
@@ -199,41 +307,44 @@ export function generateThermalReceiptHtml(data: ReceiptData, settings: ReceiptS
 
   <div class="dashed"></div>
 
-  <div class="meta-grid">
+  <!-- FIX #7: Single-column stacked meta rows -->
+  <div class="meta-stack">
     ${settings.showInvoiceNumber ? `<div class="meta-row"><span class="meta-lbl">Receipt No :</span><span class="meta-val">${escapeHtml(data.orderNumber)}</span></div>` : ''}
-    ${settings.showDateTime ? `<div class="meta-row"><span class="meta-lbl">Date    :</span><span class="meta-val">${dateStr}</span></div>` : ''}
-    ${settings.showDateTime && timeStr ? `<div class="meta-row"><span class="meta-lbl">Time       :</span><span class="meta-val">${timeStr}</span></div>` : ''}
-    ${settings.showCashier && data.cashierName ? `<div class="meta-row"><span class="meta-lbl">Cashier :</span><span class="meta-val">${escapeHtml(data.cashierName)}</span></div>` : ''}
-    ${settings.showTerminal ? `<div class="meta-row"><span class="meta-lbl">Terminal   :</span><span class="meta-val">${escapeHtml(data.terminalName || 'POS-01')}</span></div>` : ''}
-    ${settings.showCustomerName ? `<div class="meta-row"><span class="meta-lbl">Customer:</span><span class="meta-val">${escapeHtml(data.customer?.name || 'Walk-in')}</span></div>` : ''}
-    ${data.customer?.phone ? `<div class="meta-row"><span class="meta-lbl">Phone   :</span><span class="meta-val">${escapeHtml(data.customer.phone)}</span></div>` : ''}
+    ${settings.showDateTime ? `<div class="meta-row"><span class="meta-lbl">Date :</span><span class="meta-val">${dateStr}</span></div>` : ''}
+    ${settings.showDateTime && timeStr ? `<div class="meta-row"><span class="meta-lbl">Time :</span><span class="meta-val">${timeStr}</span></div>` : ''}
+    ${settings.showCashier ? `<div class="meta-row"><span class="meta-lbl">Cashier :</span><span class="meta-val">${escapeHtml(cashierName)}</span></div>` : ''}
+    ${settings.showTerminal ? `<div class="meta-row"><span class="meta-lbl">Terminal :</span><span class="meta-val">${escapeHtml(data.terminalName || 'POS-01')}</span></div>` : ''}
+    ${settings.showCustomerName ? `<div class="meta-row"><span class="meta-lbl">Customer :</span><span class="meta-val">${escapeHtml(data.customer?.name || 'Walk-in')}</span></div>` : ''}
+    ${data.customer?.phone ? `<div class="meta-row"><span class="meta-lbl">Phone :</span><span class="meta-val">${escapeHtml(data.customer.phone)}</span></div>` : ''}
+    ${settings.showBranch && data.branchName ? `<div class="meta-row"><span class="meta-lbl">Branch :</span><span class="meta-val">${escapeHtml(data.branchName)}</span></div>` : ''}
   </div>
 
   ${settings.showVehicleInfo && hasVehicle ? `
     <div class="dashed"></div>
-    <div class="meta-grid">
-      ${data.vehicle?.plateNumber && data.vehicle?.makeModel ? `<div class="meta-row"><span class="meta-lbl">Vehicle    :</span><span class="meta-val">${escapeHtml(data.vehicle.plateNumber)} - ${escapeHtml(data.vehicle.makeModel)}</span></div>` : (settings.showVehicleMakeModel && data.vehicle?.makeModel ? `<div class="meta-row"><span class="meta-lbl">Vehicle    :</span><span class="meta-val">${escapeHtml(data.vehicle.makeModel)}</span></div>` : '')}
-      ${!data.vehicle?.makeModel && settings.showVehiclePlate && data.vehicle?.plateNumber ? `<div class="meta-row"><span class="meta-lbl">Plate   :</span><span class="meta-val">${escapeHtml(data.vehicle.plateNumber)}</span></div>` : ''}
-      ${settings.showVehicleMileage && data.vehicle?.mileage ? `<div class="meta-row"><span class="meta-lbl">Mileage    :</span><span class="meta-val">${escapeHtml(String(data.vehicle.mileage))}</span></div>` : ''}
-      ${settings.showMechanic && (data.vehicle?.advisor || data.vehicle?.mechanic) ? `<div class="meta-row"><span class="meta-lbl">Advisor :</span><span class="meta-val">${escapeHtml(data.vehicle.advisor || data.vehicle.mechanic || '')}</span></div>` : ''}
+    <!-- FIX #1 & #2: Vehicle and Mileage on SEPARATE full-width lines -->
+    <div class="vehicle-block">
+      ${data.vehicle?.plateNumber && data.vehicle?.makeModel ? `<div class="meta-row-full"><span class="meta-lbl">Vehicle :</span><span class="meta-val">${escapeHtml(data.vehicle.plateNumber)} - ${escapeHtml(data.vehicle.makeModel)}</span></div>` : (data.vehicle?.plateNumber ? `<div class="meta-row-full"><span class="meta-lbl">Vehicle :</span><span class="meta-val">${escapeHtml(data.vehicle.plateNumber)}</span></div>` : (settings.showVehicleMakeModel && data.vehicle?.makeModel ? `<div class="meta-row-full"><span class="meta-lbl">Vehicle :</span><span class="meta-val">${escapeHtml(data.vehicle.makeModel)}</span></div>` : ''))}
+      ${settings.showVehicleMileage && data.vehicle?.mileage ? `<div class="meta-row-full"><span class="meta-lbl">Mileage :</span><span class="meta-val" style="white-space:normal;word-break:break-word;">${escapeHtml(String(data.vehicle.mileage))}</span></div>` : ''}
+      ${settings.showMechanic && (data.vehicle?.advisor || data.vehicle?.mechanic) ? `<div class="meta-row-full"><span class="meta-lbl">Advisor :</span><span class="meta-val">${escapeHtml(data.vehicle.advisor || data.vehicle.mechanic || '')}</span></div>` : ''}
+      ${settings.showJobNumber && data.vehicle?.jobNumber ? `<div class="meta-row-full"><span class="meta-lbl">Job No :</span><span class="meta-val">${escapeHtml(data.vehicle.jobNumber)}</span></div>` : ''}
     </div>
   ` : ''}
 
   <div class="dashed"></div>
 
   ${paperWidth === '80mm' ? `
+    <!-- FIX #6: Fixed-layout table with correct column widths -->
     <table>
       <thead>
         <tr>
-          <th class="col-idx">#</th>
-          <th>Item Name</th>
+          <th class="col-name">Item Name</th>
           <th class="col-qty">Qty</th>
           <th class="col-price">Price</th>
           <th class="col-amount">Amount</th>
         </tr>
       </thead>
       <tbody>
-        ${items.map((it, idx) => {
+        ${items.map((it) => {
           const sub = [
             settings.showProductBrand && it.brand ? it.brand : null,
             settings.showPartNumber && it.sku ? `SKU: ${it.sku}` : null,
@@ -242,13 +353,14 @@ export function generateThermalReceiptHtml(data: ReceiptData, settings: ReceiptS
 
           return `
             <tr>
-              <td class="col-idx">${idx + 1}</td>
-              <td>${escapeHtml(it.name)}</td>
+              <td class="col-name">
+                <div>${escapeHtml(it.name)}</div>
+                ${sub.length > 0 ? `<div class="subtext">${escapeHtml(sub.join(' · '))}</div>` : ''}
+              </td>
               <td class="col-qty">${it.quantity}</td>
               <td class="col-price">${fmtMoney(it.price)}</td>
               <td class="col-amount">${fmtMoney(it.total)}</td>
             </tr>
-            ${sub.length > 0 ? `<tr><td></td><td colspan="4" class="subtext">${escapeHtml(sub.join(' · '))}</td></tr>` : ''}
           `;
         }).join('')}
       </tbody>
@@ -277,7 +389,9 @@ export function generateThermalReceiptHtml(data: ReceiptData, settings: ReceiptS
     <div class="double-dashed"></div>
     <div class="total-row grand-total"><span>Total</span><span>${currency} ${fmtMoney(data.total)}</span></div>
     <div class="dashed"></div>
-    ${settings.showPaymentMethod ? `<div class="total-row"><span>Payment Method : <strong style="text-transform:capitalize;">${escapeHtml(paymentMethod)}</strong></span><span>${paymentMethod === 'credit' ? 'Credit' : fmtMoney(data.amountPaid ?? data.total)}</span></div>` : ''}
+    <!-- FIX #5: Payment Method shown ONCE only, no duplicate -->
+    ${settings.showPaymentMethod ? `<div class="total-row"><span>Payment Method</span><span style="text-transform:capitalize;font-weight:700;">${escapeHtml(paymentMethod)}</span></div>` : ''}
+    ${settings.showPaymentMethod && paymentMethod !== 'credit' ? `<div class="total-row"><span>Amount Paid</span><span>${fmtMoney(data.amountPaid ?? data.total)}</span></div>` : ''}
     ${settings.showChange && paymentMethod === 'cash' ? `<div class="total-row"><span>Change</span><span>${fmtMoney(data.change ?? 0)}</span></div>` : ''}
     ${settings.showCreditBalance && paymentMethod === 'credit' && data.customer?.remainingBalance !== undefined ? `
       <div class="total-row" style="font-weight:bold;"><span>Remaining Balance</span><span>${fmtMoney(data.customer.remainingBalance)}</span></div>
@@ -286,10 +400,11 @@ export function generateThermalReceiptHtml(data: ReceiptData, settings: ReceiptS
 
   <div class="dashed"></div>
 
+  <!-- FIX #9: Footer full width, centered, word-break safe -->
   <div class="footer">
-    ${settings.footerThankYou ? `<div style="font-weight:bold;">${escapeHtml(settings.footerThankYou)}</div>` : ''}
-    ${settings.footerMessage ? `<div style="font-weight:bold;">${escapeHtml(settings.footerMessage)}</div>` : ''}
-    ${settings.returnPolicy ? `<div style="font-size:9px; margin-top:3px;">${escapeHtml(settings.returnPolicy)}</div>` : ''}
+    ${settings.footerThankYou ? `<div style="font-weight:800;">${escapeHtml(settings.footerThankYou)}</div>` : ''}
+    ${settings.footerMessage ? `<div style="font-weight:700;">${escapeHtml(settings.footerMessage)}</div>` : ''}
+    ${settings.returnPolicy ? `<div class="footer-policy">${escapeHtml(settings.returnPolicy)}</div>` : ''}
     ${barcodeSvg ? `<div class="barcode-wrap">${barcodeSvg}</div>` : ''}
   </div>
 
