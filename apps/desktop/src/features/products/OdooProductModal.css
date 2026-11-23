@@ -13,7 +13,8 @@
 }
 
 .odoo-prod-modal {
-  width: min(620px, 96vw);
+  width: min(680px, 96vw);
+  max-height: 92vh;
   background: #ffffff;
   border-radius: 12px;
   box-shadow: 0 20px 48px -12px rgba(0, 0, 0, 0.22);
@@ -68,6 +69,8 @@
   padding: 10px 26px 22px 26px;
   display: flex;
   gap: 20px;
+  overflow-y: auto;
+  max-height: calc(92vh - 140px);
 }
 
 .odoo-prod-fields {
@@ -388,3 +391,168 @@
   color: #ef4444;
   margin-top: 3px;
 }
+
+/* ── IMEI Device Tracking Section ─────────────────────────────────────────── */
+.odoo-prod-imei-section {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-top: 4px;
+  margin-bottom: 4px;
+}
+
+.odoo-prod-imei-header {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-bottom: 10px;
+}
+
+.odoo-prod-imei-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.odoo-prod-imei-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1e293b;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.odoo-prod-imei-badge {
+  background: #0d9488;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  letter-spacing: 0.02em;
+}
+
+.odoo-prod-imei-subtitle {
+  font-size: 11px;
+  color: #64748b;
+  line-height: 1.35;
+}
+
+.odoo-prod-imei-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.odoo-prod-imei-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px dashed #e2e8f0;
+}
+
+.odoo-prod-imei-row:last-child {
+  border-bottom: none;
+}
+
+.odoo-prod-imei-device-num {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #79556f;
+  min-width: 26px;
+  padding-top: 6px;
+}
+
+.odoo-prod-imei-inputs {
+  display: flex;
+  gap: 8px;
+  flex: 1;
+}
+
+.odoo-prod-imei-input-wrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.odoo-prod-imei-input-wrap input {
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 5px;
+  padding: 5px 8px;
+  font-size: 12.5px;
+  font-family: monospace;
+}
+
+.odoo-prod-imei-input-wrap input:focus {
+  border-color: #79556f;
+  outline: none;
+  box-shadow: 0 0 0 1px #79556f;
+}
+
+.odoo-prod-imei-input-wrap input.error {
+  border-color: #ef4444;
+}
+
+.odoo-prod-imei-remove-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #94a3b8;
+  padding: 5px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s, background 0.15s;
+  margin-top: 3px;
+}
+
+.odoo-prod-imei-remove-btn:hover {
+  color: #ef4444;
+  background: #fee2e2;
+}
+
+.odoo-prod-imei-actions {
+  margin-top: 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.odoo-prod-imei-add-btn {
+  background: transparent;
+  border: 1px dashed #79556f;
+  color: #79556f;
+  border-radius: 6px;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.odoo-prod-imei-add-btn:hover {
+  background: #fdf2f8;
+  border-color: #63435a;
+}
+
+.odoo-prod-calculated-stock-badge {
+  font-size: 12px;
+  font-weight: 600;
+  color: #0d9488;
+  background: #f0fdfa;
+  border: 1px solid #ccfbf1;
+  padding: 4px 10px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+

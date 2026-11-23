@@ -1,6 +1,15 @@
 import Database from '@tauri-apps/plugin-sql';
-import { Product, Category } from '@genx/types/domain/product';
-export type { Product, Category };
+import {
+  Product,
+  Category,
+  ShopType,
+  PtaStatus,
+  WarrantyType,
+  ImeiStatus,
+  ProductMobileDetails,
+  ProductImei,
+} from '@genx/types/domain/product';
+export type { Product, Category, ShopType, PtaStatus, WarrantyType, ImeiStatus, ProductMobileDetails, ProductImei };
 import { Order } from '@genx/types/domain/order';
 import { Customer } from '@genx/types/domain/customer';
 import { db as legacyDb } from './db-legacy';
@@ -501,6 +510,302 @@ function mapToProduct(row: any): Product {
     deletedAt: row.deleted_at ?? row.deletedAt ? Number(row.deleted_at ?? row.deletedAt) : undefined,
   };
 }
+
+// ── Mobile Product & IMEI Repository (Retail Enhancement) ─────────────────────
+export const mobileProductRepo = {
+  async findMobileDetails(tenantId: string = getCurrentTenantId(), productId: string): Promise<ProductMobileDetails | null> {
+    if (isSupabaseConfigured()) {
+      try {
+        const { data, error } = await supabase
+          .from('product_mobile_details')
+          .select('*')
+          .eq('tenant_id', tenantId)
+          .eq('product_id', productId)
+          .maybeSingle();
+
+        if (!error && data) {
+          return {
+            id: String(data.id),
+            productId: String(data.product_id),
+            tenantId: String(data.tenant_id),
+            shopType: data.shop_type,
+            brand: data.brand || undefined,
+            model: data.model || undefined,
+            ram: data.ram || undefined,
+            storage: data.storage || undefined,
+            ptaStatus: data.pta_status || undefined,
+            warrantyType: data.warranty_type || undefined,
+            isImeiProduct: Boolean(data.is_imei_product),
+            createdAt: Number(data.created_at || Date.now()),
+            updatedAt: Number(data.updated_at || Date.now()),
+          };
+        }
+      } catch (err) {
+        console.warn('[db] Supabase findMobileDetails error, falling back to local:', err);
+      }
+    }
+
+    try {
+      const db = await getDatabase();
+      const rows = await db.select<any[]>(
+        'SELECT * FROM product_mobile_details WHERE product_id = ? AND tenant_id = ?',
+        [productId, tenantId]
+      );
+      if (rows && rows.length > 0) {
+        const row = rows[0];
+        return {
+          id: String(row.id),
+          productId: String(row.product_id),
+          tenantId: String(row.tenant_id),
+          shopType: row.shop_type,
+          brand: row.brand || undefined,
+          model: row.model || undefined,
+          ram: row.ram || undefined,
+          storage: row.storage || undefined,
+          ptaStatus: row.pta_status || undefined,
+          warrantyType: row.warranty_type || undefined,
+          isImeiProduct: Boolean(row.is_imei_product),
+          createdAt: Number(row.created_at || Date.now()),
+          updatedAt: Number(row.updated_at || Date.now()),
+        };
+      }
+    } catch (err) {
+      console.warn('[db] Local findMobileDetails error:', err);
+    }
+    return null;
+  },
+
+  async saveMobileDetails(details: ProductMobileDetails): Promise<void> {
+    const now = Date.now();
+    if (isSupabaseConfigured()) {
+      try {
+        await supabase.from('product_mobile_details').upsert({
+          id: details.id,
+          product_id: details.productId,
+          tenant_id: details.tenantId,
+          shop_type: details.shopType,
+          brand: details.brand || null,
+          model: details.model || null,
+          ram: details.ram || null,
+          storage: details.storage || null,
+          pta_status: details.ptaStatus || null,
+          warranty_type: details.warrantyType || null,
+          is_imei_product: details.isImeiProduct,
+          created_at: details.createdAt || now,
+          updated_at: now,
+        }, { onConflict: 'tenant_id,product_id' });
+      } catch (err) {
+        console.warn('[db] Supabase saveMobileDetails warning:', err);
+      }
+    }
+
+    try {
+      const db = await getDatabase();
+      await db.execute(
+        `INSERT OR REPLACE INTO product_mobile_details (
+          id, product_id, tenant_id, shop_type, brand, model, ram, storage,
+          pta_status, warranty_type, is_imei_product, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          details.id, details.productId, details.tenantId, details.shopType,
+          details.brand || null, details.model || null, details.ram || null,
+          details.storage || null, details.ptaStatus || null, details.warrantyType || null,
+          details.isImeiProduct ? 1 : 0, details.createdAt || now, now
+        ]
+      );
+    } catch (err) {
+      console.warn('[db] Local saveMobileDetails error:', err);
+    }
+  },
+
+  async findImeis(tenantId: string = getCurrentTenantId(), productId: string): Promise<ProductImei[]> {
+    if (isSupabaseConfigured()) {
+      try {
+        const { data, error } = await supabase
+          .from('product_imeis')
+          .select('*')
+          .eq('tenant_id', tenantId)
+          .eq('product_id', productId)
+          .order('created_at', { ascending: true });
+
+        if (!error && data) {
+          return data.map((d: any) => ({
+            id: String(d.id),
+            productId: String(d.product_id),
+            tenantId: String(d.tenant_id),
+            imei1: String(d.imei1),
+            imei2: d.imei2 ? String(d.imei2) : undefined,
+            status: d.status || 'available',
+            notes: d.notes || undefined,
+            createdAt: Number(d.created_at || Date.now()),
+            updatedAt: Number(d.updated_at || Date.now()),
+            soldAt: d.sold_at ? Number(d.sold_at) : undefined,
+          }));
+        }
+      } catch (err) {
+        console.warn('[db] Supabase findImeis error, falling back to local:', err);
+      }
+    }
+
+    try {
+      const db = await getDatabase();
+      const rows = await db.select<any[]>(
+        'SELECT * FROM product_imeis WHERE product_id = ? AND tenant_id = ? ORDER BY created_at ASC',
+        [productId, tenantId]
+      );
+      return rows.map((row) => ({
+        id: String(row.id),
+        productId: String(row.product_id),
+        tenantId: String(row.tenant_id),
+        imei1: String(row.imei1),
+        imei2: row.imei2 ? String(row.imei2) : undefined,
+        status: row.status || 'available',
+        notes: row.notes || undefined,
+        createdAt: Number(row.created_at || Date.now()),
+        updatedAt: Number(row.updated_at || Date.now()),
+        soldAt: row.sold_at ? Number(row.sold_at) : undefined,
+      }));
+    } catch (err) {
+      console.warn('[db] Local findImeis error:', err);
+      return [];
+    }
+  },
+
+  async checkDuplicateImeis(
+    tenantId: string = getCurrentTenantId(),
+    imeisToCheck: string[],
+    excludeProductId?: string
+  ): Promise<{ isDuplicate: boolean; duplicateImei?: string; existingProductName?: string }> {
+    const cleanImeis = imeisToCheck.map((s) => s.trim()).filter((s) => s.length > 0);
+    if (cleanImeis.length === 0) return { isDuplicate: false };
+
+    // 1. Check Supabase
+    if (isSupabaseConfigured()) {
+      try {
+        const { data, error } = await supabase
+          .from('product_imeis')
+          .select('imei1, imei2, product_id, products(name)')
+          .eq('tenant_id', tenantId);
+
+        if (!error && data) {
+          for (const row of data) {
+            if (excludeProductId && row.product_id === excludeProductId) continue;
+            for (const imei of cleanImeis) {
+              if (row.imei1 === imei || (row.imei2 && row.imei2 === imei)) {
+                const prodName = (row as any).products?.name || 'existing product';
+                return { isDuplicate: true, duplicateImei: imei, existingProductName: prodName };
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('[db] Supabase checkDuplicateImeis check error:', err);
+      }
+    }
+
+    // 2. Check local DB
+    try {
+      const db = await getDatabase();
+      const rows = await db.select<any[]>(
+        'SELECT pi.imei1, pi.imei2, pi.product_id, p.name as product_name FROM product_imeis pi LEFT JOIN products p ON pi.product_id = p.id WHERE pi.tenant_id = ?',
+        [tenantId]
+      );
+      for (const row of rows) {
+        if (excludeProductId && row.product_id === excludeProductId) continue;
+        for (const imei of cleanImeis) {
+          if (row.imei1 === imei || (row.imei2 && row.imei2 === imei)) {
+            return {
+              isDuplicate: true,
+              duplicateImei: imei,
+              existingProductName: row.product_name || 'existing product',
+            };
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('[db] Local checkDuplicateImeis check error:', err);
+    }
+
+    return { isDuplicate: false };
+  },
+
+  async saveImeis(
+    tenantId: string = getCurrentTenantId(),
+    productId: string,
+    imeis: Array<{ id?: string; imei1: string; imei2?: string; status?: ImeiStatus; notes?: string }>
+  ): Promise<void> {
+    const now = Date.now();
+    const cleanList = imeis.filter((i) => i.imei1 && i.imei1.trim().length > 0);
+
+    // Delete existing IMEIs for this product that were removed
+    const existingImeis = await this.findImeis(tenantId, productId);
+    const incomingIds = new Set(cleanList.map((i) => i.id).filter(Boolean));
+    const idsToDelete = existingImeis.filter((e) => !incomingIds.has(e.id)).map((e) => e.id);
+
+    if (idsToDelete.length > 0) {
+      if (isSupabaseConfigured()) {
+        try {
+          await supabase.from('product_imeis').delete().in('id', idsToDelete).eq('tenant_id', tenantId);
+        } catch (err) {
+          console.warn('[db] Supabase delete IMEIs error:', err);
+        }
+      }
+      try {
+        const db = await getDatabase();
+        for (const id of idsToDelete) {
+          await db.execute('DELETE FROM product_imeis WHERE id = ? AND tenant_id = ?', [id, tenantId]);
+        }
+      } catch (err) {
+        console.warn('[db] Local delete IMEIs error:', err);
+      }
+    }
+
+    // Upsert remaining/new IMEIs
+    for (const item of cleanList) {
+      const imeiId = item.id || crypto.randomUUID();
+      const status = item.status || 'available';
+
+      if (isSupabaseConfigured()) {
+        try {
+          await supabase.from('product_imeis').upsert({
+            id: imeiId,
+            product_id: productId,
+            tenant_id: tenantId,
+            imei1: item.imei1.trim(),
+            imei2: item.imei2 ? item.imei2.trim() : null,
+            status,
+            notes: item.notes || null,
+            created_at: now,
+            updated_at: now,
+          });
+        } catch (err) {
+          console.warn('[db] Supabase upsert IMEI error:', err);
+        }
+      }
+
+      try {
+        const db = await getDatabase();
+        await db.execute(
+          `INSERT OR REPLACE INTO product_imeis (
+            id, product_id, tenant_id, imei1, imei2, status, notes, created_at, updated_at, sold_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            imeiId, productId, tenantId, item.imei1.trim(),
+            item.imei2 ? item.imei2.trim() : null, status,
+            item.notes || null, now, now, null
+          ]
+        );
+      } catch (err) {
+        console.warn('[db] Local upsert IMEI error:', err);
+      }
+    }
+  },
+
+  async countAvailableImeis(tenantId: string = getCurrentTenantId(), productId: string): Promise<number> {
+    const imeis = await this.findImeis(tenantId, productId);
+    return imeis.filter((i) => i.status === 'available').length;
+  }
+};
 
 // Order Repository
 export const orderRepo = {

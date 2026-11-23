@@ -395,6 +395,55 @@ export const migrations: Migration[] = [
       await db.execute(`CREATE INDEX IF NOT EXISTS idx_receipt_settings_tenant ON receipt_settings(tenant_id)`);
     },
   },
+  {
+    version: 2,
+    name: 'mobile_inventory_schema',
+    up: async (db: Database) => {
+      // 1. Mobile Product Details
+      await db.execute(`
+        CREATE TABLE IF NOT EXISTS product_mobile_details (
+          id TEXT PRIMARY KEY,
+          product_id TEXT NOT NULL,
+          tenant_id TEXT NOT NULL,
+          shop_type TEXT NOT NULL,
+          brand TEXT,
+          model TEXT,
+          ram TEXT,
+          storage TEXT,
+          pta_status TEXT,
+          warranty_type TEXT,
+          is_imei_product INTEGER NOT NULL DEFAULT 0,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL,
+          FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
+          UNIQUE(tenant_id, product_id)
+        )
+      `);
+      await db.execute(`CREATE INDEX IF NOT EXISTS idx_pmd_product_id ON product_mobile_details(product_id)`);
+      await db.execute(`CREATE INDEX IF NOT EXISTS idx_pmd_tenant_id ON product_mobile_details(tenant_id)`);
+
+      // 2. Product IMEIs
+      await db.execute(`
+        CREATE TABLE IF NOT EXISTS product_imeis (
+          id TEXT PRIMARY KEY,
+          product_id TEXT NOT NULL,
+          tenant_id TEXT NOT NULL,
+          imei1 TEXT NOT NULL,
+          imei2 TEXT,
+          status TEXT NOT NULL DEFAULT 'available',
+          notes TEXT,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL,
+          sold_at INTEGER,
+          FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
+          UNIQUE(tenant_id, imei1)
+        )
+      `);
+      await db.execute(`CREATE INDEX IF NOT EXISTS idx_product_imeis_product ON product_imeis(product_id)`);
+      await db.execute(`CREATE INDEX IF NOT EXISTS idx_product_imeis_tenant ON product_imeis(tenant_id)`);
+      await db.execute(`CREATE INDEX IF NOT EXISTS idx_product_imeis_imei1 ON product_imeis(tenant_id, imei1)`);
+    },
+  },
 ];
 
 export async function runMigrations(db: Database): Promise<{ appliedCount: number; currentVersion: number }> {

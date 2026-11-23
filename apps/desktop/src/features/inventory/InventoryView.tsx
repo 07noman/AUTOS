@@ -14,6 +14,7 @@ import {
   X,
   AlertCircle,
   FileSpreadsheet,
+  Smartphone,
 } from "lucide-react";
 import { clsx } from "clsx";
 import { Card, CardHeader, CardTitle, CardContent } from "@genx/ui/Card";
@@ -35,6 +36,7 @@ import {
   useUpdateProduct,
 } from "@/hooks/useProducts";
 import { ProductForm } from "@/features/products/ProductForm";
+import { Product } from "@/lib/db";
 
 export function InventoryView() {
   const { data: rawProducts = [], isLoading: productsLoading } = useProducts();
@@ -50,6 +52,7 @@ export function InventoryView() {
 
   // Form & Modals
   const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [formEditProduct, setFormEditProduct] = useState<any | null>(null);
   const [adjustModalProduct, setAdjustModalProduct] = useState<any | null>(null);
   const [adjustQtyDelta, setAdjustQtyDelta] = useState<number>(0);
   const [adjustReason, setAdjustReason] = useState<string>("");
@@ -166,6 +169,11 @@ export function InventoryView() {
     if (!adjustModalProduct) return;
     setAdjustError("");
 
+    if (Boolean(adjustModalProduct.metadata?.mobileDetails?.isImeiProduct)) {
+      setAdjustError("Manual quantity adjustments are disabled for IMEI-tracked products. Stock is calculated strictly from registered IMEIs.");
+      return;
+    }
+
     const newStock = adjustModalProduct.stock + adjustQtyDelta;
     if (newStock < 0) {
       setAdjustError(`Adjustment would result in negative stock (${newStock}). Current available is ${adjustModalProduct.stock}.`);
@@ -200,8 +208,9 @@ export function InventoryView() {
         minimumStock: editMinStock,
       };
 
-      // If init stock changed from current, set it directly as stock adjustment
-      const stockChanged = editInitStock !== (editProduct.stock ?? 0);
+      // If init stock changed from current, set it directly as stock adjustment (disallowed for IMEI products)
+      const isImei = Boolean(editProduct.metadata?.mobileDetails?.isImeiProduct);
+      const stockChanged = !isImei && editInitStock !== (editProduct.stock ?? 0);
       if (stockChanged) {
         const delta = editInitStock - (editProduct.stock ?? 0);
         await adjustStock.mutateAsync({
@@ -414,6 +423,44 @@ export function InventoryView() {
 
                     <TableCell>
                       <div className="font-semibold text-slate-900">{item.name}</div>
+                      {/* Mobile product badge */}
+                      {(item.metadata?.mobileDetails as any)?.shopType && (() => {
+                        const md = item.metadata!.mobileDetails as any;
+                        return (
+                          <div className="mt-0.5 flex items-center gap-1 flex-wrap">
+                            <span
+                              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold"
+                              style={{
+                                background:
+                                  md.shopType === "New Phone"
+                                    ? "#eff6ff"
+                                    : md.shopType === "Used Phone"
+                                    ? "#fef3c7"
+                                    : "#f1f5f9",
+                                color:
+                                  md.shopType === "New Phone"
+                                    ? "#1d4ed8"
+                                    : md.shopType === "Used Phone"
+                                    ? "#b45309"
+                                    : "#475569",
+                              }}
+                            >
+                              <Smartphone size={9} />
+                              {md.shopType}
+                            </span>
+                            {md.ptaStatus && md.shopType !== "Accessories" && (
+                              <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700">
+                                {md.ptaStatus}
+                              </span>
+                            )}
+                            {md.isImeiProduct && (
+                              <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-semibold bg-teal-50 text-teal-700">
+                                IMEI-tracked
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </TableCell>
 
                     <TableCell>
@@ -496,12 +543,18 @@ export function InventoryView() {
                           variant="ghost"
                           size="sm"
                           onClick={() => {
-                            setEditProduct(item);
-                            setEditName(item.name);
-                            setEditPrice(item.sellingPrice);
-                            setEditCost(item.costPrice || 0);
-                            setEditMinStock(item.minimumStock || 0);
-                            setEditInitStock(item.stock || 0);
+                            // Mobile IMEI products open the full ProductForm modal for edit
+                            if (item.metadata?.mobileDetails) {
+                              setFormEditProduct(item as unknown as Product);
+                              setCreateModalOpen(true);
+                            } else {
+                              setEditProduct(item);
+                              setEditName(item.name);
+                              setEditPrice(item.sellingPrice);
+                              setEditCost(item.costPrice || 0);
+                              setEditMinStock(item.minimumStock || 0);
+                              setEditInitStock(item.stock || 0);
+                            }
                           }}
                           title="Edit Details"
                           className="text-slate-600 hover:bg-slate-100 h-8 w-8 p-0"
@@ -712,8 +765,15 @@ export function InventoryView() {
         </div>
       )}
 
-      {/* New Product Odoo-Style Modal */}
-      <ProductForm open={createModalOpen} onOpenChange={setCreateModalOpen} />
+      {/* New Product / Edit Product Odoo-Style Modal */}
+      <ProductForm
+        open={createModalOpen}
+        onOpenChange={(open) => {
+          setCreateModalOpen(open);
+          if (!open) setFormEditProduct(null);
+        }}
+        productToEdit={formEditProduct}
+      />
     </div>
   );
 }

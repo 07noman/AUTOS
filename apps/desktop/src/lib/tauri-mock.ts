@@ -581,6 +581,51 @@ export function setupTauriBrowserMock(): void {
           return [1, 1];
         }
 
+        // ── product_mobile_details INSERT / UPSERT ──────────────────
+        if (query.startsWith('INSERT INTO product_mobile_details') || query.startsWith('INSERT OR REPLACE INTO product_mobile_details')) {
+          const details = getStorage<any[]>('product_mobile_details', []);
+          const [id, product_id, tenant_id, shop_type, brand, model, ram, storage, pta_status, warranty_type, is_imei_product, created_at, updated_at] = values;
+          const idx = details.findIndex((d) => d.tenant_id === tenant_id && d.product_id === product_id);
+          const item = {
+            id, product_id, tenant_id, shop_type, brand, model, ram, storage, pta_status, warranty_type,
+            is_imei_product: Boolean(is_imei_product), created_at: created_at || Date.now(), updated_at: updated_at || Date.now(),
+          };
+          if (idx >= 0) {
+            details[idx] = item;
+          } else {
+            details.push(item);
+          }
+          setStorage('product_mobile_details', details);
+          return [1, 1];
+        }
+
+        // ── product_imeis INSERT / UPSERT ───────────────────────────
+        if (query.startsWith('INSERT INTO product_imeis') || query.startsWith('INSERT OR REPLACE INTO product_imeis')) {
+          const imeis = getStorage<any[]>('product_imeis', []);
+          const [id, product_id, tenant_id, imei1, imei2, status, notes, created_at, updated_at, sold_at] = values;
+          const idx = imeis.findIndex((i) => i.id === id || (i.tenant_id === tenant_id && i.imei1 === imei1));
+          const item = {
+            id, product_id, tenant_id, imei1, imei2: imei2 || null, status: status || 'available', notes: notes || null,
+            created_at: created_at || Date.now(), updated_at: updated_at || Date.now(), sold_at: sold_at || null,
+          };
+          if (idx >= 0) {
+            imeis[idx] = item;
+          } else {
+            imeis.push(item);
+          }
+          setStorage('product_imeis', imeis);
+          return [1, 1];
+        }
+
+        // ── product_imeis DELETE ────────────────────────────────────
+        if (query.startsWith('DELETE FROM product_imeis')) {
+          const [productId, tenantId] = values;
+          let imeis = getStorage<any[]>('product_imeis', []);
+          imeis = imeis.filter((i) => !(i.product_id === productId && i.tenant_id === tenantId));
+          setStorage('product_imeis', imeis);
+          return [1, 1];
+        }
+
         return [0, 0];
       }
 
@@ -819,6 +864,31 @@ export function setupTauriBrowserMock(): void {
           const tenantId = values[0];
           return (tenantId ? invoices.filter((i) => i.tenant_id === tenantId) : [])
             .sort((a, b) => b.created_at - a.created_at);
+        }
+
+        // ── product_mobile_details SELECT ─────────────────────────────────
+        if (query.includes('FROM product_mobile_details')) {
+          const details = getStorage<any[]>('product_mobile_details', []);
+          if (query.includes('WHERE product_id = ? AND tenant_id = ?')) {
+            const [productId, tenantId] = values;
+            return details.filter((d) => d.product_id === productId && d.tenant_id === tenantId);
+          }
+          const tenantId = values[0];
+          return tenantId ? details.filter((d) => d.tenant_id === tenantId) : details;
+        }
+
+        // ── product_imeis SELECT ──────────────────────────────────────────
+        if (query.includes('FROM product_imeis')) {
+          const imeis = getStorage<any[]>('product_imeis', []);
+          if (query.includes('WHERE product_id = ? AND tenant_id = ?')) {
+            const [productId, tenantId] = values;
+            return imeis.filter((i) => i.product_id === productId && i.tenant_id === tenantId);
+          }
+          if (query.includes('WHERE tenant_id = ?')) {
+            const tenantId = values[0];
+            return imeis.filter((i) => i.tenant_id === tenantId);
+          }
+          return imeis;
         }
 
         return [];

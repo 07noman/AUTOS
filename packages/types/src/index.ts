@@ -1,4 +1,13 @@
-export type { Product, Category } from './domain/product';
+export type {
+  Product,
+  Category,
+  ShopType,
+  PtaStatus,
+  WarrantyType,
+  ImeiStatus,
+  ProductMobileDetails,
+  ProductImei,
+} from './domain/product';
 export type { Order, OrderItem } from './domain/order';
 export type { Customer } from './domain/customer';
 export type { User, UserRole } from './domain/user';
