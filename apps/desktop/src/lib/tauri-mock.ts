@@ -582,7 +582,7 @@ export function setupTauriBrowserMock(): void {
         }
 
         // ── product_mobile_details INSERT / UPSERT ──────────────────
-        if (query.startsWith('INSERT INTO product_mobile_details') || query.startsWith('INSERT OR REPLACE INTO product_mobile_details')) {
+        if (query.includes('INTO product_mobile_details')) {
           const details = getStorage<any[]>('product_mobile_details', []);
           const [id, product_id, tenant_id, shop_type, brand, model, ram, storage, pta_status, warranty_type, is_imei_product, created_at, updated_at] = values;
           const idx = details.findIndex((d) => d.tenant_id === tenant_id && d.product_id === product_id);
@@ -600,7 +600,7 @@ export function setupTauriBrowserMock(): void {
         }
 
         // ── product_imeis INSERT / UPSERT ───────────────────────────
-        if (query.startsWith('INSERT INTO product_imeis') || query.startsWith('INSERT OR REPLACE INTO product_imeis')) {
+        if (query.includes('INTO product_imeis')) {
           const imeis = getStorage<any[]>('product_imeis', []);
           const [id, product_id, tenant_id, imei1, imei2, status, notes, created_at, updated_at, sold_at] = values;
           const idx = imeis.findIndex((i) => i.id === id || (i.tenant_id === tenant_id && i.imei1 === imei1));
@@ -619,9 +619,14 @@ export function setupTauriBrowserMock(): void {
 
         // ── product_imeis DELETE ────────────────────────────────────
         if (query.startsWith('DELETE FROM product_imeis')) {
-          const [productId, tenantId] = values;
           let imeis = getStorage<any[]>('product_imeis', []);
-          imeis = imeis.filter((i) => !(i.product_id === productId && i.tenant_id === tenantId));
+          if (query.includes('WHERE id = ? AND tenant_id = ?')) {
+            const [id, tenantId] = values;
+            imeis = imeis.filter((i) => !(i.id === id && i.tenant_id === tenantId));
+          } else if (query.includes('WHERE product_id = ? AND tenant_id = ?')) {
+            const [productId, tenantId] = values;
+            imeis = imeis.filter((i) => !(i.product_id === productId && i.tenant_id === tenantId));
+          }
           setStorage('product_imeis', imeis);
           return [1, 1];
         }

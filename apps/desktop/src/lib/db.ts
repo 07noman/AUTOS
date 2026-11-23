@@ -628,7 +628,7 @@ export const mobileProductRepo = {
           .eq('product_id', productId)
           .order('created_at', { ascending: true });
 
-        if (!error && data) {
+        if (!error && Array.isArray(data) && data.length > 0) {
           return data.map((d: any) => ({
             id: String(d.id),
             productId: String(d.product_id),

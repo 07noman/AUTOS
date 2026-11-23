@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef, useEffect, useMemo } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { X, Plus, Check, Smartphone, AlertCircle } from "lucide-react";
 import "./OdooProductModal.css";
@@ -182,8 +182,6 @@ export function ProductForm({ open, onOpenChange, onSaved, productToEdit }: Prod
     setNewCatName("");
   }, [open, productToEdit]);
 
-  if (!open) return null;
-
   const resetForm = () => {
     setName("");
     setBarcode("");
@@ -307,10 +305,7 @@ export function ProductForm({ open, onOpenChange, onSaved, productToEdit }: Prod
   };
 
   // Calculated stock from registered IMEIs
-  const validImeiDevices = useMemo(() => {
-    return imeiList.filter((d) => d.imei1.trim().length > 0);
-  }, [imeiList]);
-
+  const validImeiDevices = imeiList.filter((d) => d.imei1.trim().length > 0);
   const calculatedStock = validImeiDevices.length;
 
   const validate = (): boolean => {
@@ -538,6 +533,8 @@ export function ProductForm({ open, onOpenChange, onSaved, productToEdit }: Prod
 
   const isPhoneType = shopType === "New Phone" || shopType === "Used Phone";
   const isImeiTrackingEnabled = isPhoneType && isImeiProduct === "Yes";
+
+  if (!open) return null;
 
   const modal = (
     <div

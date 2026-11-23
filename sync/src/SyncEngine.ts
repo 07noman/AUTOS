@@ -244,8 +244,8 @@ export class SyncEngine {
       }
 
       return { synced: syncResponse.changes?.length || 0 };
-    } catch (error) {
-      console.warn('Pull failed:', error);
+    } catch {
+      // Quietly continue offline/local operations when sync backend is unreachable
       return { synced: 0 };
     }
   }
