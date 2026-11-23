@@ -38,7 +38,7 @@ import {
 import { ProductForm } from "@/features/products/ProductForm";
 import { Product } from "@/lib/db";
 
-export function InventoryView() {
+export function InventoryView({ businessType }: { businessType?: string } = {}) {
   const { data: rawProducts = [], isLoading: productsLoading } = useProducts();
   const { data: categories = [], isLoading: categoriesLoading } = useCategories();
   const deleteProduct = useDeleteProduct();
@@ -773,6 +773,7 @@ export function InventoryView() {
           if (!open) setFormEditProduct(null);
         }}
         productToEdit={formEditProduct}
+        businessType={businessType}
       />
     </div>
   );

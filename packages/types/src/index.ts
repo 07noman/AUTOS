@@ -7,6 +7,7 @@ export type {
   ImeiStatus,
   ProductMobileDetails,
   ProductImei,
+  MobileUsedPurchase,
 } from './domain/product';
 export type { Order, OrderItem } from './domain/order';
 export type { Customer } from './domain/customer';

@@ -1,4 +1,10 @@
-export type ShopType = 'New Phone' | 'Used Phone' | 'Accessories';
+export type ShopType =
+  | 'Auto Store'
+  | 'New Phone'
+  | 'Used Phone'
+  | 'Accessories'
+  | 'Mobile Shop'
+  | 'Retail Shop';
 export type PtaStatus = 'Approved' | 'Non-PTA' | 'Pending';
 export type WarrantyType = 'Company' | 'Shop' | 'No Warranty';
 export type ImeiStatus = 'available' | 'sold' | 'transferred' | 'returned' | 'defective';
@@ -10,11 +16,29 @@ export interface ProductMobileDetails {
   shopType: ShopType;
   brand?: string;
   model?: string;
+  variant?: string;
+  color?: string;
   ram?: string;
   storage?: string;
   ptaStatus?: PtaStatus;
   warrantyType?: WarrantyType;
+  batteryHealth?: number;
   isImeiProduct: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface MobileUsedPurchase {
+  id: string;
+  productId: string;
+  tenantId: string;
+  sellerName?: string;
+  sellerCnic?: string;
+  sellerPhone?: string;
+  purchasePrice?: number;
+  condition?: string;
+  batteryHealth?: number;
+  notes?: string;
   createdAt: number;
   updatedAt: number;
 }

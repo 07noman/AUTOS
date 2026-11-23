@@ -444,6 +444,57 @@ export const migrations: Migration[] = [
       await db.execute(`CREATE INDEX IF NOT EXISTS idx_product_imeis_imei1 ON product_imeis(tenant_id, imei1)`);
     },
   },
+  {
+    version: 3,
+    name: 'mobile_phone_and_used_purchase_tables',
+    up: async (db: Database) => {
+      // 1. Mobile Phone Details Table
+      await db.execute(`
+        CREATE TABLE IF NOT EXISTS mobile_phone_details (
+          id TEXT PRIMARY KEY,
+          product_id TEXT NOT NULL,
+          tenant_id TEXT NOT NULL,
+          shop_type TEXT NOT NULL,
+          brand TEXT,
+          model TEXT,
+          variant TEXT,
+          color TEXT,
+          ram TEXT,
+          storage TEXT,
+          pta_status TEXT,
+          warranty_type TEXT,
+          battery_health INTEGER,
+          is_imei_product INTEGER NOT NULL DEFAULT 1,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL,
+          FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+        )
+      `);
+      await db.execute(`CREATE INDEX IF NOT EXISTS idx_mpd_product_id ON mobile_phone_details(product_id)`);
+      await db.execute(`CREATE INDEX IF NOT EXISTS idx_mpd_tenant_id ON mobile_phone_details(tenant_id)`);
+
+      // 2. Mobile Used Purchase Table
+      await db.execute(`
+        CREATE TABLE IF NOT EXISTS mobile_used_purchase (
+          id TEXT PRIMARY KEY,
+          product_id TEXT NOT NULL,
+          tenant_id TEXT NOT NULL,
+          seller_name TEXT,
+          seller_cnic TEXT,
+          seller_phone TEXT,
+          purchase_price REAL,
+          condition TEXT,
+          battery_health INTEGER,
+          notes TEXT,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL,
+          FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+        )
+      `);
+      await db.execute(`CREATE INDEX IF NOT EXISTS idx_mup_product_id ON mobile_used_purchase(product_id)`);
+      await db.execute(`CREATE INDEX IF NOT EXISTS idx_mup_tenant_id ON mobile_used_purchase(tenant_id)`);
+    },
+  },
 ];
 
 export async function runMigrations(db: Database): Promise<{ appliedCount: number; currentVersion: number }> {

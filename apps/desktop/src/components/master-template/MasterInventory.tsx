@@ -11,7 +11,7 @@ export function MasterInventory({ businessType: propType }: MasterInventoryProps
   const params = useParams<{ businessType?: string }>();
   const bKey = resolveBusinessType(propType || params.businessType);
 
-  return <InventoryView />;
+  return <InventoryView businessType={bKey} />;
 }
 
 export default MasterInventory;

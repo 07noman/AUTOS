@@ -134,7 +134,7 @@ function App() {
         <Route path="vehicles" element={<VehiclesView />} />
         <Route path="vehicle-history" element={<VehicleHistoryView />} />
         <Route path="customers" element={<Customers />} />
-        <Route path="inventory" element={<InventoryView />} />
+        <Route path="inventory" element={<InventoryView businessType="auto-care" />} />
         <Route path="estimates" element={<AutoCareModuleView moduleId="estimates" />} />
         <Route path="appointments" element={<AutoCareModuleView moduleId="appointments" />} />
         <Route path="job-board" element={<AutoCareModuleView moduleId="job-board" />} />

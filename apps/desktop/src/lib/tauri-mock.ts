@@ -599,6 +599,43 @@ export function setupTauriBrowserMock(): void {
           return [1, 1];
         }
 
+        // ── mobile_phone_details INSERT / UPSERT ────────────────────
+        if (query.includes('INTO mobile_phone_details')) {
+          const details = getStorage<any[]>('mobile_phone_details', []);
+          const [id, product_id, tenant_id, shop_type, brand, model, variant, color, ram, storage, pta_status, warranty_type, battery_health, is_imei_product, created_at, updated_at] = values;
+          const idx = details.findIndex((d) => d.tenant_id === tenant_id && d.product_id === product_id);
+          const item = {
+            id, product_id, tenant_id, shop_type, brand, model, variant, color, ram, storage, pta_status, warranty_type,
+            battery_health: battery_health || null, is_imei_product: Boolean(is_imei_product),
+            created_at: created_at || Date.now(), updated_at: updated_at || Date.now(),
+          };
+          if (idx >= 0) {
+            details[idx] = item;
+          } else {
+            details.push(item);
+          }
+          setStorage('mobile_phone_details', details);
+          return [1, 1];
+        }
+
+        // ── mobile_used_purchase INSERT / UPSERT ────────────────────
+        if (query.includes('INTO mobile_used_purchase')) {
+          const purchases = getStorage<any[]>('mobile_used_purchase', []);
+          const [id, product_id, tenant_id, seller_name, seller_cnic, seller_phone, purchase_price, condition, battery_health, notes, created_at, updated_at] = values;
+          const idx = purchases.findIndex((p) => p.id === id || (p.tenant_id === tenant_id && p.product_id === product_id));
+          const item = {
+            id, product_id, tenant_id, seller_name, seller_cnic, seller_phone, purchase_price,
+            condition, battery_health, notes, created_at: created_at || Date.now(), updated_at: updated_at || Date.now(),
+          };
+          if (idx >= 0) {
+            purchases[idx] = item;
+          } else {
+            purchases.push(item);
+          }
+          setStorage('mobile_used_purchase', purchases);
+          return [1, 1];
+        }
+
         // ── product_imeis INSERT / UPSERT ───────────────────────────
         if (query.includes('INTO product_imeis')) {
           const imeis = getStorage<any[]>('product_imeis', []);
@@ -871,8 +908,8 @@ export function setupTauriBrowserMock(): void {
             .sort((a, b) => b.created_at - a.created_at);
         }
 
-        // ── product_mobile_details SELECT ─────────────────────────────────
-        if (query.includes('FROM product_mobile_details')) {
+        // ── product_mobile_details / mobile_phone_details SELECT ──────────
+        if (query.includes('FROM product_mobile_details') || query.includes('FROM mobile_phone_details')) {
           const details = getStorage<any[]>('product_mobile_details', []);
           if (query.includes('WHERE product_id = ? AND tenant_id = ?')) {
             const [productId, tenantId] = values;
@@ -880,6 +917,17 @@ export function setupTauriBrowserMock(): void {
           }
           const tenantId = values[0];
           return tenantId ? details.filter((d) => d.tenant_id === tenantId) : details;
+        }
+
+        // ── mobile_used_purchase SELECT ───────────────────────────────────
+        if (query.includes('FROM mobile_used_purchase')) {
+          const purchases = getStorage<any[]>('mobile_used_purchase', []);
+          if (query.includes('WHERE product_id = ? AND tenant_id = ?')) {
+            const [productId, tenantId] = values;
+            return purchases.filter((p) => p.product_id === productId && p.tenant_id === tenantId);
+          }
+          const tenantId = values[0];
+          return tenantId ? purchases.filter((p) => p.tenant_id === tenantId) : purchases;
         }
 
         // ── product_imeis SELECT ──────────────────────────────────────────

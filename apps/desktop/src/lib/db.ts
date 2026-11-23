@@ -613,6 +613,21 @@ export const mobileProductRepo = {
           details.isImeiProduct ? 1 : 0, details.createdAt || now, now
         ]
       );
+
+      // Also save to mobile_phone_details for full compatibility
+      await db.execute(
+        `INSERT OR REPLACE INTO mobile_phone_details (
+          id, product_id, tenant_id, shop_type, brand, model, variant, color, ram, storage,
+          pta_status, warranty_type, battery_health, is_imei_product, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          details.id, details.productId, details.tenantId, details.shopType,
+          details.brand || null, details.model || null, details.variant || details.model || null,
+          details.color || null, details.ram || null, details.storage || null,
+          details.ptaStatus || null, details.warrantyType || null, details.batteryHealth || null,
+          details.isImeiProduct ? 1 : 0, details.createdAt || now, now
+        ]
+      ).catch(() => {});
     } catch (err) {
       console.warn('[db] Local saveMobileDetails error:', err);
     }
